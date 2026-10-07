@@ -1,8 +1,9 @@
 import { TrafficSystem } from './TrafficSystem'
-import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Edges, MapControls, OrthographicCamera } from '@react-three/drei'
+import { Edges, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
+import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
@@ -18,11 +19,11 @@ type Cell = { x: number; y: number }
 interface PannableControls {
   target: THREE.Vector3
   object: THREE.Object3D
-  domElement: HTMLElement
+  domElement?: HTMLElement
   enabled: boolean
   dollyIn: (scale: number) => void
   dollyOut: (scale: number) => void
-  update: () => boolean
+  update: () => void
 }
 
 /** Значение "кнопка ничего не делает" для OrbitControls (в типах drei null не допускается). */
@@ -38,6 +39,116 @@ function SceneCompiler({ onReady }: { onReady: () => void }) {
     return () => { active = false }
   }, [camera, gl, onReady, scene])
   return null
+}
+
+function StableMapControls({
+  target,
+  controlsRef,
+  isTouchDevice,
+}: {
+  target: [number, number, number]
+  controlsRef: MutableRefObject<PannableControls | null>
+  isTouchDevice: boolean
+}) {
+  const { camera, gl, get, set } = useThree()
+  const controls = useMemo(() => new ThreeMapControls(camera, gl.domElement), [camera, gl])
+
+  useEffect(() => {
+    const previousControls = get().controls
+    set({ controls })
+    return () => set({ controls: previousControls })
+  }, [controls, get, set])
+
+  useEffect(() => {
+    controlsRef.current = controls
+    controls.enabled = true
+    controls.enablePan = true
+    controls.enableZoom = true
+    controls.enableRotate = !isTouchDevice
+    controls.enableDamping = true
+    controls.dampingFactor = 0.12
+    controls.screenSpacePanning = false
+    controls.panSpeed = 1.2
+    controls.zoomSpeed = 1
+    controls.minZoom = 20
+    controls.maxZoom = 250
+    controls.minPolarAngle = ISO_POLAR_ANGLE
+    controls.maxPolarAngle = ISO_POLAR_ANGLE
+    controls.target.set(...target)
+    controls.mouseButtons = {
+      LEFT: MOUSE_NONE,
+      MIDDLE: THREE.MOUSE.PAN,
+      RIGHT: THREE.MOUSE.PAN,
+    }
+    controls.touches = {
+      ONE: THREE.TOUCH.PAN,
+      TWO: THREE.TOUCH.DOLLY_PAN,
+    }
+    controls.update()
+
+    const onChange = () => {
+      const dx = THREE.MathUtils.clamp(controls.target.x, -PAN_LIMIT, PAN_LIMIT) - controls.target.x
+      const dz = THREE.MathUtils.clamp(controls.target.z, -PAN_LIMIT, PAN_LIMIT) - controls.target.z
+      if (dx !== 0 || dz !== 0) {
+        controls.target.x += dx
+        controls.target.z += dz
+        controls.object.position.x += dx
+        controls.object.position.z += dz
+      }
+    }
+    controls.addEventListener('change', onChange)
+
+    const activeTouchPointers = new Set<number>()
+    const rememberTouch = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') activeTouchPointers.add(event.pointerId)
+    }
+    const forgetTouch = (event: PointerEvent) => activeTouchPointers.delete(event.pointerId)
+    const cancelTouchPointers = () => {
+      for (const pointerId of activeTouchPointers) {
+        gl.domElement.dispatchEvent(new PointerEvent('pointercancel', {
+          bubbles: true,
+          cancelable: true,
+          pointerId,
+          pointerType: 'touch',
+        }))
+      }
+      activeTouchPointers.clear()
+    }
+    const recoverWindowPointerUp = (event: PointerEvent) => {
+      if (!activeTouchPointers.has(event.pointerId)) return
+      activeTouchPointers.delete(event.pointerId)
+      gl.domElement.dispatchEvent(new PointerEvent('pointercancel', {
+        bubbles: true,
+        cancelable: true,
+        pointerId: event.pointerId,
+        pointerType: 'touch',
+      }))
+    }
+    const recoverTouchEnd = (event: TouchEvent) => {
+      if (event.touches.length === 0) cancelTouchPointers()
+    }
+
+    gl.domElement.addEventListener('pointerdown', rememberTouch, true)
+    gl.domElement.addEventListener('pointerup', forgetTouch, true)
+    gl.domElement.addEventListener('pointercancel', forgetTouch, true)
+    window.addEventListener('pointerup', recoverWindowPointerUp)
+    window.addEventListener('touchend', recoverTouchEnd, { passive: true })
+    window.addEventListener('touchcancel', cancelTouchPointers, { passive: true })
+
+    return () => {
+      controlsRef.current = null
+      controls.removeEventListener('change', onChange)
+      gl.domElement.removeEventListener('pointerdown', rememberTouch, true)
+      gl.domElement.removeEventListener('pointerup', forgetTouch, true)
+      gl.domElement.removeEventListener('pointercancel', forgetTouch, true)
+      window.removeEventListener('pointerup', recoverWindowPointerUp)
+      window.removeEventListener('touchend', recoverTouchEnd)
+      window.removeEventListener('touchcancel', cancelTouchPointers)
+    }
+  }, [controls, controlsRef, gl.domElement, isTouchDevice, target[0], target[1], target[2]])
+
+  useFrame(() => controls.update(), -1)
+  return <primitive object={controls} />
 }
 
 function SceneLoadingOverlay() {
@@ -281,6 +392,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
+  const touchTap = useRef<{ pointerId: number; x: number; y: number; cell: Cell; moved: boolean } | null>(null)
 
   const act = useCallback(
     (cell: Cell) => {
@@ -291,23 +403,50 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
   )
 
   useEffect(() => {
-    const stop = () => {
+    const trackTouchMove = (event: PointerEvent) => {
+      const gesture = touchTap.current
+      if (!gesture || gesture.pointerId !== event.pointerId) return
+      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 5) gesture.moved = true
+    }
+    const stop = (event?: PointerEvent) => {
+      const gesture = touchTap.current
+      if (gesture && event?.pointerId === gesture.pointerId) {
+        if (!gesture.moved && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 5) act(gesture.cell)
+        touchTap.current = null
+      }
       painting.current = false
       lastCell.current = null
     }
-    window.addEventListener('pointerup', stop)
-    window.addEventListener('pointercancel', stop)
-    window.addEventListener('blur', stop)
-    return () => {
-      window.removeEventListener('pointerup', stop)
-      window.removeEventListener('pointercancel', stop)
-      window.removeEventListener('blur', stop)
+    const cancel = (event: PointerEvent) => {
+      if (touchTap.current?.pointerId === event.pointerId) touchTap.current = null
+      painting.current = false
+      lastCell.current = null
     }
-  }, [])
+    const clearOnBlur = () => {
+      touchTap.current = null
+      painting.current = false
+      lastCell.current = null
+    }
+    window.addEventListener('pointermove', trackTouchMove)
+    window.addEventListener('pointerup', stop)
+    window.addEventListener('pointercancel', cancel)
+    window.addEventListener('blur', clearOnBlur)
+    return () => {
+      window.removeEventListener('pointermove', trackTouchMove)
+      window.removeEventListener('pointerup', stop)
+      window.removeEventListener('pointercancel', cancel)
+      window.removeEventListener('blur', clearOnBlur)
+    }
+  }, [act])
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
     setHovered((prev) => (prev !== null && prev.x === cell.x && prev.y === cell.y ? prev : cell))
+    const gesture = touchTap.current
+    if (gesture?.pointerId === event.nativeEvent.pointerId) {
+      if (Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) > 5) gesture.moved = true
+      return
+    }
     if (painting.current && lastCell.current !== null) {
       const previous = lastCell.current
       if (previous.x === cell.x && previous.y === cell.y) return
@@ -317,8 +456,20 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
   }
 
   const handleDown = (event: ThreeEvent<PointerEvent>) => {
-    if (event.nativeEvent.button !== 0 || activeTool === ToolId.CURSOR) return
     const cell = worldToCell(event.point.x, event.point.z)
+    if (event.nativeEvent.pointerType === 'touch') {
+      if (activeTool !== ToolId.CURSOR) {
+        touchTap.current = {
+          pointerId: event.nativeEvent.pointerId,
+          x: event.nativeEvent.clientX,
+          y: event.nativeEvent.clientY,
+          cell,
+          moved: false,
+        }
+      }
+      return
+    }
+    if (event.nativeEvent.button !== 0 || activeTool === ToolId.CURSOR) return
     painting.current = true
     lastCell.current = cell
     act(cell)
@@ -342,6 +493,16 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
         position={[0, 0.002, 0]}
         onPointerMove={handleMove}
         onPointerDown={handleDown}
+        onPointerUp={(event) => {
+          const gesture = touchTap.current
+          if (gesture?.pointerId === event.nativeEvent.pointerId) {
+            if (!gesture.moved && Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) <= 5) act(gesture.cell)
+            touchTap.current = null
+          }
+        }}
+        onPointerCancel={(event) => {
+          if (touchTap.current?.pointerId === event.nativeEvent.pointerId) touchTap.current = null
+        }}
         onPointerOut={() => setHovered(null)}
       >
         <planeGeometry args={[GRID_SIZE, GRID_SIZE]} />
@@ -408,6 +569,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
     return () => window.removeEventListener('resize', updateViewport)
   }, [])
   const isReferencePreview = new URLSearchParams(window.location.search).get('preview') === 'cityrt'
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
   const cameraTarget: [number, number, number] = isReferencePreview ? [-0.5, 0, -0.5] : [0, 0, -3.5]
   const cameraPosition: [number, number, number] = [
     cameraTarget[0] + CAMERA_POSITION[0],
@@ -418,7 +580,6 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
   const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5)
   const controlsRef = useRef<PannableControls | null>(null)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
-  const activePointers = useRef(new Set<number>())
   useEffect(() => {
     const preventCanvasGesture = (event: TouchEvent) => {
       const target = event.target
@@ -437,27 +598,12 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
     camera.updateProjectionMatrix()
     controls.update()
   }
-  const releasePointer = (pointerId: number) => {
-    activePointers.current.delete(pointerId)
-    const canvas = controlsRef.current?.domElement
-    if (!canvas) return
-    try {
-      if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId)
-    } catch { /* Embedded browsers can invalidate capture before dispatching pointerleave. */ }
-    canvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId }))
-  }
   return (
     <>
       <div
         ref={canvasContainerRef}
         className="absolute inset-0 touch-none select-none"
-        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
-        onPointerDownCapture={(event) => activePointers.current.add(event.pointerId)}
-        onPointerUpCapture={(event) => activePointers.current.delete(event.pointerId)}
-        onPointerCancelCapture={(event) => activePointers.current.delete(event.pointerId)}
-        onPointerLeave={(event) => {
-          if (activePointers.current.has(event.pointerId)) releasePointer(event.pointerId)
-        }}
+        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Canvas
       shadows={{ type: THREE.PCFSoftShadowMap }}
@@ -470,7 +616,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
       dpr={[1, maxDpr]}
       gl={{ antialias: true }}
       className="absolute inset-0 touch-none select-none"
-      style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+      style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
@@ -480,44 +626,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
 
       <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={-200} far={400} />
 
-      <MapControls
-        ref={controlsRef as never}
-        makeDefault
-        enabled
-        target={cameraTarget}
-        enableRotate
-        minPolarAngle={ISO_POLAR_ANGLE}
-        maxPolarAngle={ISO_POLAR_ANGLE}
-        minZoom={20}
-        maxZoom={250}
-        enablePan
-        enableZoom
-        zoomSpeed={1.0}
-        panSpeed={1.2}
-        touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
-        enableDamping
-        dampingFactor={0.12}
-        screenSpacePanning={false}
-        mouseButtons={{
-          // Левая кнопка двигает камеру только с курсором, иначе она строит.
-          LEFT: activeTool === ToolId.CURSOR ? THREE.MOUSE.PAN : MOUSE_NONE,
-          MIDDLE: THREE.MOUSE.PAN,
-          RIGHT: THREE.MOUSE.PAN,
-        }}
-        onChange={(event) => {
-          const controls = (event as { target?: PannableControls } | undefined)?.target
-          if (!controls) return
-          // Не даём утащить камеру слишком далеко от города.
-          const dx = THREE.MathUtils.clamp(controls.target.x, -PAN_LIMIT, PAN_LIMIT) - controls.target.x
-          const dz = THREE.MathUtils.clamp(controls.target.z, -PAN_LIMIT, PAN_LIMIT) - controls.target.z
-          if (dx !== 0 || dz !== 0) {
-            controls.target.x += dx
-            controls.target.z += dz
-            controls.object.position.x += dx
-            controls.object.position.z += dz
-          }
-        }}
-      />
+      <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
       <ambientLight intensity={0.35} color="#fff6ea" />
       <directionalLight
