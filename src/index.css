@@ -17,6 +17,10 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 body {
@@ -24,12 +28,19 @@ body {
   color: var(--color-ink);
   font-family: var(--font-sans);
   overflow: hidden;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
   -webkit-font-smoothing: antialiased;
 }
 
 canvas {
   display: block;
-  touch-action: none;
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 /* Рисованный "штрих": жирный тёмный контур и жёсткая тень, как у комикса */

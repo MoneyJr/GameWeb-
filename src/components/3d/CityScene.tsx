@@ -396,21 +396,6 @@ function NightManager({ minutes }: { minutes: number }) {
   return null
 }
 
-function CameraZoomAnimator({ targetZoom }: { targetZoom: { current: number | null } }) {
-  const { camera } = useThree()
-  useFrame((_, delta) => {
-    const target = targetZoom.current
-    if (target === null || !(camera instanceof THREE.OrthographicCamera)) return
-    camera.zoom = THREE.MathUtils.damp(camera.zoom, target, 9, delta)
-    if (Math.abs(camera.zoom - target) < 0.05) {
-      camera.zoom = target
-      targetZoom.current = null
-    }
-    camera.updateProjectionMatrix()
-  })
-  return null
-}
-
 export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: CitySceneProps) {
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
@@ -430,16 +415,28 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
   const shadowMapSize: [number, number] = isNarrow ? [1024, 1024] : [2048, 2048]
   const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5)
   const controlsRef = useRef<PannableControls | null>(null)
-  const targetZoom = useRef<number | null>(null)
+  const canvasContainerRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const preventCanvasGesture = (event: TouchEvent) => {
+      const target = event.target
+      if (target instanceof Node && canvasContainerRef.current?.contains(target) && event.cancelable) {
+        event.preventDefault()
+      }
+    }
+    window.addEventListener('touchmove', preventCanvasGesture, { passive: false })
+    return () => window.removeEventListener('touchmove', preventCanvasGesture)
+  }, [])
   const zoomBy = (direction: 'in' | 'out') => {
     const controls = controlsRef.current
     if (!controls || !(controls.object instanceof THREE.OrthographicCamera)) return
-    const currentZoom = targetZoom.current ?? controls.object.zoom
-    targetZoom.current = THREE.MathUtils.clamp(currentZoom * (direction === 'in' ? 1.2 : 1 / 1.2), 25, 220)
+    const camera = controls.object
+    camera.zoom = THREE.MathUtils.clamp(camera.zoom * (direction === 'in' ? 1.25 : 1 / 1.25), 20, 250)
+    camera.updateProjectionMatrix()
+    controls.update()
   }
   return (
     <>
-      <div className="absolute inset-0 touch-none select-none" style={{ touchAction: 'none', userSelect: 'none' }}>
+      <div ref={canvasContainerRef} className="absolute inset-0 touch-none select-none" style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}>
       <Canvas
       shadows={{ type: THREE.PCFSoftShadowMap }}
       onCreated={({ gl }) => {
@@ -455,7 +452,6 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <CameraZoomAnimator targetZoom={targetZoom} />
       <fogExp2 attach="fog" args={['#eae4d5', 0.012]} />
       <NightManager minutes={minutes} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
@@ -469,10 +465,12 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
         enableRotate
         minPolarAngle={ISO_POLAR_ANGLE}
         maxPolarAngle={ISO_POLAR_ANGLE}
-        minZoom={25}
-        maxZoom={220}
+        minZoom={20}
+        maxZoom={250}
+        enablePan
         enableZoom
         zoomSpeed={1.2}
+        panSpeed={1.0}
         touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
         enableDamping
         dampingFactor={0.12}
