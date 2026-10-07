@@ -1,0 +1,68 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Nunito", ui-sans-serif, system-ui, sans-serif;
+  --color-paper: #eae4d5;
+  --color-ink: #1b1a17;
+  --color-ink-soft: #4a4640;
+  --color-cream: #fbf8f1;
+  --color-accent: #ff8a4c;
+  --color-accent-deep: #e8622a;
+  --color-leaf: #5fae6b;
+  --color-sky: #5cb3e6;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+canvas {
+  display: block;
+  touch-action: none;
+}
+
+/* Рисованный "штрих": жирный тёмный контур и жёсткая тень, как у комикса */
+.ink-panel {
+  background: color-mix(in srgb, var(--color-cream) 92%, transparent);
+  border: 2.5px solid var(--color-ink);
+  box-shadow: 4px 4px 0 var(--color-ink);
+  backdrop-filter: blur(6px);
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.toast-in {
+  animation: toast-in 180ms ease-out both;
+}
+
+@keyframes stat-bump {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
