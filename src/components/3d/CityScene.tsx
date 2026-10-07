@@ -18,6 +18,8 @@ type Cell = { x: number; y: number }
 interface PannableControls {
   target: THREE.Vector3
   object: THREE.Object3D
+  domElement: HTMLElement
+  enabled: boolean
   dollyIn: (scale: number) => void
   dollyOut: (scale: number) => void
   update: () => boolean
@@ -416,6 +418,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
   const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5)
   const controlsRef = useRef<PannableControls | null>(null)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
+  const activePointers = useRef(new Set<number>())
   useEffect(() => {
     const preventCanvasGesture = (event: TouchEvent) => {
       const target = event.target
@@ -434,9 +437,28 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
     camera.updateProjectionMatrix()
     controls.update()
   }
+  const releasePointer = (pointerId: number) => {
+    activePointers.current.delete(pointerId)
+    const canvas = controlsRef.current?.domElement
+    if (!canvas) return
+    try {
+      if (canvas.hasPointerCapture(pointerId)) canvas.releasePointerCapture(pointerId)
+    } catch { /* Embedded browsers can invalidate capture before dispatching pointerleave. */ }
+    canvas.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId }))
+  }
   return (
     <>
-      <div ref={canvasContainerRef} className="absolute inset-0 touch-none select-none" style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}>
+      <div
+        ref={canvasContainerRef}
+        className="absolute inset-0 touch-none select-none"
+        style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
+        onPointerDownCapture={(event) => activePointers.current.add(event.pointerId)}
+        onPointerUpCapture={(event) => activePointers.current.delete(event.pointerId)}
+        onPointerCancelCapture={(event) => activePointers.current.delete(event.pointerId)}
+        onPointerLeave={(event) => {
+          if (activePointers.current.has(event.pointerId)) releasePointer(event.pointerId)
+        }}
+      >
       <Canvas
       shadows={{ type: THREE.PCFSoftShadowMap }}
       onCreated={({ gl }) => {
@@ -448,7 +470,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
       dpr={[1, maxDpr]}
       gl={{ antialias: true }}
       className="absolute inset-0 touch-none select-none"
-      style={{ touchAction: 'none', userSelect: 'none' }}
+      style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none' }}
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
@@ -461,6 +483,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
       <MapControls
         ref={controlsRef as never}
         makeDefault
+        enabled
         target={cameraTarget}
         enableRotate
         minPolarAngle={ISO_POLAR_ANGLE}
@@ -469,8 +492,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
         maxZoom={250}
         enablePan
         enableZoom
-        zoomSpeed={1.2}
-        panSpeed={1.0}
+        zoomSpeed={1.0}
+        panSpeed={1.2}
         touches={{ ONE: THREE.TOUCH.PAN, TWO: THREE.TOUCH.DOLLY_PAN }}
         enableDamping
         dampingFactor={0.12}

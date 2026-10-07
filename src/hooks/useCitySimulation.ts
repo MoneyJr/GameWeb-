@@ -17,8 +17,8 @@ export const DAILY_LOAN_PAYMENT = 10
 export const RESIDENTS_PER_HOUSE = 4
 /** Длительность тика при скорости 1x (мс). */
 export const BASE_TICK_MS = 2000
-/** Сколько игровых минут проходит за тик. */
-export const MINUTES_PER_TICK = 30
+/** Сколько игровых минут проходит за тик. Бюджет пересчитывается каждые 10 минут. */
+export const MINUTES_PER_TICK = 10
 /** Радиус водонапорной башни: на сколько клеток дорожной сети (по пути) она раздаёт воду. */
 export const WATER_RADIUS = 12
 /** Макс. длина участка дорожного графа от генератора до потребителя. */
@@ -37,7 +37,7 @@ interface SimState {
   grid: Grid
   population: number
   budget: number
-  /** Чистый доход, полученный на последнем тике. */
+  /** Суточный чистый доход, распределённый по игровым тикам. */
   lastNet: number
   /** Счастье жителей, 0–100. */
   happiness: number
@@ -494,10 +494,9 @@ case 'TICK': {
       const nextMinutes = state.minutes + MINUTES_PER_TICK
       const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
       const isMidnight = nextDay > state.day
-      const dailyNet = isMidnight
-        ? net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
-        : 0
-      const cityGrid = nextDay > state.day ? state.grid.map(row => row.map(cell =>
+      const netDailyIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
+      const intervalIncome = netDailyIncome / (MINUTES_PER_DAY / 10)
+      const cityGrid = isMidnight ? state.grid.map(row => row.map(cell =>
         cell.type === TileType.RESIDENTIAL && cell.parked && !cell.smog
           ? { ...cell, level: Math.min(4, cell.level + 1) }
           : cell,
@@ -506,8 +505,9 @@ case 'TICK': {
         ...state,
         grid: cityGrid,
         population,
-        budget: state.budget + dailyNet,
-        lastNet: isMidnight ? dailyNet : state.lastNet,
+        // Keep fractional dollars internally so repeated small installments accumulate without rounding loss.
+        budget: state.budget + intervalIncome,
+        lastNet: netDailyIncome,
         happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyWaterLoss))),
         minutes: nextMinutes % MINUTES_PER_DAY,
         day: nextDay,
