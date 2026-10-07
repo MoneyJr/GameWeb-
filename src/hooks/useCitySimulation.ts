@@ -359,14 +359,13 @@ function countTiles(grid: Grid): CityCounts {
 
 /** Суточный чистый доход: дом и рабочее место должны иметь воду и электричество. */
 function computeNetIncome(counts: CityCounts, population: number, taxRates: SimState['taxRates']): number {
-  const taxedShare = counts.houseCapacity > 0 ? counts.servicedCapacity / counts.houseCapacity : 0
-  const housingTaxes = Math.floor(population * taxedShare * (taxRates.residential / 10) * (1 + (counts.parkedHouses / Math.max(1, counts.houses)) * 0.1))
+  const housingTaxes = counts.houses * 12 * (taxRates.residential / 10)
   // One worker makes two units per day; an average store requires 24 goods per day.
   const dailyGoods = Math.min(population, counts.factories * 12) * 2
   const goodsSupportedShops = Math.min(counts.suppliedShops, Math.floor(dailyGoods / 24))
   const suppliedShopCount = Math.min(counts.servicedShops, goodsSupportedShops)
   const shortageShopCount = Math.max(0, counts.servicedShops - suppliedShopCount)
-  const shopIncome = population > 0 ? (suppliedShopCount * 20 + shortageShopCount * 6) * (taxRates.commercial / 10) : 0
+  const shopIncome = population > 0 ? (suppliedShopCount * 36 + shortageShopCount * 10.8) * (taxRates.commercial / 10) : 0
   const factoryIncome = counts.servicedFactories * 12 * (taxRates.industrial / 10)
   const upkeep = counts.roads * 0.2 + counts.pumps * 1 + counts.parks * 2 + counts.wind * 5 + counts.coal * 10
   return Math.round(housingTaxes + shopIncome + factoryIncome - upkeep)
@@ -495,7 +494,13 @@ case 'TICK': {
       const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
       const isMidnight = nextDay > state.day
       const netDailyIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
-      const intervalIncome = netDailyIncome / (MINUTES_PER_DAY / 10)
+      const crossesHour = Math.floor(nextMinutes / 60) > Math.floor(state.minutes / 60)
+      const roundedHourlyIncome = Math.round(netDailyIncome / 24)
+      const netHourly = roundedHourlyIncome === 0 && netDailyIncome > 0
+        ? 1
+        : roundedHourlyIncome === 0 && netDailyIncome < 0
+          ? -1
+          : roundedHourlyIncome
       const cityGrid = isMidnight ? state.grid.map(row => row.map(cell =>
         cell.type === TileType.RESIDENTIAL && cell.parked && !cell.smog
           ? { ...cell, level: Math.min(4, cell.level + 1) }
@@ -505,8 +510,7 @@ case 'TICK': {
         ...state,
         grid: cityGrid,
         population,
-        // Keep fractional dollars internally so repeated small installments accumulate without rounding loss.
-        budget: state.budget + intervalIncome,
+        budget: crossesHour ? Math.max(0, state.budget + netHourly) : state.budget,
         lastNet: netDailyIncome,
         happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyWaterLoss))),
         minutes: nextMinutes % MINUTES_PER_DAY,
@@ -540,7 +544,9 @@ function createInitialState(): SimState {
     const raw = localStorage.getItem('inkville-save')
     if (raw) {
       const save = JSON.parse(raw) as SimState
-      if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) return save
+      if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) {
+        return { ...save, budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)) }
+      }
     }
   } catch { /* Ignore malformed or unavailable browser storage and start a fresh city. */ }
   return createFreshState()

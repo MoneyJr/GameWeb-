@@ -1,6 +1,6 @@
 import { Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { cn, formatMoney } from '../../lib/utils'
+import { cn } from '../../lib/utils'
 import type { SimSpeed } from '../../types/city'
 
 interface TopBarProps {
@@ -119,7 +119,7 @@ export function TopBar({
           id="stat-budget"
           icon={<Coins className="size-5 text-amber-500" />}
           label="Бюджет"
-          value={formatMoney(budget)}
+          value={`$ ${Math.floor(budget).toLocaleString()}`}
           bumpKey={budget}
           valueColor={budget < 0 ? "text-rose-600" : undefined}
           hint={
