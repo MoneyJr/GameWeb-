@@ -1,57 +1,86 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas } from '@react-three/fiber'
+import { OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 
 function ShowcaseCity() {
-  const { city, parks } = useMemo(() => {
+  const { city, parks, trees, hills } = useMemo(() => {
     const cells: { x: number; z: number; type: TileType }[] = []
     const roads = new Set<string>()
-    for (let z = -20; z <= 7; z++) for (let x = -15; x <= 7; x++) {
-      if (x === 0 || z === 0 || x === -15 || x === -10 || x === -5 || x === 5 || z === -20 || z === -15 || z === -10 || z === -5 || z === 5) roads.add(`${x},${z}`)
-    }
-    const hallFootprint = new Set(['-2,-2', '-1,-2', '-2,-1', '-1,-1'])
-    // Two real 2x2 green spaces and a 3x3 piazza occupy deliberate blocks.
-    const parkOrigins: [number, number][] = [[1, 1], [3, -8]]
+    // Two cross streets and three side streets create distinct blocks, with
+    // a short break in the central avenue for the piazza.
+    for (const x of [-12, -6, 6, 12]) for (let z = -13; z <= 11; z += 1) roads.add(`${x},${z}`)
+    for (const z of [-5, 4]) for (let x = -13; x <= 13; x += 1) roads.add(`${x},${z}`)
+    for (let z = -13; z <= -2; z += 1) roads.add(`0,${z}`)
+    for (let z = 2; z <= 11; z += 1) roads.add(`0,${z}`)
+
+    // Compact house groups (32 homes total) face the streets and leave small
+    // internal gardens between the blocks.
+    const northGroups: [number, number][] = [-10, -9, -8, -4, -3, 2, 3, 8, 9, 10].flatMap(x => [[x, -10], [x, -8]] as [number, number][])
+    const southGroups: [number, number][] = [-10, -9, -4, -3, 2, 3, 9, 10].flatMap(x => [[x, 6], [x, 8]] as [number, number][])
+    const homes = [...northGroups, ...southGroups]
+    const hallFootprint = new Set(['-2,-4', '-1,-4', '-2,-3', '-1,-3'])
+    const parkOrigins: [number, number][] = [[-11, 6], [9, 6]]
     const parkCells = new Set(parkOrigins.flatMap(([x, z]) => Array.from({ length: 4 }, (_, i) => `${x + (i % 2)},${z + Math.floor(i / 2)}`)))
-    const piazzaCells = new Set(Array.from({ length: 9 }, (_, i) => `${-3 + (i % 3)},${1 + Math.floor(i / 3)}`))
-    const landmarks: Record<string, TileType> = { '-2,-2': TileType.CITY_HALL, '3,-3': TileType.WATER_PUMP }
-    for (let z = -20; z <= 7; z++) for (let x = -15; x <= 7; x++) {
+    const piazzaCells = new Set(Array.from({ length: 9 }, (_, i) => `${-3 + (i % 3)},${-1 + Math.floor(i / 3)}`))
+    const occupied = new Set([...parkCells, ...piazzaCells, ...hallFootprint])
+
+    for (const [x, z] of homes) {
       const key = `${x},${z}`
-      if (parkCells.has(key) || piazzaCells.has(key)) continue
-      if (roads.has(key)) cells.push({ x, z, type: TileType.ROAD })
-      else if (hallFootprint.has(key)) {
-        if (key === '-2,-2') cells.push({ x, z, type: TileType.CITY_HALL })
-      } else if (landmarks[key]) cells.push({ x, z, type: landmarks[key] })
-      else cells.push({ x, z, type: ((x * 7 + z * 11) % 6 === 0) ? TileType.COMMERCIAL : TileType.RESIDENTIAL })
+      if (occupied.has(key)) continue
+      cells.push({ x, z, type: ((x * 7 + z * 11) % 5 === 0) ? TileType.COMMERCIAL : TileType.RESIDENTIAL })
     }
+    for (const [key, type] of [['-2,-4', TileType.CITY_HALL], ['4,-4', TileType.WATER_PUMP]] as [string, TileType][]) {
+      const [x, z] = key.split(',').map(Number)
+      cells.push({ x, z, type })
+    }
+    for (const key of roads) {
+      const [x, z] = key.split(',').map(Number)
+      // Let the paved piazza replace the center crossing in front of Town Hall.
+      if (piazzaCells.has(key)) continue
+      cells.push({ x, z, type: TileType.ROAD })
+    }
+
+    const trees: { x: number; z: number; scale: number; pine: boolean; seed: number }[] = []
+    for (let z = -29; z <= 29; z += 3.2) for (let x = -29; x <= 29; x += 3.2) {
+      const radius = Math.hypot(x, z)
+      if (radius < 15.5 || radius > 29) continue
+      const seed = Math.abs(Math.sin(x * 12.9898 + z * 78.233) * 43758.5453) % 1
+      const density = radius < 19 ? 0.22 : radius < 23 ? 0.55 : 0.84
+      if (seed > density) continue
+      trees.push({ x: x + Math.sin(seed * 19) * 0.65, z: z + Math.cos(seed * 23) * 0.65, scale: 0.78 + seed * 0.55, pine: seed > 0.48, seed })
+    }
+    ;[[-7.2, -9.2], [7.2, -9.2], [-7.2, 7.1], [7.2, 7.1], [-4.4, -1.6]].forEach(([x, z], i) => {
+      trees.push({ x, z, scale: 0.68 + i * 0.035, pine: false, seed: 0.12 + i * 0.14 })
+    })
+    const hills = Array.from({ length: 12 }, (_, i) => {
+      const angle = (i / 12) * Math.PI * 2 + 0.18
+      const radius = 23 + (i % 3) * 2
+      return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, scale: [3.4 + (i % 2), 0.75 + (i % 3) * 0.18, 2.8 + (i % 4) * 0.45] as [number, number, number] }
+    })
     const roadKeys = new Set(cells.filter(cell => cell.type === TileType.ROAD).map(({ x, z }) => `${x},${z}`))
-    return { parks: parkOrigins, city: cells.map((cell, i) => ({ ...cell, i,
+    return { parks: parkOrigins, trees, hills, city: cells.map((cell, i) => ({ ...cell, i,
       north: roadKeys.has(`${cell.x},${cell.z - 1}`), south: roadKeys.has(`${cell.x},${cell.z + 1}`),
       east: roadKeys.has(`${cell.x + 1},${cell.z}`), west: roadKeys.has(`${cell.x - 1},${cell.z}`),
     })) }
   }, [])
-  const camera = useMemo(() => new THREE.Vector3(), [])
-  const target = useMemo(() => new THREE.Vector3(), [])
-  useFrame(({ camera: activeCamera, clock }) => {
-    const t = clock.elapsedTime
-    // A gentle lateral drift keeps the long roofline moving through the frame.
-    camera.set(4.4 + Math.sin(t * 0.075) * 1.1, 10.8, 13.2 + Math.cos(t * 0.055) * 0.8)
-    target.set(-2.5 + Math.sin(t * 0.075) * 0.55, 0.8, 0.1)
-    activeCamera.position.lerp(camera, 0.018)
-    activeCamera.lookAt(target)
-  })
   return (
     <>
       <color attach="background" args={['#eae4d5']} />
       <fogExp2 attach="fog" args={['#eae4d5', 0.015]} />
-      <ambientLight intensity={0.55} color="#fff6e8" />
-      <directionalLight position={[20, 18, 14]} intensity={1.9} color="#fff2db" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-18} shadow-camera-right={18} shadow-camera-top={18} shadow-camera-bottom={-18} shadow-bias={-0.0003} />
+      <ambientLight intensity={0.5} color="#fff6e8" />
+      <directionalLight position={[20, 23, 14]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
+      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
-        <planeGeometry args={[100, 100]} />
+        <planeGeometry args={[120, 120]} />
         <meshStandardMaterial color="#7a9954" roughness={1} />
       </mesh>
+      {hills.map((hill, i) => <mesh key={`hill-${i}`} position={[hill.x, -0.12, hill.z]} scale={hill.scale} receiveShadow>
+        <icosahedronGeometry args={[1, 2]} /><meshStandardMaterial color={i % 2 ? '#91a36b' : '#9aa875'} roughness={1} flatShading />
+      </mesh>)}
+      {trees.map((tree, i) => <ShowcaseTree key={`forest-${i}`} {...tree} />)}
       {city.map(({ x, z, type, i, north, south, east, west }) => (
         <group key={`${x},${z}`} position={[x, 0, z]}>
           {type === TileType.RESIDENTIAL || type === TileType.COMMERCIAL
@@ -61,11 +90,38 @@ function ShowcaseCity() {
       ))}
       {parks.map(([x, z], i) => <ShowcasePark key={`park-${i}`} position={[x, 0, z]} />)}
       <ShowcasePiazza />
-      <Crosswalk position={[-0.6, 0.045, 1.15]} />
-      <Crosswalk position={[1.15, 0.045, 0.6]} rotation={Math.PI / 2} />
+      <Crosswalk position={[-0.6, 0.045, 4]} />
+      <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
     </>
   )
+}
+
+const forestLeafMaterials = ['#43662d', '#587c3b', '#859b4c', '#647d3e'].map((color) => {
+  const material = new THREE.MeshToonMaterial({ color })
+  ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
+  return material
+})
+
+function ShowcaseTree({ x, z, scale, pine, seed }: { x: number; z: number; scale: number; pine: boolean; seed: number }) {
+  const crown = forestLeafMaterials[Math.floor(seed * forestLeafMaterials.length)]
+  return <group position={[x, 0, z]} scale={scale}>
+    <mesh position={[0, 0.55, 0]} castShadow receiveShadow>
+      <cylinderGeometry args={[0.045, 0.09, 1.1, 6]} /><meshStandardMaterial color="#493421" roughness={0.95} />
+    </mesh>
+    {pine ? <>
+      {[0.9, 1.35, 1.75].map((y, i) => <mesh key={y} position={[0, y, 0]} rotation={[0.1 * i, seed * 4 + i, 0]} castShadow receiveShadow>
+        <icosahedronGeometry args={[0.58 - i * 0.095, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + i) % 4]} attach="material" />
+      </mesh>)}
+    </> : <>
+      <mesh position={[0, 1.38, 0]} rotation={[0.15, seed * 5, 0]} castShadow receiveShadow>
+        <icosahedronGeometry args={[0.74, 1]} /><primitive object={crown} attach="material" />
+      </mesh>
+      <mesh position={[0.32, 1.62, -0.1]} rotation={[0.3, seed * 8, 0]} castShadow receiveShadow>
+        <icosahedronGeometry args={[0.42, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + 1) % 4]} attach="material" />
+      </mesh>
+    </>}
+  </group>
 }
 
 function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
@@ -230,7 +286,7 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
   }
   return (
     <div className={`absolute inset-0 z-40 overflow-hidden bg-[#eae4d5] transition-opacity duration-700 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [4.4, 10.8, 13.2], fov: 42 }} gl={{ antialias: true }}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [18, 21, 24], fov: 42 }} gl={{ antialias: true }}>
         <ShowcaseCity />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
