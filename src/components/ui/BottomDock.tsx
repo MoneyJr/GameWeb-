@@ -3,10 +3,8 @@ import {
   Droplets,
   Factory,
   Flame,
-  Fence,
   House,
   Landmark,
-  Map,
   PenLine,
   Route,
   Shield,
@@ -18,6 +16,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
+import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { cn } from '../../lib/utils'
 import { ToolId } from '../../types/city'
 
@@ -32,24 +31,50 @@ interface Category {
   key: string
   label: string
   icon: LucideIcon
-  tool: ToolId
-  hint?: string
+  tools: ToolId[]
 }
 
 const CATEGORIES: Category[] = [
-  { key: '1', label: 'Дороги', icon: Route, tool: ToolId.ROAD },
-  { key: 'U', label: 'Ток и вода', icon: Droplets, tool: ToolId.WATER_PUMP },
-  { key: 'Z', label: 'Зоны', icon: Map, tool: ToolId.RESIDENTIAL },
-  { key: 'H', label: 'Жильё', icon: House, tool: ToolId.RESIDENTIAL },
-  { key: 'S', label: 'Торговля', icon: Store, tool: ToolId.COMMERCIAL },
-  { key: 'O', label: 'Офисы', icon: Building2, tool: ToolId.COMMERCIAL, hint: 'Торговый инструмент' },
-  { key: 'I', label: 'Заводы', icon: Factory, tool: ToolId.INDUSTRIAL },
-  { key: 'V', label: 'Службы', icon: Wind, tool: ToolId.WIND },
-  { key: 'P', label: 'Парки', icon: TreePine, tool: ToolId.PARK },
-  { key: 'Y', label: 'Двор', icon: Fence, tool: ToolId.PARK, hint: 'Парк' },
-  { key: 'L', label: 'Достоприм.', icon: Landmark, tool: ToolId.CITY_HALL },
-  { key: 'X', label: 'Снос', icon: Trash2, tool: ToolId.BULLDOZE },
+  { key: '1', label: 'Дороги', icon: Route, tools: [ToolId.ROAD] },
+  { key: 'U', label: 'Ток и вода', icon: Droplets, tools: [ToolId.WIND, ToolId.SOLAR_PANEL, ToolId.WATER_PUMP, ToolId.COAL] },
+  { key: 'H', label: 'Жильё', icon: House, tools: [ToolId.RESIDENTIAL] },
+  { key: 'S', label: 'Торговля', icon: Store, tools: [ToolId.COMMERCIAL] },
+  { key: 'I', label: 'Заводы', icon: Factory, tools: [ToolId.INDUSTRIAL] },
+  { key: 'V', label: 'Службы', icon: Shield, tools: [ToolId.POLICE, ToolId.FIRE_STATION, ToolId.CITY_HALL] },
+  { key: 'P', label: 'Парки', icon: TreePine, tools: [ToolId.PARK] },
+  { key: 'X', label: 'Снос', icon: Trash2, tools: [ToolId.BULLDOZE] },
 ]
+
+const TOOL_ICONS: Partial<Record<ToolId, LucideIcon>> = {
+  [ToolId.ROAD]: Route,
+  [ToolId.WIND]: Wind,
+  [ToolId.SOLAR_PANEL]: Sun,
+  [ToolId.WATER_PUMP]: Droplets,
+  [ToolId.COAL]: Factory,
+  [ToolId.RESIDENTIAL]: House,
+  [ToolId.COMMERCIAL]: Store,
+  [ToolId.INDUSTRIAL]: Building2,
+  [ToolId.POLICE]: Shield,
+  [ToolId.FIRE_STATION]: Flame,
+  [ToolId.CITY_HALL]: Landmark,
+  [ToolId.PARK]: TreePine,
+  [ToolId.BULLDOZE]: Trash2,
+}
+
+const TOOL_LABELS: Partial<Record<ToolId, string>> = {
+  [ToolId.WIND]: 'Ветряк',
+  [ToolId.SOLAR_PANEL]: 'Солнечная панель',
+  [ToolId.WATER_PUMP]: 'Водонапорная башня',
+  [ToolId.COAL]: 'ТЭС',
+  [ToolId.RESIDENTIAL]: 'Жилой дом',
+  [ToolId.COMMERCIAL]: 'Магазин',
+  [ToolId.INDUSTRIAL]: 'Завод',
+  [ToolId.POLICE]: 'Полицейский участок',
+  [ToolId.FIRE_STATION]: 'Пожарная часть',
+  [ToolId.CITY_HALL]: 'Ратуша / Мэрия',
+  [ToolId.PARK]: 'Парк',
+  [ToolId.BULLDOZE]: 'Снос',
+}
 
 const RES_STYLES = [
   { id: 'EU', label: 'European', detail: 'Старая Европа' },
@@ -60,17 +85,13 @@ const RES_STYLES = [
 export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleChange }: BottomDockProps) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [styleOpen, setStyleOpen] = useState(false)
-  const hasActiveTool = activeTool !== ToolId.CURSOR
-  const showServices = activeTool === ToolId.WIND || activeTool === ToolId.SOLAR_PANEL || activeTool === ToolId.POLICE || activeTool === ToolId.FIRE_STATION
+  const activeToolCategory = CATEGORIES.find((category) => category.tools.includes(activeTool))
+  const activeCategoryKey = activeCategory ?? activeToolCategory?.key ?? null
+  const selectedCategory = CATEGORIES.find((category) => category.key === activeCategoryKey)
 
   const chooseCategory = (category: Category) => {
     setActiveCategory(category.key)
-    onSelect(category.tool)
-  }
-
-  const finishTool = () => {
-    setActiveCategory(null)
-    onSelect(ToolId.CURSOR)
+    if (!category.tools.includes(activeTool)) onSelect(category.tools[0])
   }
 
   useEffect(() => {
@@ -81,46 +102,65 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
       const key = event.key.toUpperCase()
       if (key === 'Q') {
         event.preventDefault()
-        event.stopPropagation()
         setStyleOpen((open) => !open)
         return
       }
       const category = CATEGORIES.find((item) => item.key === key)
       if (category) {
         event.preventDefault()
-        event.stopPropagation()
         chooseCategory(category)
-        return
-      }
-      if (event.key === 'Enter' && hasActiveTool) {
-        event.preventDefault()
-        event.stopPropagation()
-        finishTool()
       } else if (event.key === 'Escape') {
-        if (styleOpen) setStyleOpen(false)
-        else if (hasActiveTool) finishTool()
+        setStyleOpen(false)
+        setActiveCategory(null)
+        onSelect(ToolId.CURSOR)
       }
     }
-    window.addEventListener('keydown', onKeyDown, true)
-    return () => window.removeEventListener('keydown', onKeyDown, true)
-  }, [activeTool, hasActiveTool, styleOpen])
-
-  const activeCategoryKey = activeCategory ?? CATEGORIES.find((category) => category.tool === activeTool)?.key
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [activeTool, onSelect])
 
   return (
     <nav aria-label="Строительство" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2 px-3 pb-4">
       <style>{`
-        .ribbon-panel { border: 1.5px solid #262626; border-radius: 16px; background: rgba(251,249,244,.95); color: #262626; box-shadow: 0 5px 0 rgba(38,38,38,.14), 0 12px 28px rgba(20,16,12,.18); backdrop-filter: blur(12px); }
-        .ribbon-main { display:flex; align-items:center; gap:6px; max-width:calc(100vw - 24px); overflow-x:auto; padding:8px; }
+        .ribbon-panel { border:1.5px solid #262626; border-radius:16px; background:rgba(251,249,244,.95); color:#262626; box-shadow:0 5px 0 rgba(38,38,38,.14),0 12px 28px rgba(20,16,12,.18); backdrop-filter:blur(12px); }
+        .ribbon-main,.ribbon-tools { display:flex; align-items:center; gap:6px; max-width:calc(100vw - 24px); overflow-x:auto; padding:8px; }
+        .ribbon-main { scrollbar-width:none; }
+        .ribbon-main::-webkit-scrollbar,.ribbon-tools::-webkit-scrollbar { display:none; }
         .ribbon-style-button { display:flex; flex:0 0 92px; width:92px; height:62px; flex-direction:column; align-items:center; justify-content:center; gap:4px; border:1px solid transparent; border-radius:12px; cursor:pointer; }
         .ribbon-category-button { position:relative; display:flex; flex:0 0 68px; width:68px; height:62px; flex-direction:column; align-items:center; justify-content:center; gap:4px; border:1px solid transparent; border-radius:12px; padding:4px; cursor:pointer; }
-        .ribbon-category-button:hover,.ribbon-style-button:hover { border-color:rgba(38,38,38,.25); background:rgba(255,255,255,.8); }
-        .ribbon-category-button[aria-pressed="true"],.ribbon-style-button[aria-expanded="true"] { border-color:#262626; background:#edd9c0; box-shadow:0 1px 3px rgba(0,0,0,.12); }
+        .ribbon-tool-button { display:flex; min-width:104px; max-width:180px; height:48px; flex:0 0 auto; align-items:center; gap:8px; border:1px solid transparent; border-radius:12px; padding:6px 10px; text-align:left; cursor:pointer; }
+        .ribbon-category-button:hover,.ribbon-style-button:hover,.ribbon-tool-button:hover { border-color:rgba(38,38,38,.25); background:rgba(255,255,255,.8); }
+        .ribbon-category-button[aria-pressed="true"],.ribbon-tool-button[aria-pressed="true"],.ribbon-style-button[aria-expanded="true"] { border-color:#262626; background:#edd9c0; box-shadow:0 1px 3px rgba(0,0,0,.12); }
         .ribbon-style-menu { position:absolute; z-index:20; bottom:calc(100% + 12px); left:0; width:192px; border:1.5px solid #262626; border-radius:16px; background:#fbf9f4; padding:8px; color:#262626; box-shadow:0 12px 28px rgba(20,16,12,.2); }
         .ribbon-separator { flex:0 0 1px; width:1px; height:40px; margin:0 4px; background:rgba(38,38,38,.2); }
-        .ribbon-group-separator { flex:0 0 1px; width:1px; height:36px; margin:0 2px; background:rgba(38,38,38,.15); }
-        @media(max-width:700px) { .ribbon-main { max-width:calc(100vw - 16px); } }
+        @media(max-width:700px) { .ribbon-main,.ribbon-tools { max-width:calc(100vw - 16px); } .ribbon-tool-button { min-width:94px; } }
       `}</style>
+
+      {selectedCategory && (
+        <div className="ribbon-tools ribbon-panel pointer-events-auto" aria-label={`Инструменты: ${selectedCategory.label}`}>
+          {selectedCategory.tools.map((tool) => {
+            const Icon = TOOL_ICONS[tool] ?? Building2
+            const definition = TOOL_DEFINITIONS[tool]
+            const label = TOOL_LABELS[tool] ?? definition.label
+            return (
+              <button
+                key={tool}
+                type="button"
+                aria-pressed={activeTool === tool}
+                onClick={() => onSelect(tool)}
+                className="ribbon-tool-button transition"
+                title={`${label} · $${definition.cost}`}
+              >
+                <Icon className="size-5 shrink-0" strokeWidth={1.7} />
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="truncate text-xs font-semibold">{label}</span>
+                  <span className="text-[10px] text-neutral-500">${definition.cost}</span>
+                </span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       <div className="ribbon-main ribbon-panel pointer-events-auto">
         <div className="relative shrink-0">
@@ -143,47 +183,26 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
             </div>
           )}
         </div>
-
         <div className="ribbon-separator" />
-
-        {CATEGORIES.map((category, index) => {
+        {CATEGORIES.map((category) => {
           const Icon = category.icon
           const selected = activeCategoryKey === category.key
-          const showDivider = index === 2 || index === 6 || index === 10
           return (
-            <div key={category.key} className="flex shrink-0 items-center gap-1">
-              {showDivider && <div className="ribbon-group-separator" />}
-              <button
-                type="button"
-                id={`category-${category.key.toLowerCase()}`}
-                title={`${category.label} [${category.key}]${category.hint ? ` · ${category.hint}` : ''}`}
-                aria-pressed={selected}
-                onClick={() => chooseCategory(category)}
-                className={cn('ribbon-category-button transition', selected && 'bg-[#edd9c0] shadow-sm')}
-              >
-                <kbd className="absolute right-1 top-0.5 rounded border border-stone-300 bg-neutral-100 px-1 font-mono text-[9px] leading-[14px] text-neutral-500">{category.key}</kbd>
-                <Icon className="mt-1 size-5 text-[#292824]" strokeWidth={1.7} />
-                <span className="whitespace-nowrap text-[11px] font-medium leading-none tracking-tight text-neutral-700">{category.label}</span>
-              </button>
-            </div>
+            <button
+              key={category.key}
+              type="button"
+              id={`category-${category.key.toLowerCase()}`}
+              title={`${category.label} [${category.key}]`}
+              aria-pressed={selected}
+              onClick={() => chooseCategory(category)}
+              className={cn('ribbon-category-button transition', selected && 'bg-[#edd9c0] shadow-sm')}
+            >
+              <kbd className="absolute right-1 top-0.5 rounded border border-stone-300 bg-neutral-100 px-1 font-mono text-[9px] leading-[14px] text-neutral-500">{category.key}</kbd>
+              <Icon className="mt-1 size-5 text-[#292824]" strokeWidth={1.7} />
+              <span className="whitespace-nowrap text-[11px] font-medium leading-none tracking-tight text-neutral-700">{category.label}</span>
+            </button>
           )
         })}
-        {showServices && <>
-          <div className="ribbon-separator" />
-          {[
-            { tool: ToolId.WIND, label: 'Ветряк', cost: '$250', capacity: 'Энергия', icon: Wind },
-            { tool: ToolId.SOLAR_PANEL, label: 'Солн. панели', cost: '$300', capacity: 'Энергия', icon: Sun },
-            { tool: ToolId.POLICE, label: 'Полиция', cost: '$400', capacity: '800 жителей', icon: Shield },
-            { tool: ToolId.FIRE_STATION, label: 'Пожарные', cost: '$350', capacity: '800 жителей', icon: Flame },
-          ].map((service) => {
-            const Icon = service.icon
-            const selected = activeTool === service.tool
-            return <button key={service.tool} type="button" aria-pressed={selected} onClick={() => { setActiveCategory('V'); onSelect(service.tool) }} className="flex shrink-0 items-center gap-2 rounded-xl border border-transparent px-2.5 py-1.5 text-left transition hover:border-[#262626]/25 hover:bg-white/80" style={selected ? { background: '#edd9c0', borderColor: '#262626' } : undefined}>
-              <Icon className="size-5 shrink-0" strokeWidth={1.7} />
-              <span className="flex flex-col leading-tight"><span className="text-xs font-semibold">{service.label}</span><span className="text-[10px] text-neutral-500">{service.cost} · {service.capacity}</span></span>
-            </button>
-          })}
-        </>}
       </div>
     </nav>
   )
