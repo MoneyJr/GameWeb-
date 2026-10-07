@@ -119,7 +119,7 @@ export function TopBar({
           id="stat-budget"
           icon={<Coins className="size-5 text-amber-500" />}
           label="Бюджет"
-          value={`$ ${Math.floor(budget).toLocaleString()}`}
+          value={`$ ${Math.round(budget).toLocaleString('en-US')}`}
           bumpKey={budget}
           valueColor={budget < 0 ? "text-rose-600" : undefined}
           hint={

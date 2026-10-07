@@ -495,12 +495,7 @@ case 'TICK': {
       const isMidnight = nextDay > state.day
       const netDailyIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
       const crossesHour = Math.floor(nextMinutes / 60) > Math.floor(state.minutes / 60)
-      const roundedHourlyIncome = Math.round(netDailyIncome / 24)
-      const netHourly = roundedHourlyIncome === 0 && netDailyIncome > 0
-        ? 1
-        : roundedHourlyIncome === 0 && netDailyIncome < 0
-          ? -1
-          : roundedHourlyIncome
+      const netHourly = Math.round(netDailyIncome / 24)
       const cityGrid = isMidnight ? state.grid.map(row => row.map(cell =>
         cell.type === TileType.RESIDENTIAL && cell.parked && !cell.smog
           ? { ...cell, level: Math.min(4, cell.level + 1) }
@@ -510,7 +505,7 @@ case 'TICK': {
         ...state,
         grid: cityGrid,
         population,
-        budget: crossesHour ? Math.max(0, state.budget + netHourly) : state.budget,
+        budget: crossesHour ? Math.max(0, Math.round(state.budget + netHourly)) : state.budget,
         lastNet: netDailyIncome,
         happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyWaterLoss))),
         minutes: nextMinutes % MINUTES_PER_DAY,

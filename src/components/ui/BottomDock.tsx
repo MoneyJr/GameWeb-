@@ -1,8 +1,5 @@
 import {
   Building2,
-  Check,
-  ChevronLeft,
-  ChevronRight,
   Droplets,
   Factory,
   Flame,
@@ -12,14 +9,12 @@ import {
   Map,
   PenLine,
   Route,
-  Shapes,
   Shield,
   Sun,
   Store,
   TreePine,
   Trash2,
   Wind,
-  X,
   type LucideIcon,
 } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -65,11 +60,7 @@ const RES_STYLES = [
 export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleChange }: BottomDockProps) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [styleOpen, setStyleOpen] = useState(false)
-  const [mode, setMode] = useState<'brush' | 'shape'>('brush')
-  const [gridStep, setGridStep] = useState(1)
-  const [floors, setFloors] = useState(2)
   const hasActiveTool = activeTool !== ToolId.CURSOR
-  const showFloors = activeTool === ToolId.RESIDENTIAL || activeTool === ToolId.COMMERCIAL
   const showServices = activeTool === ToolId.WIND || activeTool === ToolId.SOLAR_PANEL || activeTool === ToolId.POLICE || activeTool === ToolId.FIRE_STATION
 
   const chooseCategory = (category: Category) => {
@@ -120,81 +111,16 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
     <nav aria-label="Строительство" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-2 px-3 pb-4">
       <style>{`
         .ribbon-panel { border: 1.5px solid #262626; border-radius: 16px; background: rgba(251,249,244,.95); color: #262626; box-shadow: 0 5px 0 rgba(38,38,38,.14), 0 12px 28px rgba(20,16,12,.18); backdrop-filter: blur(12px); }
-        .ribbon-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:8px; max-width:calc(100vw - 24px); padding:10px 12px; }
         .ribbon-main { display:flex; align-items:center; gap:6px; max-width:calc(100vw - 24px); overflow-x:auto; padding:8px; }
         .ribbon-style-button { display:flex; flex:0 0 92px; width:92px; height:62px; flex-direction:column; align-items:center; justify-content:center; gap:4px; border:1px solid transparent; border-radius:12px; cursor:pointer; }
         .ribbon-category-button { position:relative; display:flex; flex:0 0 68px; width:68px; height:62px; flex-direction:column; align-items:center; justify-content:center; gap:4px; border:1px solid transparent; border-radius:12px; padding:4px; cursor:pointer; }
         .ribbon-category-button:hover,.ribbon-style-button:hover { border-color:rgba(38,38,38,.25); background:rgba(255,255,255,.8); }
         .ribbon-category-button[aria-pressed="true"],.ribbon-style-button[aria-expanded="true"] { border-color:#262626; background:#edd9c0; box-shadow:0 1px 3px rgba(0,0,0,.12); }
-        .ribbon-toggle-group { display:flex; align-items:center; border:1px solid #d6d3d1; border-radius:12px; background:#f5f5f4; padding:2px; }
-        .ribbon-toggle { display:flex; align-items:center; gap:6px; border:0; border-radius:9px; background:transparent; padding:6px 10px; color:#57534e; font-size:12px; font-weight:600; cursor:pointer; }
-        .ribbon-toggle[aria-pressed="true"] { background:#edd9c0; color:#262626; box-shadow:0 1px 3px rgba(0,0,0,.12); }
-        .ribbon-apply,.ribbon-cancel { display:flex; height:36px; align-items:center; gap:6px; border-radius:12px; padding:0 12px; font-size:12px; font-weight:600; cursor:pointer; transition:background .15s ease; }
-        .ribbon-apply { border:1px solid rgba(6,78,59,.55); background:#3f7655; color:white; box-shadow:0 1px 3px rgba(0,0,0,.12); }
-        .ribbon-apply:hover { background:#2f6545; }
-        .ribbon-cancel { border:1px solid #d6d3d1; background:#e7e5e4; color:#44403c; }
-        .ribbon-cancel:hover { background:#d6d3d1; }
         .ribbon-style-menu { position:absolute; z-index:20; bottom:calc(100% + 12px); left:0; width:192px; border:1.5px solid #262626; border-radius:16px; background:#fbf9f4; padding:8px; color:#262626; box-shadow:0 12px 28px rgba(20,16,12,.2); }
         .ribbon-separator { flex:0 0 1px; width:1px; height:40px; margin:0 4px; background:rgba(38,38,38,.2); }
         .ribbon-group-separator { flex:0 0 1px; width:1px; height:36px; margin:0 2px; background:rgba(38,38,38,.15); }
-        @media(max-width:700px) { .ribbon-main { max-width:calc(100vw - 16px); } .ribbon-toolbar { max-width:calc(100vw - 16px); } }
+        @media(max-width:700px) { .ribbon-main { max-width:calc(100vw - 16px); } }
       `}</style>
-      {hasActiveTool && (
-        <div className="ribbon-toolbar ribbon-panel pointer-events-auto text-[#262626]">
-          <div className="ribbon-toggle-group">
-            <button type="button" onClick={() => setMode('brush')} aria-pressed={mode === 'brush'} className="ribbon-toggle">
-              <PenLine className="size-4" strokeWidth={1.8} /> Кисть
-            </button>
-            <button type="button" onClick={() => setMode('shape')} aria-pressed={mode === 'shape'} className="ribbon-toggle">
-              <Shapes className="size-4" strokeWidth={1.8} /> Форма
-            </button>
-          </div>
-
-          <div className="flex h-9 items-center gap-1 rounded-xl border border-stone-300 bg-white/80 px-1.5">
-            <span className="px-1 text-[10px] text-neutral-500">Шаг</span>
-            <button type="button" aria-label="Уменьшить шаг сетки" onClick={() => setGridStep((n) => Math.max(1, n - 1))} className="grid size-6 place-items-center rounded-md hover:bg-stone-100"><ChevronLeft className="size-4" /></button>
-            <span className="min-w-3 text-center font-mono text-xs">{gridStep}</span>
-            <button type="button" aria-label="Увеличить шаг сетки" onClick={() => setGridStep((n) => Math.min(4, n + 1))} className="grid size-6 place-items-center rounded-md hover:bg-stone-100"><ChevronRight className="size-4" /></button>
-          </div>
-
-          {showFloors && (
-            <div className="flex h-9 items-center gap-1 rounded-xl border border-stone-300 bg-white/80 px-1.5">
-              <span className="px-1 text-[10px] text-neutral-500">Этажи</span>
-              <button type="button" aria-label="Меньше этажей" onClick={() => setFloors((n) => Math.max(2, n - 1))} className="grid size-6 place-items-center rounded-md hover:bg-stone-100"><ChevronLeft className="size-4" /></button>
-              <span className="min-w-[3.2rem] text-center text-xs font-medium">{floors}–{floors + 1} эт.</span>
-              <button type="button" aria-label="Больше этажей" onClick={() => setFloors((n) => Math.min(4, n + 1))} className="grid size-6 place-items-center rounded-md hover:bg-stone-100"><ChevronRight className="size-4" /></button>
-            </div>
-          )}
-
-          <div className="flex items-center gap-1.5 sm:ml-1">
-            <button type="button" onClick={finishTool} className="ribbon-apply">
-              <Check className="size-4" strokeWidth={2} /> <span>Применить</span> <kbd className="hidden rounded bg-white/15 px-1 py-0.5 text-[9px] sm:inline">Enter</kbd>
-            </button>
-            <button type="button" onClick={finishTool} className="ribbon-cancel">
-              <X className="size-4" strokeWidth={2} /> <span>Отмена</span> <kbd className="hidden rounded bg-white/70 px-1 py-0.5 text-[9px] sm:inline">Esc</kbd>
-            </button>
-          </div>
-        </div>
-      )}
-      {showServices && (
-        <div className="ribbon-toolbar ribbon-panel pointer-events-auto text-[#262626]" aria-label="Службы города">
-          {[
-            { tool: ToolId.WIND, label: 'Ветряк', cost: '$250', capacity: 'Энергия', icon: Wind },
-            { tool: ToolId.SOLAR_PANEL, label: 'Солн. панели', cost: '$300', capacity: 'Энергия', icon: Sun },
-            { tool: ToolId.POLICE, label: 'Полиция', cost: '$400', capacity: '800 жителей', icon: Shield },
-            { tool: ToolId.FIRE_STATION, label: 'Пожарные', cost: '$350', capacity: '800 жителей', icon: Flame },
-          ].map((service) => {
-            const Icon = service.icon
-            const selected = activeTool === service.tool
-            return (
-              <button key={service.tool} type="button" aria-pressed={selected} onClick={() => { setActiveCategory('V'); onSelect(service.tool) }} className="flex min-w-[92px] items-center gap-2 rounded-xl border border-transparent px-2.5 py-1.5 text-left transition hover:border-[#262626]/25 hover:bg-white/80" style={selected ? { background: '#edd9c0', borderColor: '#262626' } : undefined}>
-                <Icon className="size-5 shrink-0" strokeWidth={1.7} />
-                <span className="flex flex-col leading-tight"><span className="text-xs font-semibold">{service.label}</span><span className="text-[10px] text-neutral-500">{service.cost} · {service.capacity}</span></span>
-              </button>
-            )
-          })}
-        </div>
-      )}
 
       <div className="ribbon-main ribbon-panel pointer-events-auto">
         <div className="relative shrink-0">
@@ -242,6 +168,22 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
             </div>
           )
         })}
+        {showServices && <>
+          <div className="ribbon-separator" />
+          {[
+            { tool: ToolId.WIND, label: 'Ветряк', cost: '$250', capacity: 'Энергия', icon: Wind },
+            { tool: ToolId.SOLAR_PANEL, label: 'Солн. панели', cost: '$300', capacity: 'Энергия', icon: Sun },
+            { tool: ToolId.POLICE, label: 'Полиция', cost: '$400', capacity: '800 жителей', icon: Shield },
+            { tool: ToolId.FIRE_STATION, label: 'Пожарные', cost: '$350', capacity: '800 жителей', icon: Flame },
+          ].map((service) => {
+            const Icon = service.icon
+            const selected = activeTool === service.tool
+            return <button key={service.tool} type="button" aria-pressed={selected} onClick={() => { setActiveCategory('V'); onSelect(service.tool) }} className="flex shrink-0 items-center gap-2 rounded-xl border border-transparent px-2.5 py-1.5 text-left transition hover:border-[#262626]/25 hover:bg-white/80" style={selected ? { background: '#edd9c0', borderColor: '#262626' } : undefined}>
+              <Icon className="size-5 shrink-0" strokeWidth={1.7} />
+              <span className="flex flex-col leading-tight"><span className="text-xs font-semibold">{service.label}</span><span className="text-[10px] text-neutral-500">{service.cost} · {service.capacity}</span></span>
+            </button>
+          })}
+        </>}
       </div>
     </nav>
   )
