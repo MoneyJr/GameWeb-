@@ -37,6 +37,10 @@ export interface GridCell {
   smog?: boolean
   parked?: boolean
   hasSupplies?: boolean
+  /** Resident count and capacity are stored per home so migration is persistent. */
+  residents?: number
+  maxResidents?: number
+  residentialFloors?: number
   /** Prebuilt showcase structures are rendered finished on the first frame. */
   animate?: boolean
 }

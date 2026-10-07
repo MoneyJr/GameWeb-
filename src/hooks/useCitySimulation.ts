@@ -13,8 +13,8 @@ import {
 export const START_BUDGET = 1000
 export const INITIAL_LOAN = 1000
 export const DAILY_LOAN_PAYMENT = 10
-/** Жителей, которые прибавляются за один дом на каждом тике. */
-export const RESIDENTS_PER_HOUSE = 4
+/** A resident contributes this much daily residential tax at the default 10% rate. */
+const DAILY_TAX_PER_RESIDENT = 0.18
 /** Длительность тика при скорости 1x (мс). */
 export const BASE_TICK_MS = 2000
 /** Сколько игровых минут проходит за тик. Бюджет пересчитывается каждые 10 минут. */
@@ -27,6 +27,35 @@ export const POLICE_CAPACITY_PER_STATION = 800
 export const FIRE_CAPACITY_PER_STATION = 800
 
 const MINUTES_PER_DAY = 24 * 60
+
+function seededRandom(...parts: number[]): number {
+  let seed = 2166136261
+  for (const part of parts) {
+    seed ^= Math.trunc(part)
+    seed = Math.imul(seed, 16777619)
+  }
+  seed ^= seed >>> 16
+  seed = Math.imul(seed, 0x7feb352d)
+  seed ^= seed >>> 15
+  seed = Math.imul(seed, 0x846ca68b)
+  seed ^= seed >>> 16
+  return (seed >>> 0) / 4294967296
+}
+
+function residenceProfile(x: number, y: number, day = 1, minute = 0) {
+  // Keep this in sync with the Residential variant used by the city renderer.
+  const variant = (x * 7 + y * 13) % 4
+  const floors = 2 + (variant % 3)
+  const random = seededRandom(x, y, day, minute, 41)
+  const maxResidents = floors >= 3
+    ? 70 + Math.floor(random * 31)
+    : 4 + Math.floor(random * 5)
+  return { floors, maxResidents }
+}
+
+function getHomeCapacity(cell: GridCell): number {
+  return cell.maxResidents ?? residenceProfile(cell.x, cell.y).maxResidents
+}
 
 export interface Notice {
   id: number
@@ -224,8 +253,20 @@ function recomputeServices(grid: Grid): Grid {
       else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || nextToServedRoad(cell.x, cell.y, isPoweredRoad)
 
 
-      if (hasWater === cell.hasWater && hasPower === cell.hasPower && smog === cell.smog && parked === cell.parked && hasSupplies === cell.hasSupplies) return cell
-      return { ...cell, hasWater, hasPower, smog, parked, hasSupplies }
+      let residents = cell.residents
+      const maxResidents = cell.type === TileType.RESIDENTIAL ? getHomeCapacity(cell) : cell.maxResidents
+      if (
+        cell.type === TileType.RESIDENTIAL && hasWater && hasPower &&
+        !(cell.hasWater && cell.hasPower) && (residents ?? 0) === 0
+      ) {
+        residents = Math.floor(maxResidents! * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
+      }
+      if (
+        hasWater === cell.hasWater && hasPower === cell.hasPower && smog === cell.smog &&
+        parked === cell.parked && hasSupplies === cell.hasSupplies &&
+        residents === cell.residents && maxResidents === cell.maxResidents
+      ) return cell
+      return { ...cell, hasWater, hasPower, smog, parked, hasSupplies, residents, maxResidents }
     }),
   )
 }
@@ -254,6 +295,7 @@ export interface CityCounts {
   policeStations: number
   fireStations: number
   unwateredHouses: number
+  unservicedHouses: number
   poweredConsumers: number
   parkedHouses: number
   smogHouses: number
@@ -288,6 +330,7 @@ function countTiles(grid: Grid): CityCounts {
     policeStations: 0,
     fireStations: 0,
     unwateredHouses: 0,
+    unservicedHouses: 0,
     poweredConsumers: 0,
     parkedHouses: 0,
     smogHouses: 0,
@@ -323,11 +366,12 @@ function countTiles(grid: Grid): CityCounts {
           continue
         case TileType.RESIDENTIAL:
           counts.houses += 1
-          counts.houseCapacity += RESIDENTS_PER_HOUSE * cell.level
-          if (cell.hasWater) counts.wateredCapacity += RESIDENTS_PER_HOUSE * cell.level
-          if (cell.hasPower) counts.poweredCapacity += RESIDENTS_PER_HOUSE * cell.level
-          if (cell.hasWater && cell.hasPower) counts.servicedCapacity += RESIDENTS_PER_HOUSE * cell.level
+          counts.houseCapacity += getHomeCapacity(cell)
+          if (cell.hasWater) counts.wateredCapacity += getHomeCapacity(cell)
+          if (cell.hasPower) counts.poweredCapacity += getHomeCapacity(cell)
+          if (cell.hasWater && cell.hasPower) counts.servicedCapacity += getHomeCapacity(cell)
           if (!cell.hasWater) counts.unwateredHouses += 1
+          if (!cell.hasWater || !cell.hasPower) counts.unservicedHouses += 1
           if (cell.smog) counts.smogHouses += 1
           if ((cell as any).parked) counts.parkedHouses += 1
           if (cell.parked) parkValue = Math.min(12, parkValue + 3)
@@ -359,7 +403,7 @@ function countTiles(grid: Grid): CityCounts {
 
 /** Суточный чистый доход: дом и рабочее место должны иметь воду и электричество. */
 function computeNetIncome(counts: CityCounts, population: number, taxRates: SimState['taxRates']): number {
-  const housingTaxes = counts.houses * 12 * (taxRates.residential / 10)
+  const housingTaxes = population * DAILY_TAX_PER_RESIDENT * (taxRates.residential / 10)
   // One worker makes two units per day; an average store requires 24 goods per day.
   const dailyGoods = Math.min(population, counts.factories * 12) * 2
   const goodsSupportedShops = Math.min(counts.suppliedShops, Math.floor(dailyGoods / 24))
@@ -433,7 +477,18 @@ function reducer(state: SimState, action: Action): SimState {
       let newGrid = state.grid.map((row, r) =>
         row.map((cell, c) => {
           if (r >= y && r < y + h && c >= x && c < x + w) {
-            if (r === y && c === x) return { ...cell, type: def.tile!, level: 1, style, smog: false, animate: true };
+            if (r === y && c === x) {
+              const home = def.tile === TileType.RESIDENTIAL ? residenceProfile(x, y, state.day, state.minutes) : undefined
+              return {
+                ...cell,
+                type: def.tile!,
+                level: 1,
+                style,
+                smog: false,
+                animate: true,
+                ...(home ? { residentialFloors: home.floors, maxResidents: home.maxResidents, residents: 0 } : {}),
+              }
+            }
             return { ...cell, type: TileType.FOOTPRINT, refX: x, refY: y, animate: true };
           }
           return cell;
@@ -467,7 +522,7 @@ function reducer(state: SimState, action: Action): SimState {
       let newGrid = state.grid.map((row, r) =>
         row.map((cell, c) => {
           if (r >= targetY && r < targetY + h && c >= targetX && c < targetX + w) {
-            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, hasWater: false, hasPower: false, smog: false, parked: false, refX: undefined, refY: undefined, animate: undefined };
+            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, hasWater: false, hasPower: false, smog: false, parked: false, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
           }
           return cell;
         })
@@ -477,38 +532,56 @@ function reducer(state: SimState, action: Action): SimState {
       return { ...state, grid: newGrid }
     }
 case 'TICK': {
-      const counts = countTiles(state.grid)
-      const population = Math.min(
-        counts.houseCapacity,
-        state.population + counts.houses * RESIDENTS_PER_HOUSE,
-      )
+      const nextMinutes = state.minutes + MINUTES_PER_TICK
+      const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
+      const gameMinute = nextMinutes % MINUTES_PER_DAY
+      const isMidnight = nextDay > state.day
+      const crossesHour = Math.floor(nextMinutes / 60) > Math.floor(state.minutes / 60)
+      const immigrationWindow = gameMinute % 150 === 0
+      const demographicWindow = gameMinute % 360 === 0
+      const cityGrid = state.grid.map(row => row.map(cell => {
+        if (cell.type !== TileType.RESIDENTIAL) return cell
+        const capacity = getHomeCapacity(cell)
+        const residents = cell.residents ?? 0
+        const serviced = cell.hasWater && cell.hasPower
+        let nextResidents = residents
+
+        if (!serviced && crossesHour) {
+          nextResidents = Math.max(0, residents - 2)
+        } else if (serviced && immigrationWindow && state.happiness > 60 && residents < capacity) {
+          const newcomers = 2 + Math.floor(seededRandom(cell.x, cell.y, nextDay, gameMinute, 151) * 4)
+          nextResidents = Math.min(capacity, residents + newcomers)
+        } else if (serviced && demographicWindow && residents > 0) {
+          const fluctuation = 1 + Math.floor(seededRandom(cell.x, cell.y, nextDay, gameMinute, 251) * 3)
+          const direction = seededRandom(cell.x, cell.y, nextDay, gameMinute, 353) < 0.5 ? -1 : 1
+          nextResidents = Math.min(capacity, Math.max(0, residents + direction * fluctuation))
+        }
+
+        const level = isMidnight && cell.parked && !cell.smog ? Math.min(4, cell.level + 1) : cell.level
+        return nextResidents === residents && level === cell.level
+          ? cell
+          : { ...cell, residents: nextResidents, maxResidents: capacity, level }
+      }))
+      const population = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+      const counts = countTiles(cityGrid)
       const net = computeNetIncome(counts, population, state.taxRates)
       const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION
       const crimeRate = population > totalPoliceCap && population > 0
         ? Math.min(100, Math.round(((population - totalPoliceCap) / population) * 100))
         : 0
-      const dryHouseShare = counts.houses > 0 ? counts.unwateredHouses / counts.houses : 0
+      const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
       const happinessDrift = (targetHappiness(counts, crimeRate) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const dailyWaterLoss = dryHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const nextMinutes = state.minutes + MINUTES_PER_TICK
-      const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
-      const isMidnight = nextDay > state.day
+      const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
       const netDailyIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
-      const crossesHour = Math.floor(nextMinutes / 60) > Math.floor(state.minutes / 60)
       const netHourly = Math.round(netDailyIncome / 24)
-      const cityGrid = isMidnight ? state.grid.map(row => row.map(cell =>
-        cell.type === TileType.RESIDENTIAL && cell.parked && !cell.smog
-          ? { ...cell, level: Math.min(4, cell.level + 1) }
-          : cell,
-      )) : state.grid
       return {
         ...state,
         grid: cityGrid,
         population,
         budget: crossesHour ? Math.max(0, Math.round(state.budget + netHourly)) : state.budget,
         lastNet: netDailyIncome,
-        happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyWaterLoss))),
-        minutes: nextMinutes % MINUTES_PER_DAY,
+        happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
+        minutes: gameMinute,
         day: nextDay,
       }
     }
@@ -540,7 +613,30 @@ function createInitialState(): SimState {
     if (raw) {
       const save = JSON.parse(raw) as SimState
       if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) {
-        return { ...save, budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)) }
+        let legacyResidents = Math.max(0, Math.floor(Number.isFinite(save.population) ? save.population : 0))
+        const day = save.day ?? 1
+        const minute = save.minutes ?? 840
+        const grid = save.grid.map(row => row.map(cell => {
+          if (cell.type !== TileType.RESIDENTIAL) return cell
+          const profile = residenceProfile(cell.x, cell.y, day, minute)
+          const maxResidents = cell.maxResidents ?? profile.maxResidents
+          let residents = cell.residents
+          if (residents == null) {
+            residents = Math.min(maxResidents, legacyResidents)
+            legacyResidents = Math.max(0, legacyResidents - residents)
+            if (residents === 0 && cell.hasWater && cell.hasPower) {
+              residents = Math.floor(maxResidents * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
+            }
+          }
+          return { ...cell, residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
+        }))
+        const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+        return {
+          ...save,
+          grid,
+          population,
+          budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
+        }
       }
     }
   } catch { /* Ignore malformed or unavailable browser storage and start a fresh city. */ }
