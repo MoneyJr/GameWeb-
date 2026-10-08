@@ -359,15 +359,13 @@ interface InteractionLayerProps {
   onPlace: (x: number, y: number) => void
   onRemove: (x: number, y: number) => void
   isTouchDevice: boolean
-  onTouchPreview: (cell: Cell, clientX: number, clientY: number) => void
+  onTouchPreview: (cell: Cell) => void
   ghost: TouchGhost | null
   placementStyle?: string
 }
 
 interface TouchGhost {
   cell: Cell
-  clientX: number
-  clientY: number
 }
 
 
@@ -453,7 +451,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       if (gesture && event?.pointerId === gesture.pointerId) {
         if (!gesture.moved && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 10) {
           if (activeTool === ToolId.BULLDOZE) act(gesture.cell)
-          else onTouchPreview(gesture.cell, event.clientX, event.clientY)
+          else onTouchPreview(gesture.cell)
         }
         touchTap.current = null
       }
@@ -541,7 +539,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
           if (gesture?.pointerId === event.nativeEvent.pointerId) {
             if (!gesture.moved && Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) <= 10) {
               if (activeTool === ToolId.BULLDOZE) act(gesture.cell)
-              else onTouchPreview(gesture.cell, event.nativeEvent.clientX, event.nativeEvent.clientY)
+              else onTouchPreview(gesture.cell)
             }
             touchTap.current = null
           }
@@ -614,8 +612,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
-  const handleTouchPreview = useCallback((cell: Cell, clientX: number, clientY: number) => {
-    setTouchGhost((current) => current ? null : { cell, clientX, clientY })
+  const handleTouchPreview = useCallback((cell: Cell) => {
+    setTouchGhost((current) => current ? null : { cell })
   }, [])
   useEffect(() => setTouchGhost(null), [activeTool])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
@@ -720,8 +718,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       </div>
       {isTouchDevice && touchGhost && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
         <div
-          className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-full items-center gap-2"
-          style={{ left: touchGhost.clientX, top: touchGhost.clientY - 12 }}
+          className="pointer-events-none absolute inset-x-0 z-30 flex justify-center gap-2"
+          style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom))' }}
           aria-label="Подтверждение постройки"
         >
           <button
