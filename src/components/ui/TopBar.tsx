@@ -1,4 +1,4 @@
-import { Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users } from 'lucide-react'
+import { Clock, Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/utils'
 import type { SimSpeed } from '../../types/city'
@@ -97,8 +97,48 @@ export function TopBar({
   const HappinessIcon = happiness >= 70 ? Smile : happiness >= 40 ? Meh : Frown
 
   return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 p-4">
-      <div className="ink-panel pointer-events-auto flex items-stretch divide-x-2 divide-ink/15 rounded-2xl">
+    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 px-2 pt-[calc(env(safe-area-inset-top)+8px)] md:p-4">
+      <div className="pointer-events-auto flex h-11 max-w-[calc(100vw-16px)] items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full border border-stone-800 bg-[#F5F2EB]/95 px-1.5 py-1 text-[11px] shadow-md backdrop-blur-md md:hidden">
+        <div id="stat-population-mobile" className="flex shrink-0 items-center gap-1" aria-label="Население">
+          <Users className="size-4 text-leaf" />
+          <span className="font-bold tabular-nums">{population.toLocaleString('en-US')}</span>
+        </div>
+        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
+        <div id="stat-budget-mobile" className="flex shrink-0 items-center gap-1" aria-label="Бюджет и чистый доход">
+          <Coins className="size-4 text-amber-600" />
+          <span className="font-bold tabular-nums">${Math.round(budget).toLocaleString('en-US')}</span>
+          <span className={cn('text-[10px] font-bold tabular-nums', positive ? 'text-emerald-700' : 'text-rose-700')}>
+            ({positive ? '+' : '−'}${Math.abs(lastNet).toLocaleString('en-US')})
+          </span>
+        </div>
+        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
+        <div id="stat-water-mobile" className="flex shrink-0 items-center gap-1" aria-label="Водоснабжение">
+          <Droplets className={cn('size-4', dryCount > 0 ? 'text-rose-500' : 'text-sky')} />
+          <span className="font-bold tabular-nums">{waterServed}/{waterTotal}</span>
+        </div>
+        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
+        <div id="stat-happiness-mobile" className="flex shrink-0 items-center gap-1" aria-label="Счастье">
+          <HappinessIcon className={cn('size-4', happiness >= 70 ? 'text-leaf' : happiness >= 40 ? 'text-amber-500' : 'text-rose-500')} />
+          <span className="font-bold tabular-nums">{happiness}%</span>
+        </div>
+        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
+        <div id="stat-time-mobile" className="flex shrink-0 items-center gap-1" aria-label={`День ${day}, ${time.label}`}>
+          <Clock className="size-4 text-ink-soft" />
+          <span className="font-bold tabular-nums">{formatClock(minutes)}</span>
+        </div>
+        <button
+          id="btn-pause-mobile"
+          type="button"
+          aria-label={paused ? 'Продолжить' : 'Пауза'}
+          aria-pressed={paused}
+          onClick={onTogglePause}
+          className={cn('grid size-7 shrink-0 place-items-center rounded-full border border-stone-800 transition-transform active:scale-95', paused ? 'bg-accent text-white' : 'bg-white text-ink')}
+        >
+          {paused ? <Play className="size-3.5 fill-current" /> : <Pause className="size-3.5 fill-current" />}
+        </button>
+      </div>
+
+      <div className="ink-panel pointer-events-auto hidden items-stretch divide-x-2 divide-ink/15 rounded-2xl md:flex">
 
         
         <div className="flex items-center gap-2 px-4">
@@ -182,7 +222,7 @@ export function TopBar({
       </div>
       <div
         id="stat-city-health"
-        className="ink-panel pointer-events-auto flex items-center divide-x-2 divide-ink/15 rounded-full text-sm font-extrabold"
+        className="ink-panel pointer-events-auto hidden items-center divide-x-2 divide-ink/15 rounded-full text-sm font-extrabold md:flex"
       >
         
         <div id="stat-rci" className="flex items-center gap-1.5 px-4 py-1.5 h-[34px]">
