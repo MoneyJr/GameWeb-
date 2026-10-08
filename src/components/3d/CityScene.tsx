@@ -358,6 +358,16 @@ interface InteractionLayerProps {
   activeTool: ToolId
   onPlace: (x: number, y: number) => void
   onRemove: (x: number, y: number) => void
+  isTouchDevice: boolean
+  onTouchPreview: (cell: Cell, clientX: number, clientY: number) => void
+  ghost: TouchGhost | null
+  placementStyle?: string
+}
+
+interface TouchGhost {
+  cell: Cell
+  clientX: number
+  clientY: number
 }
 
 
@@ -388,7 +398,37 @@ function HoverHighlight({ color }: { color: string }) {
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLayerProps) {
+function GhostTilePreview({ tool, cell, style }: { tool: ToolId; cell: Cell; style?: string }) {
+  const group = useRef<THREE.Group>(null)
+  const tile = TOOL_DEFINITIONS[tool].tile
+
+  useEffect(() => {
+    const clonedMaterials: THREE.Material[] = []
+    group.current?.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return
+      const clone = (material: THREE.Material) => {
+        const ghostMaterial = material.clone()
+        ghostMaterial.transparent = true
+        ghostMaterial.opacity = 0.48
+        ghostMaterial.depthWrite = false
+        if ('color' in ghostMaterial) (ghostMaterial as THREE.MeshStandardMaterial).color.lerp(new THREE.Color('#b7edbb'), 0.28)
+        clonedMaterials.push(ghostMaterial)
+        return ghostMaterial
+      }
+      object.material = Array.isArray(object.material) ? object.material.map(clone) : clone(object.material)
+    })
+    return () => clonedMaterials.forEach((material) => material.dispose())
+  }, [tool])
+
+  if (!tile) return null
+  return (
+    <group ref={group} position={cellToWorld(cell.x, cell.y)} renderOrder={20}>
+      <TileModel type={tile} style={style} animate={false} hasWater hasPower hasSupplies north={false} south={false} east={false} west={false} />
+    </group>
+  )
+}
+
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, ghost, placementStyle }: InteractionLayerProps) {
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
@@ -406,12 +446,15 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
     const trackTouchMove = (event: PointerEvent) => {
       const gesture = touchTap.current
       if (!gesture || gesture.pointerId !== event.pointerId) return
-      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 5) gesture.moved = true
+      if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) gesture.moved = true
     }
     const stop = (event?: PointerEvent) => {
       const gesture = touchTap.current
       if (gesture && event?.pointerId === gesture.pointerId) {
-        if (!gesture.moved && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 5) act(gesture.cell)
+        if (!gesture.moved && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 10) {
+          if (activeTool === ToolId.BULLDOZE) act(gesture.cell)
+          else onTouchPreview(gesture.cell, event.clientX, event.clientY)
+        }
         touchTap.current = null
       }
       painting.current = false
@@ -437,14 +480,14 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
       window.removeEventListener('pointercancel', cancel)
       window.removeEventListener('blur', clearOnBlur)
     }
-  }, [act])
+  }, [act, activeTool, onTouchPreview])
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
     setHovered((prev) => (prev !== null && prev.x === cell.x && prev.y === cell.y ? prev : cell))
     const gesture = touchTap.current
     if (gesture?.pointerId === event.nativeEvent.pointerId) {
-      if (Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) > 5) gesture.moved = true
+      if (Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) > 10) gesture.moved = true
       return
     }
     if (painting.current && lastCell.current !== null) {
@@ -496,7 +539,10 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
         onPointerUp={(event) => {
           const gesture = touchTap.current
           if (gesture?.pointerId === event.nativeEvent.pointerId) {
-            if (!gesture.moved && Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) <= 5) act(gesture.cell)
+            if (!gesture.moved && Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) <= 10) {
+              if (activeTool === ToolId.BULLDOZE) act(gesture.cell)
+              else onTouchPreview(gesture.cell, event.nativeEvent.clientX, event.nativeEvent.clientY)
+            }
             touchTap.current = null
           }
         }}
@@ -510,11 +556,14 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove }: InteractionLa
       </mesh>
             {hovered !== null && (
         <group position={cellToWorld(hovered.x, hovered.y)}>
-          <HoverHighlight color={highlightColor} />
+            <HoverHighlight color={highlightColor} />
           {(activeTool === ToolId.COAL || activeTool === ToolId.INDUSTRIAL) && (
             <SmogRadiusOverlay />
           )}
         </group>
+      )}
+      {isTouchDevice && ghost && activeTool !== ToolId.BULLDOZE && (
+        <GhostTilePreview tool={activeTool} cell={ghost.cell} style={placementStyle} />
       )}
     </group>
   )
@@ -530,6 +579,8 @@ export interface CitySceneProps {
   onPlace: (x: number, y: number) => void
   onRemove: (x: number, y: number) => void
   minutes: number
+  budget?: number
+  placementStyle?: string
 }
 
 import { applyNightLevel } from './primitives'
@@ -559,9 +610,14 @@ function NightManager({ minutes }: { minutes: number }) {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget = 0, placementStyle }: CitySceneProps) {
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
+  const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
+  const handleTouchPreview = useCallback((cell: Cell, clientX: number, clientY: number) => {
+    setTouchGhost((current) => current ? null : { cell, clientX, clientY })
+  }, [])
+  useEffect(() => setTouchGhost(null), [activeTool])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
   useEffect(() => {
     const updateViewport = () => setIsNarrow(window.innerWidth < 768)
@@ -649,10 +705,47 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes }: City
       <NaturalHorizon />
       <World grid={grid} />
       <TrafficSystem grid={grid} />
-      <InteractionLayer grid={grid} activeTool={activeTool} onPlace={onPlace} onRemove={onRemove} />
+      <InteractionLayer
+        grid={grid}
+        activeTool={activeTool}
+        onPlace={onPlace}
+        onRemove={onRemove}
+        isTouchDevice={isTouchDevice}
+        onTouchPreview={handleTouchPreview}
+        ghost={touchGhost}
+        placementStyle={placementStyle}
+      />
       </Suspense>
     </Canvas>
       </div>
+      {isTouchDevice && touchGhost && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
+        <div
+          className="pointer-events-none absolute z-30 flex -translate-x-1/2 -translate-y-full items-center gap-2"
+          style={{ left: touchGhost.clientX, top: touchGhost.clientY - 12 }}
+          aria-label="Подтверждение постройки"
+        >
+          <button
+            type="button"
+            onClick={() => {
+              const cost = TOOL_DEFINITIONS[activeTool].cost
+              onPlace(touchGhost.cell.x, touchGhost.cell.y)
+              if (budget >= cost) setTouchGhost(null)
+            }}
+            className="pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border border-emerald-900/30 bg-emerald-600 px-4 text-sm font-bold text-white shadow-lg active:scale-95"
+            aria-label={`Построить за $${TOOL_DEFINITIONS[activeTool].cost}`}
+          >
+            <span aria-hidden="true">✓</span><span>${TOOL_DEFINITIONS[activeTool].cost}</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setTouchGhost(null)}
+            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-stone-500/40 bg-stone-600 text-xl font-bold text-white shadow-lg active:scale-95"
+            aria-label="Отменить постройку"
+          >
+            ×
+          </button>
+        </div>
+      )}
       <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2 md:hidden" aria-label="Управление масштабом камеры">
         <button type="button" onClick={() => zoomBy('in')} aria-label="Приблизить" className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-2xl font-medium text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">+</button>
         <button type="button" onClick={() => zoomBy('out')} aria-label="Отдалить" className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-2xl font-medium text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">−</button>

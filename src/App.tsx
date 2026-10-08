@@ -73,6 +73,8 @@ function App() {
         onPlace={(x,y) => sim.placeTile(x, y, resStyle)}
         onRemove={sim.removeTile}
         minutes={sim.minutes}
+        budget={sim.budget}
+        placementStyle={resStyle}
       />
 
       <TopBar
