@@ -572,14 +572,13 @@ case 'TICK': {
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
       const happinessDrift = (targetHappiness(counts, crimeRate) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const netDailyIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
-      const netHourly = Math.round(netDailyIncome / 24)
+      const netTickIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
       return {
         ...state,
         grid: cityGrid,
         population,
-        budget: crossesHour ? Math.max(0, Math.round(state.budget + netHourly)) : state.budget,
-        lastNet: netDailyIncome,
+        budget: Math.max(0, Math.round(state.budget + netTickIncome)),
+        lastNet: netTickIncome,
         happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
         minutes: gameMinute,
         day: nextDay,
