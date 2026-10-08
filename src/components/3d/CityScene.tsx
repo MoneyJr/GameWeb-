@@ -360,12 +360,25 @@ interface InteractionLayerProps {
   onRemove: (x: number, y: number) => void
   isTouchDevice: boolean
   onTouchPreview: (cell: Cell) => void
+  onRoadLinePreview: (cells: Cell[]) => void
+  onRoadDragState: (dragging: boolean) => void
   ghost: TouchGhost | null
   placementStyle?: string
 }
 
 interface TouchGhost {
-  cell: Cell
+  cells: Cell[]
+}
+
+function straightCellLine(start: Cell, end: Cell): Cell[] {
+  const useX = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
+  const target = useX
+    ? { x: THREE.MathUtils.clamp(end.x, 0, GRID_SIZE - 1), y: start.y }
+    : { x: start.x, y: THREE.MathUtils.clamp(end.y, 0, GRID_SIZE - 1) }
+  const dx = Math.sign(target.x - start.x)
+  const dy = Math.sign(target.y - start.y)
+  const length = Math.max(Math.abs(target.x - start.x), Math.abs(target.y - start.y))
+  return Array.from({ length: length + 1 }, (_, index) => ({ x: start.x + dx * index, y: start.y + dy * index }))
 }
 
 
@@ -396,7 +409,7 @@ function HoverHighlight({ color }: { color: string }) {
   )
 }
 
-function GhostTilePreview({ tool, cell, style }: { tool: ToolId; cell: Cell; style?: string }) {
+function GhostTilePreview({ tool, cell, style, roadLinks }: { tool: ToolId; cell: Cell; style?: string; roadLinks: { north: boolean; south: boolean; east: boolean; west: boolean } }) {
   const group = useRef<THREE.Group>(null)
   const tile = TOOL_DEFINITIONS[tool].tile
 
@@ -421,16 +434,17 @@ function GhostTilePreview({ tool, cell, style }: { tool: ToolId; cell: Cell; sty
   if (!tile) return null
   return (
     <group ref={group} position={cellToWorld(cell.x, cell.y)} renderOrder={20}>
-      <TileModel type={tile} style={style} animate={false} hasWater hasPower hasSupplies north={false} south={false} east={false} west={false} />
+      <TileModel type={tile} style={style} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, ghost, placementStyle }: InteractionLayerProps) {
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle }: InteractionLayerProps) {
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
   const touchTap = useRef<{ pointerId: number; x: number; y: number; cell: Cell; moved: boolean } | null>(null)
+  const roadDrag = useRef<{ pointerId: number; x: number; y: number; start: Cell } | null>(null)
 
   const act = useCallback(
     (cell: Cell) => {
@@ -447,6 +461,10 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       if (Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) > 10) gesture.moved = true
     }
     const stop = (event?: PointerEvent) => {
+      if (roadDrag.current && event?.pointerId === roadDrag.current.pointerId) {
+        roadDrag.current = null
+        onRoadDragState(false)
+      }
       const gesture = touchTap.current
       if (gesture && event?.pointerId === gesture.pointerId) {
         if (!gesture.moved && Math.hypot(event.clientX - gesture.x, event.clientY - gesture.y) <= 10) {
@@ -459,11 +477,17 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       lastCell.current = null
     }
     const cancel = (event: PointerEvent) => {
+      if (roadDrag.current?.pointerId === event.pointerId) {
+        roadDrag.current = null
+        onRoadDragState(false)
+      }
       if (touchTap.current?.pointerId === event.pointerId) touchTap.current = null
       painting.current = false
       lastCell.current = null
     }
     const clearOnBlur = () => {
+      if (roadDrag.current) onRoadDragState(false)
+      roadDrag.current = null
       touchTap.current = null
       painting.current = false
       lastCell.current = null
@@ -478,11 +502,18 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       window.removeEventListener('pointercancel', cancel)
       window.removeEventListener('blur', clearOnBlur)
     }
-  }, [act, activeTool, onTouchPreview])
+  }, [act, activeTool, onTouchPreview, onRoadDragState])
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
     setHovered((prev) => (prev !== null && prev.x === cell.x && prev.y === cell.y ? prev : cell))
+    const drag = roadDrag.current
+    if (drag?.pointerId === event.nativeEvent.pointerId) {
+      if (Math.hypot(event.nativeEvent.clientX - drag.x, event.nativeEvent.clientY - drag.y) > 10) {
+        onRoadLinePreview(straightCellLine(drag.start, cell))
+      }
+      return
+    }
     const gesture = touchTap.current
     if (gesture?.pointerId === event.nativeEvent.pointerId) {
       if (Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) > 10) gesture.moved = true
@@ -499,6 +530,20 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
   const handleDown = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
     if (event.nativeEvent.pointerType === 'touch') {
+      if (!event.nativeEvent.isPrimary) {
+        touchTap.current = null
+        return
+      }
+      if (
+        activeTool === ToolId.ROAD && ghost &&
+        cell.x === ghost.cells[0]?.x && cell.y === ghost.cells[0]?.y
+      ) {
+        event.stopPropagation()
+        event.nativeEvent.stopImmediatePropagation()
+        roadDrag.current = { pointerId: event.nativeEvent.pointerId, x: event.nativeEvent.clientX, y: event.nativeEvent.clientY, start: ghost.cells[0] }
+        onRoadDragState(true)
+        return
+      }
       if (activeTool !== ToolId.CURSOR) {
         touchTap.current = {
           pointerId: event.nativeEvent.pointerId,
@@ -535,6 +580,10 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         onPointerMove={handleMove}
         onPointerDown={handleDown}
         onPointerUp={(event) => {
+          if (roadDrag.current?.pointerId === event.nativeEvent.pointerId) {
+            roadDrag.current = null
+            onRoadDragState(false)
+          }
           const gesture = touchTap.current
           if (gesture?.pointerId === event.nativeEvent.pointerId) {
             if (!gesture.moved && Math.hypot(event.nativeEvent.clientX - gesture.x, event.nativeEvent.clientY - gesture.y) <= 10) {
@@ -545,6 +594,10 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
           }
         }}
         onPointerCancel={(event) => {
+          if (roadDrag.current?.pointerId === event.nativeEvent.pointerId) {
+            roadDrag.current = null
+            onRoadDragState(false)
+          }
           if (touchTap.current?.pointerId === event.nativeEvent.pointerId) touchTap.current = null
         }}
         onPointerOut={() => setHovered(null)}
@@ -561,7 +614,16 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         </group>
       )}
       {isTouchDevice && ghost && activeTool !== ToolId.BULLDOZE && (
-        <GhostTilePreview tool={activeTool} cell={ghost.cell} style={placementStyle} />
+        ghost.cells.map((cell) => {
+          const cells = ghost.cells
+          const roadLinks = {
+            north: cells.some((other) => other.x === cell.x && other.y === cell.y - 1),
+            south: cells.some((other) => other.x === cell.x && other.y === cell.y + 1),
+            east: cells.some((other) => other.x === cell.x + 1 && other.y === cell.y),
+            west: cells.some((other) => other.x === cell.x - 1 && other.y === cell.y),
+          }
+          return <GhostTilePreview key={`${cell.x},${cell.y}`} tool={activeTool} cell={cell} style={placementStyle} roadLinks={roadLinks} />
+        })
       )}
     </group>
   )
@@ -612,8 +674,30 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
+  const controlsRef = useRef<PannableControls | null>(null)
   const handleTouchPreview = useCallback((cell: Cell) => {
-    setTouchGhost((current) => current ? null : { cell })
+    setTouchGhost((current) => {
+      if (!current) return { cells: [cell] }
+      if (activeTool === ToolId.ROAD) return { cells: straightCellLine(current.cells[0], cell) }
+      return null
+    })
+  }, [activeTool])
+  const handleRoadLinePreview = useCallback((cells: Cell[]) => {
+    setTouchGhost((current) => {
+      if (!current) return current
+      if (current.cells.length === cells.length && current.cells.every((cell, index) => cell.x === cells[index].x && cell.y === cells[index].y)) return current
+      return { cells }
+    })
+  }, [])
+  const handleRoadDragState = useCallback((dragging: boolean) => {
+    const controls = controlsRef.current as (PannableControls & { resetState?: () => void; state?: number }) | null
+    if (!controls) return
+    controls.enabled = !dragging
+    if (!dragging) {
+      controls.resetState?.()
+      if (controls.state !== undefined) controls.state = -1
+      controls.update()
+    }
   }, [])
   useEffect(() => setTouchGhost(null), [activeTool])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
@@ -632,7 +716,6 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   ]
   const shadowMapSize: [number, number] = isNarrow ? [1024, 1024] : [2048, 2048]
   const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5)
-  const controlsRef = useRef<PannableControls | null>(null)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const preventCanvasGesture = (event: TouchEvent) => {
@@ -710,6 +793,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         onRemove={onRemove}
         isTouchDevice={isTouchDevice}
         onTouchPreview={handleTouchPreview}
+        onRoadLinePreview={handleRoadLinePreview}
+        onRoadDragState={handleRoadDragState}
         ghost={touchGhost}
         placementStyle={placementStyle}
       />
@@ -719,20 +804,21 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       {isTouchDevice && touchGhost && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
         <div
           className="pointer-events-none absolute inset-x-0 z-30 flex justify-center gap-2"
-          style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom))' }}
+          style={{ bottom: 'calc(9.5rem + env(safe-area-inset-bottom))' }}
           aria-label="Подтверждение постройки"
         >
           <button
             type="button"
             onClick={() => {
-              const cost = TOOL_DEFINITIONS[activeTool].cost
-              onPlace(touchGhost.cell.x, touchGhost.cell.y)
+              const unitCost = TOOL_DEFINITIONS[activeTool].cost
+              const cost = unitCost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)
+              touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y))
               if (budget >= cost) setTouchGhost(null)
             }}
             className="pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border border-emerald-900/30 bg-emerald-600 px-4 text-sm font-bold text-white shadow-lg active:scale-95"
-            aria-label={`Построить за $${TOOL_DEFINITIONS[activeTool].cost}`}
+            aria-label={`Построить за $${TOOL_DEFINITIONS[activeTool].cost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}`}
           >
-            <span aria-hidden="true">✓</span><span>${TOOL_DEFINITIONS[activeTool].cost}</span>
+            <span aria-hidden="true">✓</span><span>${TOOL_DEFINITIONS[activeTool].cost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}</span>
           </button>
           <button
             type="button"

@@ -76,11 +76,14 @@ const RES_STYLES = [
 export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleChange }: BottomDockProps) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [styleOpen, setStyleOpen] = useState(false)
-  const activeToolCategory = CATEGORIES.find((category) => category.options.some((item) => item.tool === activeTool))
-  const activeCategoryKey = activeCategory ?? activeToolCategory?.key ?? null
-  const selectedCategory = CATEGORIES.find((category) => category.key === activeCategoryKey)
+  const selectedCategory = CATEGORIES.find((category) => category.key === activeCategory)
 
   const chooseCategory = (category: Category) => {
+    if (activeCategory === category.key) {
+      setActiveCategory(null)
+      onSelect(ToolId.CURSOR)
+      return
+    }
     setActiveCategory(category.key)
     const firstTool = category.options.find((item) => item.tool !== undefined)?.tool
     onSelect(firstTool ?? ToolId.CURSOR)
@@ -114,12 +117,12 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [activeTool, onSelect])
+  }, [activeCategory, activeTool, onSelect])
 
   return (
     <nav aria-label="Строительство" className="pointer-events-none absolute inset-x-0 bottom-0 z-10 flex justify-center px-3 pb-4">
       <style>{`
-        .ribbon-panel { display:flex; align-items:center; gap:6px; max-width:calc(100vw - 24px); overflow:hidden; border:1.5px solid #262626; border-radius:16px; background:rgba(251,249,244,.95); color:#262626; padding:8px; box-shadow:0 5px 0 rgba(38,38,38,.14),0 12px 28px rgba(20,16,12,.18); backdrop-filter:blur(12px); }
+        .ribbon-panel { display:flex; align-items:center; gap:6px; max-width:calc(100vw - 24px); overflow:hidden; border:1.5px solid #262626; border-radius:16px; background:rgba(251,249,244,.95); color:#262626; padding:8px; box-shadow:0 5px 0 rgba(38,38,38,.14),0 12px 28px rgba(20,16,12,.18); backdrop-filter:blur(12px); transition:width .22s ease, gap .22s ease; }
         .ribbon-category-list,.ribbon-option-list { display:flex; min-width:0; align-items:center; gap:4px; overflow-x:auto; scrollbar-width:none; }
         .ribbon-category-list::-webkit-scrollbar,.ribbon-option-list::-webkit-scrollbar { display:none; }
         .ribbon-category-list { flex:0 1 auto; }
@@ -135,13 +138,24 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
         @media(max-width:767px) {
           .ribbon-panel { width:calc(100vw - 16px); max-width:calc(100vw - 16px); gap:4px; padding:6px; }
           .ribbon-style-area { display:none; }
-          .ribbon-category-list { flex:0 0 43%; max-width:43%; }
-          .ribbon-option-list { flex:1 1 0; max-width:calc(57% - 14px); }
-          .ribbon-option-button { min-width:92px; max-width:145px; height:48px; padding:5px 7px; }
+          .ribbon-panel.has-category { height:126px; align-items:stretch; }
+          .ribbon-panel.has-category .ribbon-category-list { flex:0 0 43%; max-width:43%; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); grid-auto-rows:1fr; align-content:center; gap:2px; overflow:visible; }
+          .ribbon-panel.has-category .ribbon-category-button { flex:initial; width:auto; min-width:0; height:34px; padding:2px; }
+          .ribbon-panel.has-category .ribbon-category-button kbd,.ribbon-panel.has-category .ribbon-category-button span { display:none; }
+          .ribbon-panel.has-category .ribbon-category-button svg { margin-top:0; width:17px; height:17px; }
+          .ribbon-panel.has-category .ribbon-option-list { flex:1 1 0; max-width:calc(57% - 14px); display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:1fr; align-content:center; gap:4px; overflow-y:auto; overflow-x:hidden; }
+          .ribbon-panel.has-category .ribbon-separator { align-self:center; height:82%; }
+          .ribbon-panel.is-compact { height:62px; }
+          .ribbon-panel.is-compact .ribbon-category-list { flex:1 1 auto; max-width:100%; justify-content:space-around; gap:1px; }
+          .ribbon-panel.is-compact .ribbon-category-button { flex:1 0 30px; width:auto; min-width:30px; height:50px; padding:2px; }
+          .ribbon-panel.is-compact .ribbon-category-button kbd,.ribbon-panel.is-compact .ribbon-category-button span { display:none; }
+          .ribbon-option-button { min-width:0; max-width:none; width:100%; height:50px; gap:5px; padding:4px 5px; }
+          .ribbon-option-button svg { width:16px; height:16px; }
+          .ribbon-option-button span span:first-child { font-size:10px; }
         }
       `}</style>
 
-      <div className="ribbon-panel pointer-events-auto">
+      <div className={cn('ribbon-panel pointer-events-auto', selectedCategory ? 'has-category' : 'is-compact')}>
         <div className="ribbon-style-area relative shrink-0">
           <button type="button" aria-expanded={styleOpen} onClick={() => setStyleOpen((open) => !open)} className={cn('ribbon-style-button transition hover:bg-[#f1e9dc]', styleOpen && 'bg-[#edd9c0]')}>
             <span className="relative flex items-center gap-1.5">
@@ -167,7 +181,7 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
           {CATEGORIES.map((category) => {
             const Icon = category.icon
             return (
-              <button key={category.key} type="button" title={`${category.label} [${category.key}]`} aria-pressed={activeCategoryKey === category.key} onClick={() => chooseCategory(category)} className={cn('ribbon-category-button shrink-0 transition', activeCategoryKey === category.key && 'bg-[#edd9c0] shadow-sm')}>
+              <button key={category.key} type="button" title={`${category.label} [${category.key}]`} aria-pressed={activeCategory === category.key} onClick={() => chooseCategory(category)} className={cn('ribbon-category-button shrink-0 transition', activeCategory === category.key && 'bg-[#edd9c0] shadow-sm')}>
                 <kbd className="absolute right-1 top-0.5 rounded border border-stone-300 bg-neutral-100 px-1 font-mono text-[9px] leading-[14px] text-neutral-500">{category.key}</kbd>
                 <Icon className="mt-1 size-5 text-[#292824]" strokeWidth={1.7} />
                 <span className="whitespace-nowrap text-[11px] font-medium leading-none tracking-tight text-neutral-700">{category.label}</span>
