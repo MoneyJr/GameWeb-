@@ -179,6 +179,38 @@ function Pad() {
   return <Box size={[0.94, PAD_HEIGHT, 0.94]} position={[0, PAD_HEIGHT / 2, 0]} color="#dcd5c3" />
 }
 
+function ResidentialBase() {
+  return <group>
+    <Box size={[0.99, 0.05, 0.99]} position={[0, 0.025, 0]} color="#b8aa8f" />
+    <Box size={[0.84, 0.018, 0.78]} position={[0, 0.06, 0.04]} color="#d7ccb7" />
+    <Box size={[0.98, 0.025, 0.14]} position={[0, 0.064, -0.41]} color="#729148" />
+    <Box size={[0.98, 0.06, 0.035]} position={[0, 0.07, 0.47]} color="#cbbda5" />
+    {[-0.47, 0.47].map((x) => <Box key={x} size={[0.035, 0.06, 0.99]} position={[x, 0.07, 0]} color="#cbbda5" />)}
+  </group>
+}
+
+function CommercialBase() {
+  return <group>
+    <Box size={[0.99, 0.055, 0.99]} position={[0, 0.0275, 0]} color="#55585a" />
+    <Box size={[0.99, 0.035, 0.16]} position={[0, 0.045, 0.415]} color="#d2c8b5" />
+    {[-0.3, 0, 0.3].map((x) => <Box key={x} size={[0.012, 0.008, 0.12]} position={[x, 0.076, 0.38]} color="#f4efe2" />)}
+  </group>
+}
+
+function IndustrialBase() {
+  return <group>
+    <Box size={[0.99, 0.055, 0.99]} position={[0, 0.0275, 0]} color="#484b4c" />
+    <Box size={[0.9, 0.015, 0.86]} position={[0, 0.062, 0]} color="#6e6b63" />
+    {[-0.46, 0.46].map((x) => <group key={x}>
+      <Box size={[0.025, 0.34, 0.025]} position={[x, 0.19, -0.4]} color="#34383a" />
+      <Box size={[0.025, 0.34, 0.025]} position={[x, 0.19, 0.4]} color="#34383a" />
+      <Box size={[0.025, 0.025, 0.8]} position={[x, 0.28, 0]} color="#34383a" />
+    </group>)}
+    <Box size={[0.92, 0.025, 0.025]} position={[0, 0.28, -0.46]} color="#34383a" />
+    {[-0.3, -0.1, 0.1, 0.3].map((x) => <Box key={x} size={[0.018, 0.2, 0.018]} position={[x, 0.17, -0.46]} color="#34383a" />)}
+  </group>
+}
+
 /* -------------------------------------------------------------------------- */
 /*  Модели зданий                                                               */
 /* -------------------------------------------------------------------------- */
@@ -387,10 +419,10 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   const floors = catalogId === 'cottage' ? 1 : catalogId === 'townhouse' ? 2 : catalogId === 'apartment' ? 4 : 2 + (variant % 3)
 
   if (catalogId === 'cottage') {
-    return <group><Pad />
-      <Box size={[0.66, 0.32, 0.62]} position={[0, PAD_HEIGHT + 0.16, 0]} color="#e2cda9" />
-      <Box size={[0.78, 0.06, 0.72]} position={[0, PAD_HEIGHT + 0.34, 0]} color="#9b4934" />
-      <Box size={[0.45, 0.42, 0.48]} position={[0, PAD_HEIGHT + 0.55, 0]} rotation={[0, 0, Math.PI / 4]} color="#a34830" />
+    return <group><ResidentialBase />
+      <Box size={[0.78, 0.32, 0.74]} position={[0, PAD_HEIGHT + 0.16, 0]} color="#e2cda9" />
+      <Box size={[0.88, 0.06, 0.84]} position={[0, PAD_HEIGHT + 0.34, 0]} color="#9b4934" />
+      <Box size={[0.58, 0.42, 0.76]} position={[0, PAD_HEIGHT + 0.55, 0]} rotation={[0, 0, Math.PI / 4]} color="#a34830" />
       <Window position={[-0.18, 0.28, 0.32]} width={0.14} height={0.14} glass="#293746" frame="#f5ead7" />
       <Window position={[0.18, 0.28, 0.32]} width={0.14} height={0.14} glass="#293746" frame="#f5ead7" />
       <Box size={[0.2, 0.04, 0.04]} position={[0, 0.11, 0.36]} color="#e7d8bb" />
@@ -406,16 +438,16 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   
   if (style === 'US') {
     const brick = ['#8b4513', '#a52a2a', '#a0522d'][variant % 3]
-    const fh = 0.25 // floor height
+    const fh = 0.18 // compact story height
     return (
       <group>
-        <Pad />
+        <ResidentialBase />
         {/* Base */}
-        <Box size={[0.65, 0.05, 0.65]} position={[0, PAD_HEIGHT + 0.025, 0]} color="#5a5a5a" />
+        <Box size={[0.92, 0.05, 0.92]} position={[0, PAD_HEIGHT + 0.025, 0]} color="#5a5a5a" />
         {/* Main Body */}
-        <Box size={[0.6, (floors * 0.25), 0.6]} position={[0, PAD_HEIGHT + 0.05 + (floors * fh)/2, 0]} color={brick} />
+        <Box size={[0.84, (floors * fh), 0.84]} position={[0, PAD_HEIGHT + 0.05 + (floors * fh)/2, 0]} color={brick} />
         {/* Parapet */}
-        <Box size={[0.62, 0.05, 0.62]} position={[0, PAD_HEIGHT + 0.05 + (floors * fh) + 0.025, 0]} color="#4a4a4a" />
+        <Box size={[0.9, 0.05, 0.9]} position={[0, PAD_HEIGHT + 0.05 + (floors * fh) + 0.025, 0]} color="#4a4a4a" />
         
         {/* Windows */}
         {Array.from({ length: floors }).map((_, i) => (
@@ -453,17 +485,17 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   
   if (style === 'EAST') {
     const plaster = ['#d8c29d', '#e0cdac', '#d1ba92'][variant % 3] // Песчано-бежевые
-    const fh = 0.25
+    const fh = 0.16
     return (
       <group>
-        <Pad />
+        <ResidentialBase />
         {/* Base */}
-        <Box size={[0.6, 0.05, 0.6]} position={[0, PAD_HEIGHT + 0.025, 0]} color="#bda783" />
+        <Box size={[0.92, 0.05, 0.92]} position={[0, PAD_HEIGHT + 0.025, 0]} color="#bda783" />
         
         {/* Tiers */}
         {Array.from({ length: floors }).map((_, i) => (
           <group key={i} position={[0, PAD_HEIGHT + 0.05 + i * fh, 0]}>
-            <Box size={[0.55, fh, 0.55]} position={[0, fh/2, 0]} color={plaster} />
+            <Box size={[0.82, fh, 0.82]} position={[0, fh/2, 0]} color={plaster} />
             
             {/* Arched windows */}
             <group position={[0, fh/2, 0.28]}>
@@ -478,7 +510,7 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
 
         {/* Roof Parapet (Зубчатые бойницы) */}
         <group position={[0, PAD_HEIGHT + 0.05 + floors * fh, 0]}>
-          <Box size={[0.55, 0.05, 0.55]} position={[0, 0.025, 0]} color={plaster} />
+      <Box size={[0.84, 0.05, 0.84]} position={[0, 0.025, 0]} color={plaster} />
           {[-0.25, -0.15, -0.05, 0.05, 0.15, 0.25].map(x => (
             <group key={x}>
               <Box size={[0.04, 0.05, 0.04]} position={[x, 0.075, 0.25]} color={plaster} />
@@ -506,12 +538,12 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   }
 
   if (catalogId === 'apartment') {
-    const base = 0.24
-    const levelHeight = 0.68
+    const base = 0.2
+    const levelHeight = 0.42
     const bodyHeight = levelHeight * 4
     const roofBase = base + bodyHeight
     return <group>
-      <Box size={[0.99, 0.05, 0.99]} position={[0, 0.025, 0]} color="#51483f" />
+      <ResidentialBase />
       <Box size={[0.95, base, 0.95]} position={[0, base / 2, 0]} color="#89857f" />
       {Array.from({ length: 4 }, (_, i) => <Box key={`stone-course-${i}`} size={[0.96, 0.018, 0.97]} position={[0, 0.04 + i * 0.05, 0]} color="#bbb4a8" />)}
       <Box size={[0.86, bodyHeight, 0.84]} position={[0, base + bodyHeight / 2, -0.02]} color="#c27c59" />
@@ -535,7 +567,7 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   const wallColor = catalogId === 'townhouse' ? '#eedec5' : walls[variant % walls.length]
   const roofColor = catalogId === 'apartment' ? '#3d4450' : roofs[variant % roofs.length]
   const roofType = variant % 3
-  const floorHeight = 0.5
+  const floorHeight = 0.35
   const bodyHeight = floors * floorHeight
   const bodyBase = 0.22
   const roofBase = bodyBase + bodyHeight
@@ -543,13 +575,13 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
 
   return (
     <group>
-      <Box size={[0.99, 0.04, 0.99]} position={[0, 0.02, 0]} color="#51483f" />
-      <Box size={[0.98, 0.22, 0.98]} position={[0, 0.11, 0]} color="#d4ccc0" />
+      <ResidentialBase />
+      <Box size={[0.9, 0.16, 0.84]} position={[0, 0.14, -0.015]} color="#d4ccc0" />
       {/* Inner shell ends behind the open facade, leaving real depth for recessed windows. */}
-      <Box size={[0.85, bodyHeight, 0.82]} position={[0, bodyBase + bodyHeight / 2, -0.025]} color={wallColor} />
-      <Box size={[0.05, bodyHeight, 0.95]} position={[-0.45, bodyBase + bodyHeight / 2, 0]} color={wallColor} />
-      <Box size={[0.05, bodyHeight, 0.95]} position={[0.45, bodyBase + bodyHeight / 2, 0]} color={wallColor} />
-      <Box size={[0.95, bodyHeight, 0.05]} position={[0, bodyBase + bodyHeight / 2, -0.45]} color={wallColor} />
+      <Box size={[0.9, bodyHeight, 0.84]} position={[0, bodyBase + bodyHeight / 2, -0.025]} color={wallColor} />
+      <Box size={[0.06, bodyHeight, 0.95]} position={[-0.45, bodyBase + bodyHeight / 2, 0]} color={wallColor} />
+      <Box size={[0.06, bodyHeight, 0.95]} position={[0.45, bodyBase + bodyHeight / 2, 0]} color={wallColor} />
+      <Box size={[0.95, bodyHeight, 0.06]} position={[0, bodyBase + bodyHeight / 2, -0.45]} color={wallColor} />
       {Array.from({ length: floors - 1 }, (_, i) => (
         <Box key={`course-${i}`} size={[0.96, 0.025, 0.035]} position={[0, bodyBase + (i + 1) * floorHeight, 0.49]} color="#cbbda8" />
       ))}
@@ -557,7 +589,7 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
         <group key={`floor-${floor}`} position={[0, bodyBase + floor * floorHeight, 0]}>
           {/* Raised plaster panels frame open window and doorway bays. */}
           {floor > 0 && <Box size={[0.95, 0.08, 0.1]} position={[0, 0.04, 0.425]} color={wallColor} />}
-          <Box size={[0.95, 0.14, 0.1]} position={[0, 0.43, 0.425]} color={wallColor} />
+          <Box size={[0.95, 0.1, 0.1]} position={[0, floorHeight - 0.05, 0.425]} color={wallColor} />
           {[-0.29, 0, 0.29].map((x, index) => {
             const width = floor === 0 && index === 1 ? 0.16 : 0.14
             const left = x - width / 2
@@ -573,9 +605,9 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
           {/* Dark timber frame, corner posts and fine diagonal braces. */}
           <Box size={[0.025, floorHeight, 0.035]} position={[-0.45, floorHeight / 2, 0.49]} color="#49352b" />
           <Box size={[0.025, floorHeight, 0.035]} position={[0.45, floorHeight / 2, 0.49]} color="#49352b" />
-          <Box size={[0.94, 0.025, 0.035]} position={[0, floorHeight - 0.035, 0.49]} color="#49352b" />
+          <Box size={[0.94, 0.025, 0.035]} position={[0, floorHeight - 0.025, 0.49]} color="#49352b" />
           {[-1, 1].map((side) => (
-            <Box key={`brace-${side}`} size={[0.14, 0.022, 0.035]} position={[side * 0.4, 0.21, 0.49]} rotation={[0, 0, side * -0.7]} color="#49352b" />
+            <Box key={`brace-${side}`} size={[0.14, 0.022, 0.035]} position={[side * 0.4, floorHeight / 2, 0.49]} rotation={[0, 0, side * -0.7]} color="#49352b" />
           ))}
           {[-0.29, 0, 0.29].map((x) => {
             const doorway = floor === 0 && x === 0
@@ -621,10 +653,10 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
   const stripes = [-0.275, -0.165, -0.055, 0.055, 0.165, 0.275]
   return (
     <group>
-      <Pad />
-      <Box size={[0.74, 0.5, 0.62]} position={[0, PAD_HEIGHT + 0.25, 0]} color={catalogId === 'grocer' ? '#dfbd76' : catalogId === 'mall' ? '#c9c9bd' : '#f4d9a6'} />
-      <Box size={[0.8, 0.05, 0.68]} position={[0, PAD_HEIGHT + 0.525, 0]} color={catalogId === 'mall' ? '#66727d' : '#c9784a'} />
-      <Box size={[0.7, 0.03, 0.58]} position={[0, PAD_HEIGHT + 0.565, 0]} color="#e0b183" />
+      <CommercialBase />
+      <Box size={[0.82, 0.5, 0.72]} position={[0, PAD_HEIGHT + 0.25, -0.02]} color={catalogId === 'grocer' ? '#dfbd76' : catalogId === 'mall' ? '#c9c9bd' : '#f4d9a6'} />
+      <Box size={[0.88, 0.05, 0.78]} position={[0, PAD_HEIGHT + 0.525, -0.02]} color={catalogId === 'mall' ? '#66727d' : '#c9784a'} />
+      <Box size={[0.78, 0.03, 0.68]} position={[0, PAD_HEIGHT + 0.565, -0.02]} color="#e0b183" />
 
       {/* крыша: вывеска и кондиционер */}
       <Box size={[0.34, 0.1, 0.04]} position={[0, PAD_HEIGHT + 0.64, 0.12]} color="#5cb3e6" />
@@ -693,8 +725,8 @@ function DisplayCar({ position, color }: { position: Vec3; color: string }) {
 export function Industrial({ catalogId }: { catalogId?: string }) {
   return (
     <group>
-      <Pad />
-      <Box size={[catalogId === 'warehouse' ? 0.9 : 0.62, catalogId === 'warehouse' ? 0.32 : 0.36, catalogId === 'warehouse' ? 0.76 : 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#aa725b' : '#b9b4a8'} />
+      <IndustrialBase />
+      <Box size={[catalogId === 'warehouse' ? 0.9 : 0.82, catalogId === 'warehouse' ? 0.32 : 0.36, catalogId === 'warehouse' ? 0.76 : 0.78]} position={[-0.04, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#8b3a2b' : '#b9b4a8'} />
       <Box size={[catalogId === 'warehouse' ? 0.94 : 0.66, 0.05, catalogId === 'warehouse' ? 0.8 : 0.66]} position={[-0.1, PAD_HEIGHT + 0.385, 0]} color={catalogId === 'warehouse' ? '#68747c' : '#7b7f86'} />
       <Box size={[0.2, 0.12, 0.2]} position={[0.02, PAD_HEIGHT + 0.47, 0.12]} color="#8a8e95" />
       {catalogId !== 'manufactory' && <><Cylinder radius={0.09} radiusTop={0.065} height={0.62} segments={14} position={[-0.28, PAD_HEIGHT + 0.31, -0.2]} color="#b4533a" /><Cylinder radius={0.085} height={0.05} segments={14} position={[-0.28, PAD_HEIGHT + 0.645, -0.2]} color="#4b2a22" /></>}
@@ -886,7 +918,7 @@ function CatalogLandmarkMesh({ catalogId }: { catalogId?: string }) {
     <Box size={[0.035, 0.24, 0.035]} position={[0.26, PAD_HEIGHT + 2.37, -0.12]} color="#625b4f" />
     <Cone radius={0.18} height={0.54} segments={6} position={[-0.08, PAD_HEIGHT + 1.08, 0]} color="#343e4e" />
     <Cone radius={0.11} height={0.44} segments={6} position={[0, PAD_HEIGHT + 0.95, 0.17]} color="#4b5563" />
-    {[-0.18, 0.18].map((x) => <group key={x}><Window position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" /><mesh position={[x, 0.65, 0.31]}><torusGeometry args={[0.052, 0.012, 6, 12, Math.PI]} /><meshToonMaterial color="#eee4d1" /></mesh></group>)}
+    {[-0.18, 0.18].map((x) => <group key={x}><Window position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" /><mesh position={[x, 0.65, 0.31]} castShadow receiveShadow><torusGeometry args={[0.052, 0.012, 6, 12, Math.PI]} /><meshToonMaterial color="#eee4d1" /></mesh></group>)}
   </group>
   if (catalogId === 'triumphal-arch') return <group><Pad />
     <Box size={[0.22, 0.76, 0.22]} position={[-0.26, PAD_HEIGHT + 0.38, 0]} color="#d5c4a3" />

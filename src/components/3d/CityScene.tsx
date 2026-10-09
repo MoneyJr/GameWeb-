@@ -765,7 +765,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
 
       <ambientLight intensity={0.35} color="#fff6ea" />
       <directionalLight
-        position={[16, 18, 12]}
+        position={[20, 35, 20]}
         intensity={2.0}
         color="#fff5df"
         castShadow
