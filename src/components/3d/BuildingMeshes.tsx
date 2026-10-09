@@ -501,8 +501,8 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   // Wall-to-wall European townhouse: one full tile with a deep, warm facade.
   const walls = ['#dfd7c5', '#d99f66', '#c4694b', '#e0ba72']
   const roofs = ['#a03b26', '#b84630', '#8e382b']
-  const wallColor = walls[variant % walls.length]
-  const roofColor = roofs[variant % roofs.length]
+  const wallColor = catalogId === 'apartment' ? '#a45a38' : walls[variant % walls.length]
+  const roofColor = catalogId === 'apartment' ? '#3d4450' : roofs[variant % roofs.length]
   const roofType = variant % 3
   const floorHeight = 0.5
   const bodyHeight = floors * floorHeight
@@ -615,6 +615,24 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
         />
       ))}
       {catalogId === 'mall' && <group>{[-0.31, -0.1, 0.11, 0.32].map((x) => <Box key={x} size={[0.035, 0.012, 0.22]} position={[x, 0.014, 0.61]} color="#f5f0df" />)}<Box size={[0.92, 0.025, 0.24]} position={[0, 0.012, 0.62]} color="#50545a" /></group>}
+      {catalogId === 'bakery' && <group>
+        <Box size={[0.72, 0.06, 0.1]} position={[0, 0.39, 0.37]} color="#fff5df" />
+        <Box size={[0.72, 0.045, 0.1]} position={[0, 0.43, 0.37]} color="#b84832" />
+        <Cylinder radius={0.075} height={0.025} segments={12} position={[0.39, 0.035, 0.4]} color="#79583a" />
+        <Cylinder radius={0.018} height={0.1} segments={8} position={[0.39, 0.085, 0.4]} color="#493629" />
+        <Cylinder radius={0.018} height={0.1} segments={8} position={[0.32, 0.085, 0.4]} color="#493629" />
+        <Cylinder radius={0.018} height={0.1} segments={8} position={[0.46, 0.085, 0.4]} color="#493629" />
+      </group>}
+      {catalogId === 'grocer' && <group>
+        <Box size={[0.72, 0.12, 0.05]} position={[0, 0.62, 0.34]} color="#355b58" />
+        <Box size={[0.54, 0.17, 0.025]} position={[0, 0.31, 0.35]} color="#8cc5bf" />
+        <Box size={[0.18, 0.08, 0.04]} position={[0.27, 0.1, 0.36]} color="#e5d1ab" />
+      </group>}
+      {catalogId === 'mall' && <group>
+        <Box size={[0.84, 0.2, 0.62]} position={[0, 0.68, 0]} color="#d1d0c7" />
+        <Box size={[0.8, 0.05, 0.05]} position={[0, 0.82, 0.34]} color="#8c3a27" />
+        {[-0.28, -0.09, 0.1, 0.29].map((x) => <Box key={x} size={[0.15, 0.15, 0.02]} position={[x, 0.68, 0.32]} color="#6895a4" />)}
+      </group>}
       {[-0.24, 0, 0.24].map((x) => (
         <Window key={x} position={[x, 0.47, 0.314]} width={0.13} height={0.1} glass="#4fa8e8" sill={false} />
       ))}
@@ -635,8 +653,8 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
   return (
     <group>
       <Pad />
-      <Box size={[0.62, 0.36, 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#aa725b' : '#b9b4a8'} />
-      <Box size={[0.66, 0.05, 0.66]} position={[-0.1, PAD_HEIGHT + 0.385, 0]} color="#7b7f86" />
+      <Box size={[catalogId === 'warehouse' ? 0.9 : 0.62, catalogId === 'warehouse' ? 0.32 : 0.36, catalogId === 'warehouse' ? 0.76 : 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#aa725b' : '#b9b4a8'} />
+      <Box size={[catalogId === 'warehouse' ? 0.94 : 0.66, 0.05, catalogId === 'warehouse' ? 0.8 : 0.66]} position={[-0.1, PAD_HEIGHT + 0.385, 0]} color={catalogId === 'warehouse' ? '#68747c' : '#7b7f86'} />
       <Box size={[0.2, 0.12, 0.2]} position={[0.02, PAD_HEIGHT + 0.47, 0.12]} color="#8a8e95" />
       <Cylinder
         radius={0.09}
@@ -662,8 +680,9 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
       />
       <Box size={[0.22, 0.16, 0.02]} position={[-0.1, PAD_HEIGHT + 0.08, 0.315]} color="#4d5560" />
       {catalogId === 'warehouse' && <Box size={[0.54, 0.1, 0.12]} position={[0.05, 0.07, 0.39]} color="#828894" />}
-      {catalogId === 'manufactory' && <Cylinder radius={0.12} height={0.88} segments={8} position={[-0.28, PAD_HEIGHT + 0.44, -0.2]} color="#a94832" />}
-      {catalogId === 'workshop' && <group>{[-0.22, 0.02, 0.26].map((x) => <Box key={x} size={[0.18, 0.11, 0.54]} position={[x, PAD_HEIGHT + 0.44, 0]} rotation={[0, 0, 0.16]} color="#969ba0" />)}</group>}
+      {catalogId === 'manufactory' && <group><Cylinder radius={0.12} radiusTop={0.025} height={1.02} segments={8} position={[-0.28, PAD_HEIGHT + 0.51, -0.2]} color="#a94832" /><Cylinder radius={0.11} height={0.05} segments={8} position={[-0.28, PAD_HEIGHT + 0.99, -0.2]} color="#502b24" /></group>}
+      {catalogId === 'workshop' && <group>{[-0.25, 0, 0.25].map((x, index) => <group key={x}><Box size={[0.25, 0.13, 0.62]} position={[x, PAD_HEIGHT + 0.44, 0]} rotation={[0, 0, index % 2 === 0 ? 0.22 : -0.22]} color="#969ba0" /><Box size={[0.1, 0.04, 0.04]} position={[x, PAD_HEIGHT + 0.5, -0.19]} color="#9fc1c8" /></group>)}</group>}
+      {catalogId === 'warehouse' && <group><Box size={[0.34, 0.19, 0.08]} position={[0.18, PAD_HEIGHT + 0.09, 0.39]} color="#66727d" /><Box size={[0.42, 0.08, 0.2]} position={[0.18, 0.04, 0.48]} color="#777f84" /></group>}
       {[-0.3, 0.1].map((x) => (
         <Window key={x} position={[x, 0.27, 0.314]} width={0.1} height={0.07} glass="#9fb8c8" cross={false} sill={false} />
       ))}
@@ -802,6 +821,8 @@ function FireStationMesh() {
 function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'school') return <group><Pad />
     <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
+    <Box size={[0.28, 0.38, 0.4]} position={[-0.3, PAD_HEIGHT + 0.19, -0.08]} color="#d2c4a6" />
+    <Box size={[0.32, 0.035, 0.43]} position={[-0.3, PAD_HEIGHT + 0.4, -0.08]} color="#9a4934" />
     <Box size={[0.74, 0.08, 0.66]} position={[0, PAD_HEIGHT + 0.5, 0]} color="#a74e39" />
     <Box size={[0.54, 0.025, 0.24]} position={[0, 0.018, 0.56]} color="#6d8c46" />
     {[-0.16, 0, 0.16].map((x) => <Box key={x} size={[0.018, 0.012, 0.2]} position={[x, 0.034, 0.56]} color="#f5f0df" />)}
@@ -821,11 +842,12 @@ function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
 function CatalogLandmarkMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'church') return <group><Pad />
     <Box size={[0.52, 0.78, 0.58]} position={[0, PAD_HEIGHT + 0.39, 0]} color="#d5c8ad" />
+    {[-0.32, 0.32].map((x) => <group key={x}><Box size={[0.12, 0.66, 0.12]} position={[x, PAD_HEIGHT + 0.33, 0.13]} color="#b9aa8e" /><Box size={[0.18, 0.12, 0.16]} position={[x, PAD_HEIGHT + 0.69, 0.13]} rotation={[0, 0, Math.PI / 4]} color="#b9aa8e" /></group>)}
     <Box size={[0.56, 0.12, 0.62]} position={[0, PAD_HEIGHT + 0.8, 0]} color="#4b5563" />
     <Box size={[0.15, 0.35, 0.04]} position={[0, PAD_HEIGHT + 0.2, 0.31]} color="#483b35" />
     <Cone radius={0.18} height={0.7} segments={6} position={[0, PAD_HEIGHT + 1.16, 0]} color="#343e4e" />
     <Cone radius={0.11} height={0.44} segments={6} position={[0, PAD_HEIGHT + 0.95, 0.17]} color="#4b5563" />
-    {[-0.18, 0.18].map((x) => <Window key={x} position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" />)}
+    {[-0.18, 0.18].map((x) => <group key={x}><Window position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" /><mesh position={[x, 0.65, 0.31]}><torusGeometry args={[0.052, 0.012, 6, 12, Math.PI]} /><meshToonMaterial color="#eee4d1" /></mesh></group>)}
   </group>
   if (catalogId === 'triumphal-arch') return <group><Pad />
     <Box size={[0.22, 0.76, 0.22]} position={[-0.26, PAD_HEIGHT + 0.38, 0]} color="#d5c4a3" />
@@ -1165,6 +1187,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       break
     case TileType.PARK:
       if (catalogId === 'church' || catalogId === 'triumphal-arch') model = <CatalogLandmarkMesh catalogId={catalogId} />
+      else if (catalogId === 'fountain-square') model = <FountainSquareMesh />
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />
@@ -1247,6 +1270,22 @@ export function SquareMesh() {
       <SmallTree position={[0, 0.08, 0]} scale={0.62} />
     </group>
   )
+}
+
+export function FountainSquareMesh() {
+  return <group>
+    <Box size={[0.98, 0.04, 0.98]} position={[0, 0.02, 0]} color="#cdc4b5" />
+    <Box size={[0.88, 0.04, 0.88]} position={[0, 0.06, 0]} color="#729148" />
+    <Cylinder radius={0.22} height={0.08} segments={16} position={[0, 0.12, 0]} color="#c7bba5" />
+    <Cylinder radius={0.17} height={0.035} segments={16} position={[0, 0.17, 0]} color="#548fa5" />
+    <Cylinder radius={0.025} height={0.22} segments={8} position={[0, 0.28, 0]} color="#d9d0bf" />
+    {[-1, 1].map((side) => <group key={side} position={[side * 0.32, 0.08, 0]}>
+      <Box size={[0.28, 0.035, 0.08]} position={[0, 0.12, 0]} color="#79583a" />
+      <Box size={[0.28, 0.09, 0.025]} position={[0, 0.19, -0.03]} color="#79583a" />
+      {[-0.1, 0.1].map((x) => <Box key={x} size={[0.025, 0.1, 0.025]} position={[x, 0.05, 0]} color="#493629" />)}
+    </group>)}
+    {[-0.32, 0.32].map((x) => <group key={`shrub-${x}`} position={[x, 0.09, -0.32]}><mesh castShadow><icosahedronGeometry args={[0.09, 0]} /><meshToonMaterial color="#587c3b" /></mesh></group>)}
+  </group>
 }
 
 export function ParkMesh() {
