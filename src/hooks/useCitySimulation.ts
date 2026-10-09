@@ -608,7 +608,7 @@ function createFreshState(): SimState {
 
 function createInitialState(): SimState {
   try {
-    const raw = localStorage.getItem('inkville-save')
+    const raw = localStorage.getItem('inkville-save-v2')
     if (raw) {
       const save = JSON.parse(raw) as SimState
       if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) {
@@ -659,8 +659,8 @@ export function useCitySimulation() {
   useEffect(() => {
     try {
       const hasCity = state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
-      if (hasCity) localStorage.setItem('inkville-save', JSON.stringify(state))
-      else localStorage.removeItem('inkville-save')
+      if (hasCity) localStorage.setItem('inkville-save-v2', JSON.stringify(state))
+      else localStorage.removeItem('inkville-save-v2')
     } catch { /* Storage can be unavailable in private browsing. */ }
   }, [state])
 
