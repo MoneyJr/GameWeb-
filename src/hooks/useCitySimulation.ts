@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../lib/cityConfig'
+import { BUILDING_BY_ID, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
 import {
   GRID_SIZE,
   TileType,
@@ -13,8 +14,6 @@ import {
 export const START_BUDGET = 1000
 export const INITIAL_LOAN = 1000
 export const DAILY_LOAN_PAYMENT = 10
-/** A resident contributes this much daily residential tax at the default 10% rate. */
-const DAILY_TAX_PER_RESIDENT = 0.18
 /** Длительность тика при скорости 1x (мс). */
 export const BASE_TICK_MS = 2000
 /** Сколько игровых минут проходит за тик. Бюджет пересчитывается каждые 10 минут. */
@@ -81,7 +80,7 @@ interface SimState {
 }
 
 type Action =
-  | { type: 'PLACE'; x: number; y: number; tool: import('../types/city').ToolId; style?: string }
+  | { type: 'PLACE'; x: number; y: number; tool: import('../types/city').ToolId; style?: string; catalogId?: string }
   | { type: 'REMOVE'; x: number; y: number }
   | { type: 'TICK' }
   | { type: 'CHEAT_BUDGET'; amount: number }
@@ -134,10 +133,14 @@ function recomputeServices(grid: Grid): Grid {
   const parks: [number, number][] = []
   const factories: [number, number][] = []
   const powerSources: [number, number][] = []
+  let powerCapacity = 0
+  let waterCapacity = 0
 
   for (const row of grid) {
     for (const cell of row) {
       if (cell.type === TileType.WATER_PUMP) {
+        const waterId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[TileType.WATER_PUMP]
+        waterCapacity += waterId ? BUILDING_BY_ID[waterId]?.water ?? 15 : 15
         for (const [dx, dy] of NEIGHBOR_STEPS) {
           const nx = cell.x + dx
           const ny = cell.y + dy
@@ -148,6 +151,8 @@ function recomputeServices(grid: Grid): Grid {
         }
       }
       if (cell.type === TileType.WIND || cell.type === TileType.SOLAR_PANEL || cell.type === TileType.COAL) {
+        const powerId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+        powerCapacity += powerId ? BUILDING_BY_ID[powerId]?.energy ?? (cell.type === TileType.COAL ? 60 : 8) : 8
         powerSources.push([cell.x, cell.y])
         for (const [dx, dy] of NEIGHBOR_STEPS) {
           const nx = cell.x + dx
@@ -225,6 +230,8 @@ function recomputeServices(grid: Grid): Grid {
     if (isRoad(nx, ny)) factoryComponents.add(component[ny][nx])
   }
 
+  let waterUsed = 0
+  let powerUsed = 0
   return grid.map((row) =>
     row.map((cell) => {
       const occupied = cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD
@@ -251,6 +258,18 @@ function recomputeServices(grid: Grid): Grid {
       let hasPower = false
       if (cell.type === TileType.WIND || cell.type === TileType.SOLAR_PANEL || cell.type === TileType.COAL) hasPower = true
       else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || nextToServedRoad(cell.x, cell.y, isPoweredRoad)
+
+      const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+      const catalogEntry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
+      const consumesUtilities = catalogEntry?.category === 'residential' || catalogEntry?.category === 'commercial' || catalogEntry?.category === 'industrial'
+      if (consumesUtilities) {
+        const requiredWater = catalogEntry?.water ?? 1
+        const requiredPower = catalogEntry?.energy ?? 1
+        hasWater = hasWater && waterUsed + requiredWater <= waterCapacity
+        hasPower = hasPower && powerUsed + requiredPower <= powerCapacity
+        if (hasWater) waterUsed += requiredWater
+        if (hasPower) powerUsed += requiredPower
+      }
 
 
       let residents = cell.residents
@@ -362,7 +381,7 @@ function countTiles(grid: Grid): CityCounts {
           counts.policeStations += 1
           continue
         case TileType.FIRE_STATION:
-          counts.fireStations += 1
+          if (cell.catalogId === 'fire-depot' || !cell.catalogId) counts.fireStations += 1
           continue
         case TileType.RESIDENTIAL:
           counts.houses += 1
@@ -401,28 +420,35 @@ function countTiles(grid: Grid): CityCounts {
   return counts
 }
 
-/** Суточный чистый доход: дом и рабочее место должны иметь воду и электричество. */
-function computeNetIncome(counts: CityCounts, population: number, taxRates: SimState['taxRates']): number {
-  const housingTaxes = population * DAILY_TAX_PER_RESIDENT * (taxRates.residential / 10)
-  // One worker makes two units per day; an average store requires 24 goods per day.
-  const dailyGoods = Math.min(population, counts.factories * 12) * 2
-  const goodsSupportedShops = Math.min(counts.suppliedShops, Math.floor(dailyGoods / 24))
-  const suppliedShopCount = Math.min(counts.servicedShops, goodsSupportedShops)
-  const shortageShopCount = Math.max(0, counts.servicedShops - suppliedShopCount)
-  const shopIncome = population > 0 ? (suppliedShopCount * 36 + shortageShopCount * 10.8) * (taxRates.commercial / 10) : 0
-  const factoryIncome = counts.servicedFactories * 12 * (taxRates.industrial / 10)
-  const upkeep = counts.roads * 0.2 + counts.pumps * 1 + counts.parks * 2 + counts.wind * 5 + counts.coal * 10
-  return Math.round(housingTaxes + shopIncome + factoryIncome - upkeep)
+/** Каталог задаёт готовую чистую сумму за каждый десятиминутный такт. */
+function computeNetIncome(grid: Grid, taxRates: SimState['taxRates']): number {
+  let total = 0
+  for (const row of grid) for (const cell of row) {
+    if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT || cell.type === TileType.CITY_HALL) continue
+    const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+    const entry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
+    if (!entry) continue
+    const taxGroup = entry.category === 'residential' ? 'residential'
+      : entry.category === 'commercial' ? 'commercial'
+        : entry.category === 'industrial' ? 'industrial' : undefined
+    const taxMultiplier = taxGroup && entry.tickNet > 0 ? taxRates[taxGroup] / 10 : 1
+    total += entry.tickNet * taxMultiplier
+  }
+  return Math.round(total)
 }
 
 /** Целевое счастье учитывает нехватку воды, загрязнение и перегруз полиции. */
-function targetHappiness(counts: CityCounts, crimeRate: number): number {
+function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid): number {
   if (counts.consumers === 0) return 100
   let h = 100 - crimeRate * 0.5
   if (counts.houses > 0) {
     h -= (counts.smogHouses / counts.houses) * 20
   }
   h += globalParkValue
+  for (const row of grid) for (const cell of row) {
+    const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+    if (id) h += BUILDING_BY_ID[id]?.happiness ?? 0
+  }
   return Math.round(Math.min(100, Math.max(0, h)))
 }
 
@@ -443,7 +469,9 @@ function reducer(state: SimState, action: Action): SimState {
       const { x, y, tool, style } = action
       if (!inBounds(x, y)) return state
       
-      const def = TOOL_DEFINITIONS[tool]
+      const baseDef = TOOL_DEFINITIONS[tool]
+      const catalogEntry = action.catalogId ? BUILDING_BY_ID[action.catalogId] : undefined
+      const def = catalogEntry ? { ...baseDef, tile: catalogEntry.tile, cost: catalogEntry.cost } : baseDef
       
       let cost = def.cost;
       if (tool === ToolId.PARK) {
@@ -478,12 +506,17 @@ function reducer(state: SimState, action: Action): SimState {
         row.map((cell, c) => {
           if (r >= y && r < y + h && c >= x && c < x + w) {
             if (r === y && c === x) {
-              const home = def.tile === TileType.RESIDENTIAL ? residenceProfile(x, y, state.day, state.minutes) : undefined
+              const home = def.tile === TileType.RESIDENTIAL
+                ? (catalogEntry?.population
+                  ? { floors: catalogEntry.id === 'cottage' ? 1 : catalogEntry.id === 'apartment' ? 4 : 3, maxResidents: catalogEntry.population }
+                  : residenceProfile(x, y, state.day, state.minutes))
+                : undefined
               return {
                 ...cell,
                 type: def.tile!,
                 level: 1,
                 style,
+                catalogId: catalogEntry?.id,
                 smog: false,
                 animate: true,
                 ...(home ? { residentialFloors: home.floors, maxResidents: home.maxResidents, residents: 0 } : {}),
@@ -564,15 +597,15 @@ case 'TICK': {
       }))
       const population = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
       const counts = countTiles(cityGrid)
-      const net = computeNetIncome(counts, population, state.taxRates)
+      const net = computeNetIncome(cityGrid, state.taxRates)
       const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION
       const crimeRate = population > totalPoliceCap && population > 0
         ? Math.min(100, Math.round(((population - totalPoliceCap) / population) * 100))
         : 0
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
-      const happinessDrift = (targetHappiness(counts, crimeRate) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
+      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const netTickIncome = net - (state.debt > 0 ? DAILY_LOAN_PAYMENT : 0)
+      const netTickIncome = net - (state.debt > 0 && isMidnight ? DAILY_LOAN_PAYMENT : 0)
       return {
         ...state,
         grid: cityGrid,
@@ -665,7 +698,7 @@ export function useCitySimulation() {
   }, [state])
 
   const placeTile = useCallback(
-    (x: number, y: number, style?: string) => dispatch({ type: 'PLACE', x, y, tool: activeTool, style }),
+    (x: number, y: number, style?: string, catalogId?: string) => dispatch({ type: 'PLACE', x, y, tool: activeTool, style, catalogId }),
     [activeTool],
   )
 

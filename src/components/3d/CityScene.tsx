@@ -5,6 +5,7 @@ import { Edges, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
+import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 
@@ -329,6 +330,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
             <TileModel
               key={cell.type}
               type={cell.type}
+              catalogId={cell.catalogId}
               variant={(cell.x * 7 + cell.y * 13) % 4}
               hasWater={cell.hasWater}
               hasPower={cell.hasPower}
@@ -356,7 +358,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
 interface InteractionLayerProps {
   grid: Grid
   activeTool: ToolId
-  onPlace: (x: number, y: number) => void
+  onPlace: (x: number, y: number, catalogId?: string) => void
   onRemove: (x: number, y: number) => void
   isTouchDevice: boolean
   onTouchPreview: (cell: Cell) => void
@@ -364,6 +366,7 @@ interface InteractionLayerProps {
   onRoadDragState: (dragging: boolean) => void
   ghost: TouchGhost | null
   placementStyle?: string
+  catalogId?: string
 }
 
 interface TouchGhost {
@@ -409,7 +412,7 @@ function HoverHighlight({ color }: { color: string }) {
   )
 }
 
-function GhostTilePreview({ tool, cell, style, roadLinks }: { tool: ToolId; cell: Cell; style?: string; roadLinks: { north: boolean; south: boolean; east: boolean; west: boolean } }) {
+function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: ToolId; cell: Cell; style?: string; catalogId?: string; roadLinks: { north: boolean; south: boolean; east: boolean; west: boolean } }) {
   const group = useRef<THREE.Group>(null)
   const tile = TOOL_DEFINITIONS[tool].tile
 
@@ -434,12 +437,12 @@ function GhostTilePreview({ tool, cell, style, roadLinks }: { tool: ToolId; cell
   if (!tile) return null
   return (
     <group ref={group} position={cellToWorld(cell.x, cell.y)} renderOrder={20}>
-      <TileModel type={tile} style={style} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
+      <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle }: InteractionLayerProps) {
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle, catalogId }: InteractionLayerProps) {
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
@@ -449,9 +452,9 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
   const act = useCallback(
     (cell: Cell) => {
       if (activeTool === ToolId.BULLDOZE) onRemove(cell.x, cell.y)
-      else if (activeTool !== ToolId.CURSOR) onPlace(cell.x, cell.y)
+      else if (activeTool !== ToolId.CURSOR) onPlace(cell.x, cell.y, catalogId)
     },
-    [activeTool, onPlace, onRemove],
+    [activeTool, catalogId, onPlace, onRemove],
   )
 
   useEffect(() => {
@@ -622,7 +625,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
             east: cells.some((other) => other.x === cell.x + 1 && other.y === cell.y),
             west: cells.some((other) => other.x === cell.x - 1 && other.y === cell.y),
           }
-          return <GhostTilePreview key={`${cell.x},${cell.y}`} tool={activeTool} cell={cell} style={placementStyle} roadLinks={roadLinks} />
+          return <GhostTilePreview key={`${cell.x},${cell.y}`} tool={activeTool} cell={cell} style={placementStyle} catalogId={catalogId} roadLinks={roadLinks} />
         })
       )}
     </group>
@@ -636,11 +639,12 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
 export interface CitySceneProps {
   grid: Grid
   activeTool: ToolId
-  onPlace: (x: number, y: number) => void
+  onPlace: (x: number, y: number, catalogId?: string) => void
   onRemove: (x: number, y: number) => void
   minutes: number
   budget?: number
   placementStyle?: string
+  catalogId?: string
 }
 
 import { applyNightLevel } from './primitives'
@@ -670,7 +674,7 @@ function NightManager({ minutes }: { minutes: number }) {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget = 0, placementStyle }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget = 0, placementStyle, catalogId }: CitySceneProps) {
   const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
@@ -797,6 +801,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         onRoadDragState={handleRoadDragState}
         ghost={touchGhost}
         placementStyle={placementStyle}
+        catalogId={catalogId}
       />
       </Suspense>
     </Canvas>
@@ -810,15 +815,15 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
           <button
             type="button"
             onClick={() => {
-              const unitCost = TOOL_DEFINITIONS[activeTool].cost
+              const unitCost = catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost
               const cost = unitCost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)
-              touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y))
+              touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y, catalogId))
               if (budget >= cost) setTouchGhost(null)
             }}
             className="pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border border-emerald-900/30 bg-emerald-600 px-4 text-sm font-bold text-white shadow-lg active:scale-95"
-            aria-label={`Построить за $${TOOL_DEFINITIONS[activeTool].cost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}`}
+            aria-label={`Построить за $${(catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost) * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}`}
           >
-            <span aria-hidden="true">✓</span><span>${TOOL_DEFINITIONS[activeTool].cost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}</span>
+            <span aria-hidden="true">✓</span><span>${(catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost) * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}</span>
           </button>
           <button
             type="button"

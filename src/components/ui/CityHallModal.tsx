@@ -37,7 +37,7 @@ export function CityHallModal({ onClose, taxRates, onTaxChange, debt, onLoan, on
             {debt > 0 ? <p className="mt-3 rounded-lg bg-white/55 px-3 py-2 text-xs font-bold">Стартовый заём: $1,000 · Выплата: $10/день</p> : <button onClick={() => onLoan(2000)} className="mt-3 rounded-lg border border-ink/30 bg-white/55 px-3 py-2 text-xs font-bold">Оформить новый заём $2,000</button>}
           </div>
           <div className="rounded-2xl border-2 border-ink bg-white p-4 text-xs font-bold shadow-[2px_2px_0_0_var(--color-ink)]">
-            <div className="mb-2 flex justify-between"><span>Водоснабжение</span><span>{waterServed}/{waterTotal}</span></div><div className="mb-2 flex justify-between"><span>Счастье</span><span>{happiness}%</span></div><div className="flex justify-between"><span>Доход за день</span><span>{lastNet >= 0 ? '+' : ''}${lastNet}</span></div>
+            <div className="mb-2 flex justify-between"><span>Водоснабжение</span><span>{waterServed}/{waterTotal}</span></div><div className="mb-2 flex justify-between"><span>Счастье</span><span>{happiness}%</span></div><div className="flex justify-between"><span>Чистый доход за 10 минут</span><span>{lastNet >= 0 ? '+' : ''}${lastNet}</span></div>
           </div>
         </div>
       </div>

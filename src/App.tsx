@@ -15,6 +15,7 @@ function App() {
   const [started, setStarted] = useState(new URLSearchParams(window.location.search).has('preview'))
   const titleVisible = !started
   const [resStyle, setResStyle] = useState<"EU" | "US" | "EAST">("EU")
+  const [catalogId, setCatalogId] = useState<string | undefined>(undefined)
   // A shareable visual fixture, enabled with ?preview=cityrt, keeps the simulation's normal empty start intact.
   const displayGrid = useMemo<Grid>(() => {
     if (new URLSearchParams(window.location.search).get('preview') !== 'cityrt') return sim.grid
@@ -70,7 +71,8 @@ function App() {
       <CityScene
         grid={displayGrid}
         activeTool={sim.activeTool}
-        onPlace={(x,y) => sim.placeTile(x, y, resStyle)}
+        catalogId={catalogId}
+        onPlace={(x,y,id) => sim.placeTile(x, y, resStyle, id)}
         onRemove={sim.removeTile}
         minutes={sim.minutes}
         budget={sim.budget}
@@ -106,7 +108,7 @@ function App() {
         </div>
       )}
 
-      <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} resStyle={resStyle} onResStyleChange={(s) => setResStyle(s as any)} />
+      <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} resStyle={resStyle} onResStyleChange={(s) => setResStyle(s as any)} />
       {cityHallOpen && (
         <CityHallModal
           onClose={() => setCityHallOpen(false)}

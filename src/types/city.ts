@@ -32,6 +32,7 @@ export interface GridCell {
   hasPower: boolean
   level: number
   style?: string
+  catalogId?: string
   refX?: number
   refY?: number
   smog?: boolean

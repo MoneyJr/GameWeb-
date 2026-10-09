@@ -381,8 +381,21 @@ function Dome({ radius, color, position }: { radius: number; color: string; posi
  * Жилой дом: трёхъярусная ступенчатая (черепичная) скатная крыша с контрастным цветом,
  * слуховое окно, труба с оголовком, окна с рамами и переплётами, дверь с крыльцом.
  */
-export function Residential({ variant = 0, style = 'EU' }: { variant?: number, style?: string }) {
-  const floors = 2 + (variant % 3) // 2 to 4 floors
+export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?: number, style?: string, catalogId?: string }) {
+  const floors = catalogId === 'cottage' ? 1 : catalogId === 'townhouse' ? 3 : catalogId === 'apartment' ? 4 : 2 + (variant % 3)
+
+  if (catalogId === 'cottage') {
+    return <group><Pad />
+      <Box size={[0.66, 0.32, 0.62]} position={[0, PAD_HEIGHT + 0.16, 0]} color="#e2cda9" />
+      <Box size={[0.78, 0.06, 0.72]} position={[0, PAD_HEIGHT + 0.34, 0]} color="#9b4934" />
+      <Box size={[0.45, 0.42, 0.48]} position={[0, PAD_HEIGHT + 0.55, 0]} rotation={[0, 0, Math.PI / 4]} color="#a34830" />
+      <Window position={[-0.18, 0.28, 0.32]} width={0.14} height={0.14} glass="#293746" frame="#f5ead7" />
+      <Window position={[0.18, 0.28, 0.32]} width={0.14} height={0.14} glass="#293746" frame="#f5ead7" />
+      <Box size={[0.2, 0.04, 0.04]} position={[0, 0.11, 0.36]} color="#e7d8bb" />
+      <Box size={[0.27, 0.04, 0.22]} position={[0.34, 0.04, 0.16]} color="#6d8c46" />
+      <mesh position={[0.34, 0.16, 0.16]} castShadow receiveShadow><icosahedronGeometry args={[0.12, 0]} /><meshToonMaterial color="#587c3b" /></mesh>
+    </group>
+  }
   
   if (style === 'US') {
     const brick = ['#8b4513', '#a52a2a', '#a0522d'][variant % 3]
@@ -573,13 +586,13 @@ export function Residential({ variant = 0, style = 'EU' }: { variant?: number, s
     </group>
   )
 }
-export function Commercial() {
+export function Commercial({ catalogId }: { catalogId?: string }) {
   const stripes = [-0.275, -0.165, -0.055, 0.055, 0.165, 0.275]
   return (
     <group>
       <Pad />
-      <Box size={[0.74, 0.5, 0.62]} position={[0, PAD_HEIGHT + 0.25, 0]} color="#f4d9a6" />
-      <Box size={[0.8, 0.05, 0.68]} position={[0, PAD_HEIGHT + 0.525, 0]} color="#c9784a" />
+      <Box size={[0.74, 0.5, 0.62]} position={[0, PAD_HEIGHT + 0.25, 0]} color={catalogId === 'grocer' ? '#dfbd76' : catalogId === 'mall' ? '#c9c9bd' : '#f4d9a6'} />
+      <Box size={[0.8, 0.05, 0.68]} position={[0, PAD_HEIGHT + 0.525, 0]} color={catalogId === 'mall' ? '#66727d' : '#c9784a'} />
       <Box size={[0.7, 0.03, 0.58]} position={[0, PAD_HEIGHT + 0.565, 0]} color="#e0b183" />
 
       {/* крыша: вывеска и кондиционер */}
@@ -601,6 +614,7 @@ export function Commercial() {
           color={index % 2 === 0 ? '#e8523f' : '#fff8ea'}
         />
       ))}
+      {catalogId === 'mall' && <group>{[-0.31, -0.1, 0.11, 0.32].map((x) => <Box key={x} size={[0.035, 0.012, 0.22]} position={[x, 0.014, 0.61]} color="#f5f0df" />)}<Box size={[0.92, 0.025, 0.24]} position={[0, 0.012, 0.62]} color="#50545a" /></group>}
       {[-0.24, 0, 0.24].map((x) => (
         <Window key={x} position={[x, 0.47, 0.314]} width={0.13} height={0.1} glass="#4fa8e8" sill={false} />
       ))}
@@ -617,11 +631,11 @@ export function Commercial() {
 }
 
 /** Завод: серый цех с пилообразной крышей, кирпичная труба и бак. */
-export function Industrial() {
+export function Industrial({ catalogId }: { catalogId?: string }) {
   return (
     <group>
       <Pad />
-      <Box size={[0.62, 0.36, 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color="#b9b4a8" />
+      <Box size={[0.62, 0.36, 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#aa725b' : '#b9b4a8'} />
       <Box size={[0.66, 0.05, 0.66]} position={[-0.1, PAD_HEIGHT + 0.385, 0]} color="#7b7f86" />
       <Box size={[0.2, 0.12, 0.2]} position={[0.02, PAD_HEIGHT + 0.47, 0.12]} color="#8a8e95" />
       <Cylinder
@@ -647,6 +661,9 @@ export function Industrial() {
         color="#dcd6c2"
       />
       <Box size={[0.22, 0.16, 0.02]} position={[-0.1, PAD_HEIGHT + 0.08, 0.315]} color="#4d5560" />
+      {catalogId === 'warehouse' && <Box size={[0.54, 0.1, 0.12]} position={[0.05, 0.07, 0.39]} color="#828894" />}
+      {catalogId === 'manufactory' && <Cylinder radius={0.12} height={0.88} segments={8} position={[-0.28, PAD_HEIGHT + 0.44, -0.2]} color="#a94832" />}
+      {catalogId === 'workshop' && <group>{[-0.22, 0.02, 0.26].map((x) => <Box key={x} size={[0.18, 0.11, 0.54]} position={[x, PAD_HEIGHT + 0.44, 0]} rotation={[0, 0, 0.16]} color="#969ba0" />)}</group>}
       {[-0.3, 0.1].map((x) => (
         <Window key={x} position={[x, 0.27, 0.314]} width={0.1} height={0.07} glass="#9fb8c8" cross={false} sill={false} />
       ))}
@@ -780,6 +797,44 @@ function FireStationMesh() {
       <Cylinder radius={0.025} radiusTop={0.025} height={0.24} segments={6} position={[0, PAD_HEIGHT + 0.82, 0]} color="#b88c39" />
     </group>
   )
+}
+
+function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
+  if (catalogId === 'school') return <group><Pad />
+    <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
+    <Box size={[0.74, 0.08, 0.66]} position={[0, PAD_HEIGHT + 0.5, 0]} color="#a74e39" />
+    <Box size={[0.54, 0.025, 0.24]} position={[0, 0.018, 0.56]} color="#6d8c46" />
+    {[-0.16, 0, 0.16].map((x) => <Box key={x} size={[0.018, 0.012, 0.2]} position={[x, 0.034, 0.56]} color="#f5f0df" />)}
+    <Box size={[0.28, 0.18, 0.03]} position={[0, PAD_HEIGHT + 0.13, 0.31]} color="#487a9b" />
+  </group>
+  if (catalogId === 'hospital') return <group><Pad />
+    <Box size={[0.72, 0.7, 0.64]} position={[0, PAD_HEIGHT + 0.35, 0]} color="#e5e1d7" />
+    <Box size={[0.78, 0.07, 0.7]} position={[0, PAD_HEIGHT + 0.72, 0]} color="#7895a0" />
+    <Box size={[0.24, 0.23, 0.035]} position={[0, PAD_HEIGHT + 0.18, 0.34]} color="#f8f5eb" />
+    <Box size={[0.045, 0.18, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
+    <Box size={[0.18, 0.045, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
+    {[-0.23, 0.23].map((x) => <Window key={x} position={[x, 0.57, 0.33]} width={0.13} height={0.16} glass="#7399ab" />)}
+  </group>
+  return <FireStationMesh />
+}
+
+function CatalogLandmarkMesh({ catalogId }: { catalogId?: string }) {
+  if (catalogId === 'church') return <group><Pad />
+    <Box size={[0.52, 0.78, 0.58]} position={[0, PAD_HEIGHT + 0.39, 0]} color="#d5c8ad" />
+    <Box size={[0.56, 0.12, 0.62]} position={[0, PAD_HEIGHT + 0.8, 0]} color="#4b5563" />
+    <Box size={[0.15, 0.35, 0.04]} position={[0, PAD_HEIGHT + 0.2, 0.31]} color="#483b35" />
+    <Cone radius={0.18} height={0.7} segments={6} position={[0, PAD_HEIGHT + 1.16, 0]} color="#343e4e" />
+    <Cone radius={0.11} height={0.44} segments={6} position={[0, PAD_HEIGHT + 0.95, 0.17]} color="#4b5563" />
+    {[-0.18, 0.18].map((x) => <Window key={x} position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" />)}
+  </group>
+  if (catalogId === 'triumphal-arch') return <group><Pad />
+    <Box size={[0.22, 0.76, 0.22]} position={[-0.26, PAD_HEIGHT + 0.38, 0]} color="#d5c4a3" />
+    <Box size={[0.22, 0.76, 0.22]} position={[0.26, PAD_HEIGHT + 0.38, 0]} color="#d5c4a3" />
+    <Box size={[0.78, 0.2, 0.24]} position={[0, PAD_HEIGHT + 0.86, 0]} color="#c6b28e" />
+    <Box size={[0.34, 0.48, 0.08]} position={[0, PAD_HEIGHT + 0.39, 0.12]} color="#423d36" />
+    <Box size={[0.68, 0.045, 0.28]} position={[0, PAD_HEIGHT + 0.99, 0]} color="#a58e68" />
+  </group>
+  return <SquareMesh />
 }
 
 export function NoPowerMarker() {
@@ -1048,6 +1103,7 @@ function DustBurst({ count = 10 }: { count?: number }) {
 
 interface TileModelProps extends RoadLinks {
   type: TileType
+  catalogId?: string
   /** Вариант раскраски (цвет стен и крыши). */
   variant?: number
   /** Подключено ли здание к воде. Здания без воды получают парящий маркер. */
@@ -1061,7 +1117,7 @@ interface TileModelProps extends RoadLinks {
 }
 
 
-function TileModelBase({ type, variant = 0, hasWater = true, hasPower = true, hasSupplies = true, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
+function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
   let model: ReactNode = null
   let dust = 0
   let needsWater = false
@@ -1076,14 +1132,14 @@ function TileModelBase({ type, variant = 0, hasWater = true, hasPower = true, ha
       dust = 4
       break
     case TileType.RESIDENTIAL:
-      model = <Residential variant={variant} style={style as any} />
+      model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
       dust = 10
       needsWater = true
       needsPower = true
       useConstruction = true
       break
     case TileType.COMMERCIAL:
-      model = <Commercial />
+      model = <Commercial catalogId={catalogId} />
       dust = 10
       needsWater = true
       needsPower = true
@@ -1091,7 +1147,7 @@ function TileModelBase({ type, variant = 0, hasWater = true, hasPower = true, ha
       useConstruction = true
       break
     case TileType.INDUSTRIAL:
-      model = <Industrial />
+      model = <Industrial catalogId={catalogId} />
       dust = 12
       needsWater = true
       needsPower = true
@@ -1108,7 +1164,8 @@ function TileModelBase({ type, variant = 0, hasWater = true, hasPower = true, ha
       useConstruction = true;
       break
     case TileType.PARK:
-      if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
+      if (catalogId === 'church' || catalogId === 'triumphal-arch') model = <CatalogLandmarkMesh catalogId={catalogId} />
+      else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />
       dust = 5
@@ -1130,7 +1187,7 @@ function TileModelBase({ type, variant = 0, hasWater = true, hasPower = true, ha
       dust = 8
       break
     case TileType.FIRE_STATION:
-      model = <FireStationMesh />
+      model = <CatalogCivicMesh catalogId={catalogId} />
       dust = 8
       break
     default:

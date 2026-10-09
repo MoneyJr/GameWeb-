@@ -1,9 +1,9 @@
 import {
   Building2,
+  Church,
   Droplets,
   Factory,
   Flame,
-  Footprints,
   House,
   Landmark,
   PenLine,
@@ -11,6 +11,9 @@ import {
   Shield,
   Sun,
   Store,
+  School,
+  ShoppingBag,
+  Warehouse,
   TreePine,
   Trash2,
   Wind,
@@ -20,12 +23,15 @@ import { useEffect, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { cn } from '../../lib/utils'
 import { ToolId } from '../../types/city'
+import { BUILDING_CATALOG, type BuildingCategoryId } from '../../store/buildingCatalog'
 
 interface BottomDockProps {
   activeTool: ToolId
   onSelect: (tool: ToolId) => void
   resStyle?: string
   onResStyleChange?: (style: string) => void
+  selectedCatalogId?: string
+  onCatalogSelect?: (id: string | undefined) => void
 }
 
 interface DockOption {
@@ -35,6 +41,7 @@ interface DockOption {
   tool?: ToolId
   cost?: number
   unavailable?: boolean
+  catalogId?: string
 }
 
 interface Category {
@@ -51,19 +58,38 @@ const option = (tool: ToolId, label: string, icon: LucideIcon): DockOption => ({
   tool,
   cost: TOOL_DEFINITIONS[tool].cost,
 })
-const planned = (id: string, label: string, icon: LucideIcon): DockOption => ({ id, label, icon, unavailable: true })
+const catalogIcons: Record<string, LucideIcon> = {
+  cottage: House, townhouse: House, apartment: Building2,
+  bakery: Store, grocer: ShoppingBag, mall: Building2,
+  workshop: Factory, manufactory: Factory, warehouse: Warehouse,
+  'fire-depot': Flame, school: School, hospital: Building2,
+  'fountain-square': TreePine, church: Church, 'triumphal-arch': Landmark,
+  'wind-generator': Wind, 'solar-station': Sun, 'water-tower': Droplets,
+}
+
+const catalogCategoryInfo: Record<BuildingCategoryId, { key: string; label: string; icon: LucideIcon }> = {
+  residential: { key: 'H', label: 'Жильё', icon: House },
+  commercial: { key: 'S', label: 'Коммерция', icon: Store },
+  industrial: { key: 'I', label: 'Промышленность', icon: Factory },
+  civic: { key: 'V', label: 'Службы', icon: Shield },
+  parks: { key: 'P', label: 'Парки и знаковые', icon: TreePine },
+  utilities: { key: 'U', label: 'Энергия и вода', icon: Droplets },
+}
 
 const CATEGORIES: Category[] = [
-  { key: '1', label: 'Дороги', icon: Route, options: [option(ToolId.ROAD, 'Асфальтовая дорога', Route), planned('paving', 'Пешеходная дорожка', Footprints)] },
-  { key: 'U', label: 'Ток и вода', icon: Droplets, options: [option(ToolId.WIND, 'Ветряк', Wind), option(ToolId.SOLAR_PANEL, 'Солнечные панели', Sun), option(ToolId.WATER_PUMP, 'Водонапорная башня', Droplets), option(ToolId.COAL, 'ТЭС', Factory)] },
-  { key: 'Z', label: 'Зоны', icon: Building2, options: [option(ToolId.RESIDENTIAL, 'Жилая зона', House), option(ToolId.COMMERCIAL, 'Торговая зона', Store), option(ToolId.INDUSTRIAL, 'Промзона', Factory)] },
-  { key: 'H', label: 'Жильё', icon: House, options: [option(ToolId.RESIDENTIAL, 'Жилой дом', House)] },
-  { key: 'S', label: 'Торговля', icon: Store, options: [option(ToolId.COMMERCIAL, 'Магазин', Store)] },
-  { key: 'O', label: 'Офисы', icon: Building2, options: [planned('office', 'Офисный блок', Building2)] },
-  { key: 'I', label: 'Заводы', icon: Factory, options: [option(ToolId.INDUSTRIAL, 'Завод', Factory)] },
-  { key: 'V', label: 'Службы', icon: Shield, options: [option(ToolId.POLICE, 'Полицейский участок', Shield), option(ToolId.FIRE_STATION, 'Пожарная часть', Flame), planned('clinic', 'Клиника', Building2), option(ToolId.CITY_HALL, 'Мэрия / Ратуша', Landmark)] },
-  { key: 'P', label: 'Парки', icon: TreePine, options: [option(ToolId.PARK, 'Парк и скверы', TreePine)] },
-  { key: 'D', label: 'Декор', icon: Landmark, options: [planned('street-lamp', 'Фонарь', Landmark), planned('bench', 'Скамейка', Building2), planned('fence', 'Ограждение', Footprints)] },
+  { key: '1', label: 'Дороги', icon: Route, options: [option(ToolId.ROAD, 'Асфальтовая дорога', Route)] },
+  ...(['residential', 'commercial', 'industrial', 'civic', 'parks', 'utilities'] as const).map((categoryId) => {
+    const info = catalogCategoryInfo[categoryId]
+    return {
+      key: info.key,
+      label: info.label,
+      icon: info.icon,
+      options: BUILDING_CATALOG.filter((entry) => entry.category === categoryId).map((entry) => ({
+        id: entry.id, catalogId: entry.id, label: entry.name, icon: catalogIcons[entry.id] ?? Building2,
+        tool: entry.tool, cost: entry.cost,
+      })),
+    }
+  }),
   { key: 'X', label: 'Снос', icon: Trash2, options: [option(ToolId.BULLDOZE, 'Снести объект', Trash2)] },
 ]
 
@@ -73,7 +99,7 @@ const RES_STYLES = [
   { id: 'EAST', label: 'Eastern', detail: 'Восточный' },
 ]
 
-export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleChange }: BottomDockProps) {
+export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleChange, selectedCatalogId, onCatalogSelect }: BottomDockProps) {
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const [styleOpen, setStyleOpen] = useState(false)
   const selectedCategory = CATEGORIES.find((category) => category.key === activeCategory)
@@ -82,16 +108,19 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
     if (activeCategory === category.key) {
       setActiveCategory(null)
       onSelect(ToolId.CURSOR)
+      onCatalogSelect?.(undefined)
       return
     }
     setActiveCategory(category.key)
-    const firstTool = category.options.find((item) => item.tool !== undefined)?.tool
-    onSelect(firstTool ?? ToolId.CURSOR)
+    const firstItem = category.options.find((item) => item.tool !== undefined)
+    onSelect(firstItem?.tool ?? ToolId.CURSOR)
+    onCatalogSelect?.(firstItem?.catalogId)
   }
 
   const chooseOption = (category: Category, item: DockOption) => {
     setActiveCategory(category.key)
     if (item.tool) onSelect(item.tool)
+    onCatalogSelect?.(item.catalogId)
   }
 
   useEffect(() => {
@@ -113,6 +142,7 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
         setStyleOpen(false)
         setActiveCategory(null)
         onSelect(ToolId.CURSOR)
+        onCatalogSelect?.(undefined)
       }
     }
     window.addEventListener('keydown', onKeyDown)
@@ -194,7 +224,7 @@ export function BottomDock({ activeTool, onSelect, resStyle = 'EU', onResStyleCh
         <div className="ribbon-option-list" aria-label={selectedCategory ? `Предметы категории ${selectedCategory.label}` : 'Выберите категорию'}>
         {selectedCategory?.options.map((item) => {
           const Icon = item.icon
-          const selected = item.tool !== undefined && activeTool === item.tool
+          const selected = item.catalogId ? selectedCatalogId === item.catalogId : item.tool !== undefined && activeTool === item.tool
           return (
             <button
               key={item.id}
