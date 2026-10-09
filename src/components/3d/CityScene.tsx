@@ -326,7 +326,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
         if (cell.type === TileType.EMPTY) return null
         // Keep five homes in the CityRT visual reference strip.
         return (
-          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x, cell.y)}>
+          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + (cell.catalogId === 'mall' ? 0.5 : 0), cell.y)}>
             <TileModel
               key={cell.type}
               type={cell.type}
@@ -436,7 +436,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: T
 
   if (!tile) return null
   return (
-    <group ref={group} position={cellToWorld(cell.x, cell.y)} renderOrder={20}>
+    <group ref={group} position={cellToWorld(cell.x + (catalogId === 'mall' ? 0.5 : 0), cell.y)} renderOrder={20}>
       <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
@@ -675,7 +675,6 @@ function NightManager({ minutes }: { minutes: number }) {
 }
 
 export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget = 0, placementStyle, catalogId }: CitySceneProps) {
-  const [isNarrow, setIsNarrow] = useState(() => window.innerWidth < 768)
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
   const controlsRef = useRef<PannableControls | null>(null)
@@ -705,11 +704,6 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   }, [])
   useEffect(() => setTouchGhost(null), [activeTool])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
-  useEffect(() => {
-    const updateViewport = () => setIsNarrow(window.innerWidth < 768)
-    window.addEventListener('resize', updateViewport)
-    return () => window.removeEventListener('resize', updateViewport)
-  }, [])
   const isReferencePreview = new URLSearchParams(window.location.search).get('preview') === 'cityrt'
   const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
   const cameraTarget: [number, number, number] = isReferencePreview ? [-0.5, 0, -0.5] : [0, 0, -3.5]
@@ -718,7 +712,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
     CAMERA_POSITION[1],
     cameraTarget[2] + CAMERA_POSITION[2],
   ]
-  const shadowMapSize: [number, number] = isNarrow ? [1024, 1024] : [2048, 2048]
+  const shadowMapSize: [number, number] = [2048, 2048]
   const maxDpr = Math.min(window.devicePixelRatio || 1, 1.5)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -747,10 +741,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Canvas
-      shadows={{ type: THREE.PCFSoftShadowMap }}
+      shadows={{ type: THREE.PCFShadowMap }}
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true
-        gl.shadowMap.type = THREE.PCFSoftShadowMap
+        gl.shadowMap.type = THREE.PCFShadowMap
       }}
       onContextMenu={(e) => e.preventDefault()}
       flat
@@ -782,7 +776,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         shadow-camera-bottom={-22}
         shadow-camera-near={0.5}
         shadow-camera-far={90}
-        shadow-bias={-0.0003}
+        shadow-bias={-0.0005}
         shadow-normalBias={0.015}
       />
 

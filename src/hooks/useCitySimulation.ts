@@ -490,6 +490,7 @@ function reducer(state: SimState, action: Action): SimState {
         if (state.grid.some(row => row.some(c => c.type === TileType.CITY_HALL))) return state;
         w = 2; h = 2;
       }
+      if (catalogEntry?.id === 'mall') w = 2
       if (tool === ToolId.PARK) {
         if (style === 'PARK') { w = 2; h = 2; }
         if (style === 'LARGE_PARK') { w = 3; h = 3; }
@@ -547,6 +548,7 @@ function reducer(state: SimState, action: Action): SimState {
       // Determine bounds
       let w = 1, h = 1;
       if (targetCell.type === TileType.CITY_HALL) { w = 2; h = 2; }
+      if (targetCell.catalogId === 'mall') w = 2
       if (targetCell.type === TileType.PARK) {
         if (targetCell.style === 'PARK') { w = 2; h = 2; }
         if (targetCell.style === 'LARGE_PARK') { w = 3; h = 3; }

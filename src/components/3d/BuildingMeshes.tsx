@@ -16,7 +16,7 @@ type Shape =
   | { kind: 'cylinder'; radiusTop: number; radiusBottom: number; height: number; segments: number }
   | { kind: 'cone'; radius: number; height: number; segments: number }
 
-const OUTLINE_COLOR = '#14110d'
+const OUTLINE_COLOR = '#1a1816'
 
 let gradientMap: THREE.DataTexture | null = null
 
@@ -64,6 +64,8 @@ function getToonMaterial(color: string): THREE.MeshToonMaterial {
 }
 
 const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR })
+const bushGeometry = new THREE.IcosahedronGeometry(1, 0)
+const bushEdges = new THREE.EdgesGeometry(bushGeometry)
 
 const geometryCache = new Map<string, THREE.BufferGeometry>()
 const edgesCache = new Map<string, THREE.EdgesGeometry>()
@@ -382,7 +384,7 @@ function Dome({ radius, color, position }: { radius: number; color: string; posi
  * слуховое окно, труба с оголовком, окна с рамами и переплётами, дверь с крыльцом.
  */
 export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?: number, style?: string, catalogId?: string }) {
-  const floors = catalogId === 'cottage' ? 1 : catalogId === 'townhouse' ? 3 : catalogId === 'apartment' ? 4 : 2 + (variant % 3)
+  const floors = catalogId === 'cottage' ? 1 : catalogId === 'townhouse' ? 2 : catalogId === 'apartment' ? 4 : 2 + (variant % 3)
 
   if (catalogId === 'cottage') {
     return <group><Pad />
@@ -393,7 +395,12 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
       <Window position={[0.18, 0.28, 0.32]} width={0.14} height={0.14} glass="#293746" frame="#f5ead7" />
       <Box size={[0.2, 0.04, 0.04]} position={[0, 0.11, 0.36]} color="#e7d8bb" />
       <Box size={[0.27, 0.04, 0.22]} position={[0.34, 0.04, 0.16]} color="#6d8c46" />
-      <mesh position={[0.34, 0.16, 0.16]} castShadow receiveShadow><icosahedronGeometry args={[0.12, 0]} /><meshToonMaterial color="#587c3b" /></mesh>
+      {[-0.3, 0, 0.3].map((x) => <Box key={`fence-front-${x}`} size={[0.025, 0.14, 0.025]} position={[x + 0.34, 0.11, 0.29]} color="#79583a" />)}
+      <Box size={[0.34, 0.025, 0.025]} position={[0.34, 0.16, 0.29]} color="#79583a" />
+      <mesh position={[0.34, 0.16, 0.16]} geometry={bushGeometry} scale={0.12} castShadow receiveShadow material={getFoliageMaterial('#587c3b')}><lineSegments geometry={bushEdges} material={outlineMaterial} /></mesh>
+      <Box size={[0.1, 0.38, 0.1]} position={[0.24, PAD_HEIGHT + 0.74, -0.2]} color="#8f3f2d" />
+      <Box size={[0.14, 0.04, 0.14]} position={[0.24, PAD_HEIGHT + 0.94, -0.2]} color="#672d24" />
+      <Box size={[0.36, 0.045, 0.13]} position={[0, PAD_HEIGHT + 0.04, 0.39]} color="#f2e8d6" />
     </group>
   }
   
@@ -498,10 +505,34 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
     )
   }
 
+  if (catalogId === 'apartment') {
+    const base = 0.24
+    const levelHeight = 0.68
+    const bodyHeight = levelHeight * 4
+    const roofBase = base + bodyHeight
+    return <group>
+      <Box size={[0.99, 0.05, 0.99]} position={[0, 0.025, 0]} color="#51483f" />
+      <Box size={[0.95, base, 0.95]} position={[0, base / 2, 0]} color="#89857f" />
+      {Array.from({ length: 4 }, (_, i) => <Box key={`stone-course-${i}`} size={[0.96, 0.018, 0.97]} position={[0, 0.04 + i * 0.05, 0]} color="#bbb4a8" />)}
+      <Box size={[0.86, bodyHeight, 0.84]} position={[0, base + bodyHeight / 2, -0.02]} color="#c27c59" />
+      <Box size={[0.96, 0.035, 0.06]} position={[0, base + 0.1, 0.45]} color="#e4c9aa" />
+      {Array.from({ length: 4 }, (_, floor) => <group key={`apartment-floor-${floor}`} position={[0, base + floor * levelHeight, 0]}>
+        <Box size={[0.97, 0.045, 0.08]} position={[0, levelHeight - 0.025, 0.44]} color="#e0b994" />
+        {[-0.29, 0, 0.29].map((x) => <Window key={x} position={[x, 0.34, 0.43]} width={0.15} height={0.34} glass="#293643" frame="#efe2ce" sill />)}
+      </group>)}
+      <Box size={[1.02, 0.1, 1.02]} position={[0, roofBase + 0.03, 0]} color="#5f6267" />
+      <Box size={[1.02, 0.18, 0.06]} position={[0, roofBase + 0.15, 0.48]} color="#89857f" />
+      <Box size={[0.06, 0.18, 1.02]} position={[-0.48, roofBase + 0.15, 0]} color="#89857f" />
+      <Box size={[0.06, 0.18, 1.02]} position={[0.48, roofBase + 0.15, 0]} color="#89857f" />
+      {[-0.25, 0.25].map((x) => <Box key={x} size={[0.16, 0.12, 0.18]} position={[x, roofBase + 0.17, -0.2]} color="#767b81" />)}
+      <Box size={[0.2, 0.35, 0.035]} position={[0, base + 0.18, 0.43]} color="#4e3328" />
+    </group>
+  }
+
   // Wall-to-wall European townhouse: one full tile with a deep, warm facade.
   const walls = ['#dfd7c5', '#d99f66', '#c4694b', '#e0ba72']
   const roofs = ['#a03b26', '#b84630', '#8e382b']
-  const wallColor = catalogId === 'apartment' ? '#a45a38' : walls[variant % walls.length]
+  const wallColor = catalogId === 'townhouse' ? '#eedec5' : walls[variant % walls.length]
   const roofColor = catalogId === 'apartment' ? '#3d4450' : roofs[variant % roofs.length]
   const roofType = variant % 3
   const floorHeight = 0.5
@@ -632,6 +663,8 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
         <Box size={[0.84, 0.2, 0.62]} position={[0, 0.68, 0]} color="#d1d0c7" />
         <Box size={[0.8, 0.05, 0.05]} position={[0, 0.82, 0.34]} color="#8c3a27" />
         {[-0.28, -0.09, 0.1, 0.29].map((x) => <Box key={x} size={[0.15, 0.15, 0.02]} position={[x, 0.68, 0.32]} color="#6895a4" />)}
+        <DisplayCar position={[-0.24, 0, 0.64]} color="#b84832" />
+        <DisplayCar position={[0.24, 0, 0.64]} color="#526a82" />
       </group>}
       {[-0.24, 0, 0.24].map((x) => (
         <Window key={x} position={[x, 0.47, 0.314]} width={0.13} height={0.1} glass="#4fa8e8" sill={false} />
@@ -648,6 +681,14 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
   )
 }
 
+function DisplayCar({ position, color }: { position: Vec3; color: string }) {
+  return <group position={position}>
+    <Box size={[0.15, 0.075, 0.28]} position={[0, 0.1, 0]} color={color} />
+    <Box size={[0.105, 0.065, 0.12]} position={[0, 0.16, -0.015]} color="#a9c0c8" />
+    {[-1, 1].flatMap((side) => [-1, 1].map((end) => <Cylinder key={`${side}-${end}`} radius={0.035} height={0.025} segments={8} position={[side * 0.078, 0.065, end * 0.085]} rotation={[0, 0, Math.PI / 2]} color="#242424" />))}
+  </group>
+}
+
 /** Завод: серый цех с пилообразной крышей, кирпичная труба и бак. */
 export function Industrial({ catalogId }: { catalogId?: string }) {
   return (
@@ -656,21 +697,7 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
       <Box size={[catalogId === 'warehouse' ? 0.9 : 0.62, catalogId === 'warehouse' ? 0.32 : 0.36, catalogId === 'warehouse' ? 0.76 : 0.62]} position={[-0.1, PAD_HEIGHT + 0.18, 0]} color={catalogId === 'warehouse' ? '#aeb4b6' : catalogId === 'manufactory' ? '#aa725b' : '#b9b4a8'} />
       <Box size={[catalogId === 'warehouse' ? 0.94 : 0.66, 0.05, catalogId === 'warehouse' ? 0.8 : 0.66]} position={[-0.1, PAD_HEIGHT + 0.385, 0]} color={catalogId === 'warehouse' ? '#68747c' : '#7b7f86'} />
       <Box size={[0.2, 0.12, 0.2]} position={[0.02, PAD_HEIGHT + 0.47, 0.12]} color="#8a8e95" />
-      <Cylinder
-        radius={0.09}
-        radiusTop={0.065}
-        height={0.62}
-        segments={14}
-        position={[-0.28, PAD_HEIGHT + 0.31, -0.2]}
-        color="#b4533a"
-      />
-      <Cylinder
-        radius={0.085}
-        height={0.05}
-        segments={14}
-        position={[-0.28, PAD_HEIGHT + 0.645, -0.2]}
-        color="#4b2a22"
-      />
+      {catalogId !== 'manufactory' && <><Cylinder radius={0.09} radiusTop={0.065} height={0.62} segments={14} position={[-0.28, PAD_HEIGHT + 0.31, -0.2]} color="#b4533a" /><Cylinder radius={0.085} height={0.05} segments={14} position={[-0.28, PAD_HEIGHT + 0.645, -0.2]} color="#4b2a22" /></>}
       <Cylinder
         radius={0.12}
         height={0.26}
@@ -680,7 +707,8 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
       />
       <Box size={[0.22, 0.16, 0.02]} position={[-0.1, PAD_HEIGHT + 0.08, 0.315]} color="#4d5560" />
       {catalogId === 'warehouse' && <Box size={[0.54, 0.1, 0.12]} position={[0.05, 0.07, 0.39]} color="#828894" />}
-      {catalogId === 'manufactory' && <group><Cylinder radius={0.12} radiusTop={0.025} height={1.02} segments={8} position={[-0.28, PAD_HEIGHT + 0.51, -0.2]} color="#a94832" /><Cylinder radius={0.11} height={0.05} segments={8} position={[-0.28, PAD_HEIGHT + 0.99, -0.2]} color="#502b24" /></group>}
+      {catalogId === 'warehouse' && <group>{[-0.42, -0.22, 0, 0.22, 0.42].map((x, index) => <Box key={x} size={[0.035, 0.035, 0.72]} position={[x, PAD_HEIGHT + (index === 2 ? 0.59 : index % 2 ? 0.55 : 0.46), 0]} rotation={[0, 0, index < 2 ? 0.3 : index > 2 ? -0.3 : 0]} color="#c2c7c7" />)}</group>}
+      {catalogId === 'manufactory' && <group><Cylinder radius={0.15} radiusTop={0.055} height={4} segments={8} position={[-0.28, PAD_HEIGHT + 2, -0.2]} color="#8b3a2b" /><Cylinder radius={0.16} height={0.06} segments={8} position={[-0.28, PAD_HEIGHT + 3.96, -0.2]} color="#eee2cc" /><Cylinder radius={0.09} height={0.06} segments={8} position={[-0.28, PAD_HEIGHT + 4.01, -0.2]} color="#8b3a2b" /><Box size={[0.14, 0.22, 0.12]} position={[0.39, PAD_HEIGHT + 0.33, -0.18]} color="#65737b" /><Cylinder radius={0.02} height={0.42} segments={8} position={[0.3, PAD_HEIGHT + 0.22, -0.18]} rotation={[0, 0, Math.PI / 2]} color="#737d80" /></group>}
       {catalogId === 'workshop' && <group>{[-0.25, 0, 0.25].map((x, index) => <group key={x}><Box size={[0.25, 0.13, 0.62]} position={[x, PAD_HEIGHT + 0.44, 0]} rotation={[0, 0, index % 2 === 0 ? 0.22 : -0.22]} color="#969ba0" /><Box size={[0.1, 0.04, 0.04]} position={[x, PAD_HEIGHT + 0.5, -0.19]} color="#9fc1c8" /></group>)}</group>}
       {catalogId === 'warehouse' && <group><Box size={[0.34, 0.19, 0.08]} position={[0.18, PAD_HEIGHT + 0.09, 0.39]} color="#66727d" /><Box size={[0.42, 0.08, 0.2]} position={[0.18, 0.04, 0.48]} color="#777f84" /></group>}
       {[-0.3, 0.1].map((x) => (
@@ -808,12 +836,18 @@ function FireStationMesh() {
   return (
     <group>
       <Pad />
-      <Box size={[0.7, 0.58, 0.66]} position={[0, PAD_HEIGHT + 0.29, 0]} color="#c96b4f" />
-      <Box size={[0.78, 0.12, 0.74]} position={[0, PAD_HEIGHT + 0.64, 0]} color="#a44732" />
-      <Box size={[0.4, 0.3, 0.04]} position={[0, PAD_HEIGHT + 0.2, 0.34]} color="#343f55" />
-      <Box size={[0.08, 0.6, 0.04]} position={[-0.26, PAD_HEIGHT + 0.3, 0.36]} color="#f2e9d7" />
-      <Box size={[0.08, 0.6, 0.04]} position={[0.26, PAD_HEIGHT + 0.3, 0.36]} color="#f2e9d7" />
-      <Cylinder radius={0.025} radiusTop={0.025} height={0.24} segments={6} position={[0, PAD_HEIGHT + 0.82, 0]} color="#b88c39" />
+      <Box size={[0.78, 0.78, 0.68]} position={[-0.04, PAD_HEIGHT + 0.39, 0]} color="#c96b4f" />
+      <Box size={[0.84, 0.1, 0.74]} position={[-0.04, PAD_HEIGHT + 0.82, 0]} color="#a44732" />
+      {[-0.23, 0.15].map((x) => <group key={x}>
+        <Box size={[0.31, 0.34, 0.045]} position={[x, PAD_HEIGHT + 0.19, 0.355]} color="#b52f2b" />
+        <Box size={[0.04, 0.38, 0.05]} position={[x - 0.14, PAD_HEIGHT + 0.19, 0.38]} color="#eee4d4" />
+        <Box size={[0.04, 0.38, 0.05]} position={[x + 0.14, PAD_HEIGHT + 0.19, 0.38]} color="#eee4d4" />
+        <Box size={[0.3, 0.03, 0.05]} position={[x, PAD_HEIGHT + 0.37, 0.38]} color="#eee4d4" />
+      </group>)}
+      {[-0.26, 0.03].map((x) => <Window key={x} position={[x, 0.65, 0.35]} width={0.14} height={0.12} glass="#293746" frame="#efe2ce" sill={false} />)}
+      <Box size={[0.2, 1.12, 0.22]} position={[0.36, PAD_HEIGHT + 0.56, -0.17]} color="#d1bfa5" />
+      <Box size={[0.24, 0.12, 0.26]} position={[0.36, PAD_HEIGHT + 1.18, -0.17]} color="#a44732" />
+      <Cylinder radius={0.07} radiusTop={0.07} height={0.14} segments={8} position={[0.36, PAD_HEIGHT + 1.3, -0.17]} color="#d33a32" />
     </group>
   )
 }
@@ -827,6 +861,7 @@ function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
     <Box size={[0.54, 0.025, 0.24]} position={[0, 0.018, 0.56]} color="#6d8c46" />
     {[-0.16, 0, 0.16].map((x) => <Box key={x} size={[0.018, 0.012, 0.2]} position={[x, 0.034, 0.56]} color="#f5f0df" />)}
     <Box size={[0.28, 0.18, 0.03]} position={[0, PAD_HEIGHT + 0.13, 0.31]} color="#487a9b" />
+    {[-1, 1].map((side) => <group key={`hoop-${side}`} position={[side * 0.2, 0.04, 0.68]}><Box size={[0.1, 0.01, 0.012]} position={[0, 0.13, 0]} color="#f5f0df" /><Box size={[0.012, 0.14, 0.012]} position={[0, 0.07, 0]} color="#f5f0df" /></group>)}
   </group>
   if (catalogId === 'hospital') return <group><Pad />
     <Box size={[0.72, 0.7, 0.64]} position={[0, PAD_HEIGHT + 0.35, 0]} color="#e5e1d7" />
@@ -841,11 +876,15 @@ function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
 
 function CatalogLandmarkMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'church') return <group><Pad />
-    <Box size={[0.52, 0.78, 0.58]} position={[0, PAD_HEIGHT + 0.39, 0]} color="#d5c8ad" />
+    <Box size={[0.52, 0.78, 0.58]} position={[-0.08, PAD_HEIGHT + 0.39, 0]} color="#d5c8ad" />
     {[-0.32, 0.32].map((x) => <group key={x}><Box size={[0.12, 0.66, 0.12]} position={[x, PAD_HEIGHT + 0.33, 0.13]} color="#b9aa8e" /><Box size={[0.18, 0.12, 0.16]} position={[x, PAD_HEIGHT + 0.69, 0.13]} rotation={[0, 0, Math.PI / 4]} color="#b9aa8e" /></group>)}
     <Box size={[0.56, 0.12, 0.62]} position={[0, PAD_HEIGHT + 0.8, 0]} color="#4b5563" />
     <Box size={[0.15, 0.35, 0.04]} position={[0, PAD_HEIGHT + 0.2, 0.31]} color="#483b35" />
-    <Cone radius={0.18} height={0.7} segments={6} position={[0, PAD_HEIGHT + 1.16, 0]} color="#343e4e" />
+    <Box size={[0.24, 0.66, 0.25]} position={[0.26, PAD_HEIGHT + 0.91, -0.12]} color="#b9aa8e" />
+    <Box size={[0.15, 0.2, 0.035]} position={[0.26, PAD_HEIGHT + 0.95, 0.02]} color="#3b4650" />
+    <Cone radius={0.22} height={1.1} segments={6} position={[0.26, PAD_HEIGHT + 1.78, -0.12]} color="#3d454d" />
+    <Box size={[0.035, 0.24, 0.035]} position={[0.26, PAD_HEIGHT + 2.37, -0.12]} color="#625b4f" />
+    <Cone radius={0.18} height={0.54} segments={6} position={[-0.08, PAD_HEIGHT + 1.08, 0]} color="#343e4e" />
     <Cone radius={0.11} height={0.44} segments={6} position={[0, PAD_HEIGHT + 0.95, 0.17]} color="#4b5563" />
     {[-0.18, 0.18].map((x) => <group key={x}><Window position={[x, 0.52, 0.3]} width={0.1} height={0.25} glass="#526b7c" frame="#eee4d1" /><mesh position={[x, 0.65, 0.31]}><torusGeometry args={[0.052, 0.012, 6, 12, Math.PI]} /><meshToonMaterial color="#eee4d1" /></mesh></group>)}
   </group>
@@ -1161,7 +1200,8 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       useConstruction = true
       break
     case TileType.COMMERCIAL:
-      model = <Commercial catalogId={catalogId} />
+      model = catalogId === 'mall' ? <group scale={[1.8, 1, 1]}><Commercial catalogId={catalogId} /></group> : <Commercial catalogId={catalogId} />
+      if (catalogId === 'mall') w = 2
       dust = 10
       needsWater = true
       needsPower = true
@@ -1276,15 +1316,16 @@ export function FountainSquareMesh() {
   return <group>
     <Box size={[0.98, 0.04, 0.98]} position={[0, 0.02, 0]} color="#cdc4b5" />
     <Box size={[0.88, 0.04, 0.88]} position={[0, 0.06, 0]} color="#729148" />
-    <Cylinder radius={0.22} height={0.08} segments={16} position={[0, 0.12, 0]} color="#c7bba5" />
-    <Cylinder radius={0.17} height={0.035} segments={16} position={[0, 0.17, 0]} color="#548fa5" />
+    <Cylinder radius={0.22} height={0.08} segments={8} position={[0, 0.12, 0]} color="#c7bba5" />
+    <Cylinder radius={0.17} height={0.035} segments={8} position={[0, 0.17, 0]} color="#548fa5" />
     <Cylinder radius={0.025} height={0.22} segments={8} position={[0, 0.28, 0]} color="#d9d0bf" />
+    {[[0, -0.25, 0], [0, 0.25, 0], [-0.25, 0, Math.PI / 2], [0.25, 0, Math.PI / 2]].map(([x, z, angle], i) => <Box key={`path-${i}`} size={[0.1, 0.012, 0.24]} position={[x, 0.085, z]} rotation={[0, angle, 0]} color="#d0c3aa" />)}
     {[-1, 1].map((side) => <group key={side} position={[side * 0.32, 0.08, 0]}>
       <Box size={[0.28, 0.035, 0.08]} position={[0, 0.12, 0]} color="#79583a" />
       <Box size={[0.28, 0.09, 0.025]} position={[0, 0.19, -0.03]} color="#79583a" />
       {[-0.1, 0.1].map((x) => <Box key={x} size={[0.025, 0.1, 0.025]} position={[x, 0.05, 0]} color="#493629" />)}
     </group>)}
-    {[-0.32, 0.32].map((x) => <group key={`shrub-${x}`} position={[x, 0.09, -0.32]}><mesh castShadow><icosahedronGeometry args={[0.09, 0]} /><meshToonMaterial color="#587c3b" /></mesh></group>)}
+    {[-0.32, 0, 0.32].map((x) => <mesh key={`shrub-${x}`} position={[x, 0.17, -0.32]} geometry={bushGeometry} scale={0.09} castShadow receiveShadow material={getFoliageMaterial(x === 0 ? '#8f7255' : '#587c3b')}><lineSegments geometry={bushEdges} material={outlineMaterial} /></mesh>)}
   </group>
 }
 
