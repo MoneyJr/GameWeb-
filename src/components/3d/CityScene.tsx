@@ -326,7 +326,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
         if (cell.type === TileType.EMPTY) return null
         // Keep five homes in the CityRT visual reference strip.
         return (
-          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + (cell.catalogId === 'mall' ? 0.5 : 0), cell.y)}>
+          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + (cell.catalogId === 'com_mall' ? 0.5 : 0), cell.y)}>
             <TileModel
               key={cell.type}
               type={cell.type}
@@ -436,7 +436,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: T
 
   if (!tile) return null
   return (
-    <group ref={group} position={cellToWorld(cell.x + (catalogId === 'mall' ? 0.5 : 0), cell.y)} renderOrder={20}>
+    <group ref={group} position={cellToWorld(cell.x + (catalogId === 'com_mall' ? 0.5 : 0), cell.y)} renderOrder={20}>
       <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )

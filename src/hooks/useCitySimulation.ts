@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../lib/cityConfig'
-import { BUILDING_BY_ID, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
+import { BUILDING_BY_ID, canonicalCatalogId, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
 import {
   GRID_SIZE,
   TileType,
@@ -140,7 +140,7 @@ function recomputeServices(grid: Grid): Grid {
     for (const cell of row) {
       if (cell.type === TileType.WATER_PUMP) {
         const waterId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[TileType.WATER_PUMP]
-        waterCapacity += waterId ? BUILDING_BY_ID[waterId]?.water ?? 15 : 15
+        waterCapacity += waterId ? BUILDING_BY_ID[waterId]?.givesWater ?? BUILDING_BY_ID[waterId]?.water ?? 15 : 15
         for (const [dx, dy] of NEIGHBOR_STEPS) {
           const nx = cell.x + dx
           const ny = cell.y + dy
@@ -152,7 +152,7 @@ function recomputeServices(grid: Grid): Grid {
       }
       if (cell.type === TileType.WIND || cell.type === TileType.SOLAR_PANEL || cell.type === TileType.COAL) {
         const powerId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
-        powerCapacity += powerId ? BUILDING_BY_ID[powerId]?.energy ?? (cell.type === TileType.COAL ? 60 : 8) : 8
+        powerCapacity += powerId ? BUILDING_BY_ID[powerId]?.givesEnergy ?? BUILDING_BY_ID[powerId]?.energy ?? (cell.type === TileType.COAL ? 60 : 8) : 8
         powerSources.push([cell.x, cell.y])
         for (const [dx, dy] of NEIGHBOR_STEPS) {
           const nx = cell.x + dx
@@ -261,7 +261,7 @@ function recomputeServices(grid: Grid): Grid {
 
       const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
       const catalogEntry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
-      const consumesUtilities = catalogEntry?.category === 'residential' || catalogEntry?.category === 'commercial' || catalogEntry?.category === 'industrial'
+      const consumesUtilities = !!catalogEntry && catalogEntry.category !== 'utilities' && (catalogEntry.energy !== undefined || catalogEntry.water !== undefined)
       if (consumesUtilities) {
         const requiredWater = catalogEntry?.water ?? 1
         const requiredPower = catalogEntry?.energy ?? 1
@@ -381,7 +381,7 @@ function countTiles(grid: Grid): CityCounts {
           counts.policeStations += 1
           continue
         case TileType.FIRE_STATION:
-          if (cell.catalogId === 'fire-depot' || !cell.catalogId) counts.fireStations += 1
+          if (cell.catalogId === 'civ_fire' || !cell.catalogId) counts.fireStations += 1
           continue
         case TileType.RESIDENTIAL:
           counts.houses += 1
@@ -424,15 +424,16 @@ function countTiles(grid: Grid): CityCounts {
 function computeNetIncome(grid: Grid, taxRates: SimState['taxRates']): number {
   let total = 0
   for (const row of grid) for (const cell of row) {
-    if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT || cell.type === TileType.CITY_HALL) continue
+    if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT) continue
     const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
     const entry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
     if (!entry) continue
     const taxGroup = entry.category === 'residential' ? 'residential'
       : entry.category === 'commercial' ? 'commercial'
         : entry.category === 'industrial' ? 'industrial' : undefined
-    const taxMultiplier = taxGroup && entry.tickNet > 0 ? taxRates[taxGroup] / 10 : 1
-    total += entry.tickNet * taxMultiplier
+    const taxableIncome = entry.income ?? Math.max(0, entry.tickNet)
+    const taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
+    total += taxableIncome * taxMultiplier - (entry.maintenance ?? Math.max(0, -entry.tickNet))
   }
   return Math.round(total)
 }
@@ -490,7 +491,7 @@ function reducer(state: SimState, action: Action): SimState {
         if (state.grid.some(row => row.some(c => c.type === TileType.CITY_HALL))) return state;
         w = 2; h = 2;
       }
-      if (catalogEntry?.id === 'mall') w = 2
+      if (catalogEntry?.id === 'com_mall') w = 2
       if (tool === ToolId.PARK) {
         if (style === 'PARK') { w = 2; h = 2; }
         if (style === 'LARGE_PARK') { w = 3; h = 3; }
@@ -509,7 +510,7 @@ function reducer(state: SimState, action: Action): SimState {
             if (r === y && c === x) {
               const home = def.tile === TileType.RESIDENTIAL
                 ? (catalogEntry?.population
-                  ? { floors: catalogEntry.id === 'cottage' ? 1 : catalogEntry.id === 'apartment' ? 4 : 3, maxResidents: catalogEntry.population }
+                  ? { floors: catalogEntry.id === 'res_cottage' ? 1 : catalogEntry.id === 'res_apartment' ? 4 : 3, maxResidents: catalogEntry.population }
                   : residenceProfile(x, y, state.day, state.minutes))
                 : undefined
               return {
@@ -548,7 +549,7 @@ function reducer(state: SimState, action: Action): SimState {
       // Determine bounds
       let w = 1, h = 1;
       if (targetCell.type === TileType.CITY_HALL) { w = 2; h = 2; }
-      if (targetCell.catalogId === 'mall') w = 2
+      if (targetCell.catalogId === 'com_mall') w = 2
       if (targetCell.type === TileType.PARK) {
         if (targetCell.style === 'PARK') { w = 2; h = 2; }
         if (targetCell.style === 'LARGE_PARK') { w = 3; h = 3; }
@@ -651,7 +652,9 @@ function createInitialState(): SimState {
         const day = save.day ?? 1
         const minute = save.minutes ?? 840
         const grid = save.grid.map(row => row.map(cell => {
-          if (cell.type !== TileType.RESIDENTIAL) return cell
+          const catalogId = canonicalCatalogId(cell.catalogId)
+          const normalizedCell = catalogId === cell.catalogId ? cell : { ...cell, catalogId }
+          if (cell.type !== TileType.RESIDENTIAL) return normalizedCell
           const profile = residenceProfile(cell.x, cell.y, day, minute)
           const maxResidents = cell.maxResidents ?? profile.maxResidents
           let residents = cell.residents
@@ -662,7 +665,7 @@ function createInitialState(): SimState {
               residents = Math.floor(maxResidents * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
             }
           }
-          return { ...cell, residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
+          return { ...normalizedCell, residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
         }))
         const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
         return {
