@@ -486,13 +486,13 @@ function reducer(state: SimState, action: Action): SimState {
       }
       
       // Determine size
-      let w = 1, h = 1;
+      let w = catalogEntry?.footprint?.[0] ?? 1
+      let h = catalogEntry?.footprint?.[1] ?? 1
       if (tool === ToolId.CITY_HALL) {
         if (state.grid.some(row => row.some(c => c.type === TileType.CITY_HALL))) return state;
         w = 2; h = 2;
       }
-      if (catalogEntry?.id === 'com_mall') w = 2
-      if (tool === ToolId.PARK) {
+      if (tool === ToolId.PARK && !catalogEntry) {
         if (style === 'PARK') { w = 2; h = 2; }
         if (style === 'LARGE_PARK') { w = 3; h = 3; }
       }
@@ -547,10 +547,10 @@ function reducer(state: SimState, action: Action): SimState {
       if (targetCell.type === TileType.EMPTY) return state
       
       // Determine bounds
-      let w = 1, h = 1;
+      let w = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[0] ?? 1 : 1
+      let h = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[1] ?? 1 : 1
       if (targetCell.type === TileType.CITY_HALL) { w = 2; h = 2; }
-      if (targetCell.catalogId === 'com_mall') w = 2
-      if (targetCell.type === TileType.PARK) {
+      if (targetCell.type === TileType.PARK && !targetCell.catalogId) {
         if (targetCell.style === 'PARK') { w = 2; h = 2; }
         if (targetCell.style === 'LARGE_PARK') { w = 3; h = 3; }
       }

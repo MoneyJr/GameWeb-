@@ -1,4 +1,4 @@
-import { Billboard } from '@react-three/drei'
+import { Billboard, Edges } from '@react-three/drei'
 import { Fragment, memo, useEffect, useMemo, useRef, useState, useContext, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
@@ -349,7 +349,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, getCurrentNightLevel, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, getCurrentNightLevel, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -891,6 +891,150 @@ function FireStationMesh() {
   )
 }
 
+function PanelBlockMesh() {
+  const balconyRows = Array.from({ length: 5 }, (_, floor) => floor)
+  const balconyColumns = [-0.58, 0, 0.58]
+  return <group>
+    {/* Asphalt courtyard, curbs, and paved entrance strip. */}
+    <Box size={[1.98, 0.055, 1.98]} position={[0, 0.027, 0]} color="#45494b" />
+    <Box size={[1.98, 0.07, 0.08]} position={[0, 0.045, 0.95]} color="#d2c8b5" />
+    <Box size={[1.98, 0.07, 0.08]} position={[0, 0.045, -0.95]} color="#d2c8b5" />
+    <Box size={[0.08, 0.07, 1.9]} position={[-0.95, 0.045, 0]} color="#d2c8b5" />
+    <Box size={[0.08, 0.07, 1.9]} position={[0.95, 0.045, 0]} color="#d2c8b5" />
+    <Box size={[0.7, 0.035, 0.35]} position={[0, 0.08, 0.74]} color="#cfc7b8" />
+    <Box size={[1.8, 3.08, 1.4]} position={[0, 1.68, -0.02]} color="#c8c5bc" />
+    {/* Concrete panel seams and five stacked storeys. */}
+    {[-1.23, -0.61, 0.01, 0.63, 1.25].map((y) => <Box key={`seam-${y}`} size={[1.81, 0.025, 1.42]} position={[0, y + 0.1, -0.02]} color="#b4b2ac" />)}
+    {balconyRows.flatMap((floor) => balconyColumns.map((x, column) => {
+      const y = 0.42 + floor * 0.61
+      const glazed = ((floor * 7 + column * 11 + 3) % 5) < 2
+      return <group key={`balcony-${floor}-${column}`} position={[x, y, 0.72]}>
+        <Box size={[0.5, 0.35, 0.2]} position={[0, 0, 0.1]} color="#c1beb6" />
+        <Window position={[0, 0.02, 0.015]} width={0.28} height={0.34} glass={glazed ? '#55727b' : '#313b45'} frame="#e4e0d6" cross={false} sill={false} />
+        <Box size={[0.5, 0.035, 0.035]} position={[0, -0.12, 0.21]} color="#3b4144" />
+        {[-0.22, 0, 0.22].map((railX) => <Box key={railX} size={[0.018, 0.13, 0.018]} position={[railX, -0.055, 0.21]} color="#3b4144" />)}
+      </group>
+    }))}
+    {[-0.62, -0.2, 0.22, 0.64].map((x, i) => <Window key={`side-${i}`} position={[x, 1.35, -0.727]} facing="-z" width={0.23} height={0.32} glass="#35434c" frame="#e1ded5" sill={false} />)}
+    {/* Bitumen roof, elevator overruns, vents, and aerials. */}
+    <Box size={[1.9, 0.16, 1.5]} position={[0, 3.32, -0.02]} color="#33383d" />
+    <Box size={[1.9, 0.16, 0.07]} position={[0, 3.43, 0.7]} color="#42464b" />
+    <Box size={[0.38, 0.36, 0.34]} position={[-0.48, 3.57, -0.22]} color="#aaa9a2" />
+    <Box size={[0.38, 0.36, 0.34]} position={[0.42, 3.57, -0.22]} color="#aaa9a2" />
+    {[-0.7, 0.7].map((x) => <Cylinder key={`vent-${x}`} radius={0.055} radiusTop={0.045} height={0.28} segments={8} position={[x, 3.54, 0.42]} color="#747b7d" />)}
+    <Cylinder radius={0.018} height={0.62} segments={6} position={[0.7, 3.69, -0.47]} color="#5e6569" />
+    <Cylinder radius={0.014} height={0.45} segments={6} position={[0.61, 3.79, -0.47]} rotation={[0, 0, Math.PI / 2]} color="#5e6569" />
+    {/* Bench and refuse bins in the yard. */}
+    <Box size={[0.42, 0.045, 0.11]} position={[-0.58, 0.15, 0.61]} color="#79583a" />
+    <Box size={[0.42, 0.14, 0.025]} position={[-0.58, 0.23, 0.56]} color="#79583a" />
+    {[-0.25, -0.08].map((x, i) => <Box key={`bin-${i}`} size={[0.12, 0.2, 0.12]} position={[x, 0.16, -0.72]} color={i ? '#566d67' : '#67757a'} />)}
+  </group>
+}
+
+function CinemaLetter({ letter, x }: { letter: string; x: number }) {
+  const bar = (key: string, size: Vec3, position: Vec3, rotation: Vec3 = [0, 0, 0]) => <Box key={key} size={size} position={position} rotation={rotation} color="#e8292e" material={cinemaSignMaterial} />
+  const upright = bar('upright', [0.035, 0.2, 0.06], [0, 0, 0])
+  const horizontal = (key: string, y: number) => bar(key, [0.14, 0.035, 0.06], [0, y, 0])
+  const vertical = (key: string, xPos: number, y = 0) => bar(key, [0.035, 0.14, 0.06], [xPos, y, 0])
+  let glyph: ReactNode
+  if (letter === 'К') glyph = <>{upright}{bar('diag-top', [0.035, 0.12, 0.06], [0.035, 0.04, 0], [0, 0, -0.65])}{bar('diag-bottom', [0.035, 0.12, 0.06], [0.035, -0.04, 0], [0, 0, 0.65])}</>
+  else if (letter === 'М') glyph = <>{upright}{vertical('right', 0.13)}{bar('diag-left', [0.035, 0.12, 0.06], [0.04, 0.035, 0], [0, 0, 0.65])}{bar('diag-right', [0.035, 0.12, 0.06], [0.09, 0.035, 0], [0, 0, -0.65])}</>
+  else if (letter === 'О') glyph = <>{horizontal('top', 0.08)}{horizontal('bottom', -0.08)}{vertical('left', -0.06)}{vertical('right', 0.06)}</>
+  else glyph = <>{upright}{horizontal('top', 0.08)}{horizontal('bottom', -0.08)}</>
+  return <group position={[x, 1.64, 0.08]}>{glyph}</group>
+}
+
+function CinemaCosmosMesh() {
+  const mosaic = ['#286391', '#f0e8d8', '#df7b36', '#367a9b', '#e6e2d6', '#cf633c', '#f4efe2', '#315779', '#e78a42', '#3d7392', '#e9e2d4', '#d76f3a', '#285577', '#e9e2d4', '#3c8198']
+  return <group>
+    <Box size={[2.75, 0.055, 1.95]} position={[0, 0.028, 0]} color="#d7cbb5" />
+    <Box size={[2.2, 1.42, 1.6]} position={[0, 0.82, -0.02]} color="#e3dbcb" />
+    <Box size={[2.28, 0.18, 1.7]} position={[0, 1.53, -0.02]} color="#b7aa94" />
+    <Box size={[2.38, 0.16, 0.42]} position={[0, 1.15, 0.83]} color="#d7cbb5" />
+    <Box size={[2.1, 0.78, 0.035]} position={[0, 0.65, 0.79]} color="#3a5a60" />
+    {[-0.72, -0.24, 0.24, 0.72].map((x) => <Box key={x} size={[0.025, 0.78, 0.045]} position={[x, 0.65, 0.82]} color="#c4d4d0" />)}
+    <Box size={[0.035, 0.78, 0.045]} position={[0, 0.65, 0.82]} color="#c4d4d0" />
+    {/* Side mosaic panel: a compact geometric space motif. */}
+    {mosaic.map((color, i) => {
+      const col = i % 5
+      const row = Math.floor(i / 5)
+      return <Box key={`mosaic-${i}`} size={[0.025, 0.13, 0.13]} position={[1.115, 0.48 + row * 0.15, -0.42 + col * 0.15]} color={color} />
+    })}
+    {Array.from('КОСМОС').map((letter, index) => <CinemaLetter key={`${letter}-${index}`} letter={letter} x={(index - 2.5) * 0.2} />)}
+    <Box size={[0.34, 0.42, 0.04]} position={[-0.82, 0.27, 0.82]} color="#d5cbb9" />
+    <Box size={[0.2, 0.5, 0.05]} position={[0.84, 0.28, 0.82]} color="#d5cbb9" />
+  </group>
+}
+
+function CathedralMesh() {
+  return <group>
+    <Box size={[1.98, 0.08, 1.98]} position={[0, 0.04, 0]} color="#d8d0c0" />
+    <Box size={[1.78, 0.14, 1.78]} position={[0, 0.15, 0]} color="#f4f1e9" />
+    <Box size={[1.6, 1.62, 1.58]} position={[0, 1.0, 0]} color="#f4f4f0" />
+    {/* Pilasters, cornices, and tall narrow arched windows. */}
+    {[-0.66, -0.22, 0.22, 0.66].map((x, i) => <group key={`front-pilaster-${i}`}>
+      <Box size={[0.075, 1.58, 0.1]} position={[x, 1.02, 0.8]} color="#deded8" />
+      <Window position={[x + 0.11, 1.13, 0.8]} width={0.12} height={0.58} glass="#425b77" frame="#fffefa" cross={false} sill={false} />
+      <Cone radius={0.07} height={0.12} segments={6} position={[x + 0.11, 1.48, 0.8]} rotation={[0, 0, Math.PI]} color="#fffefa" />
+    </group>)}
+    <Box size={[1.82, 0.12, 1.8]} position={[0, 1.82, 0]} color="#e1e0d8" />
+    <Cylinder radius={0.48} height={0.58} segments={12} position={[0, 2.16, 0]} color="#eeeae0" />
+    <mesh position={[0, 2.7, 0]} scale={[0.52, 0.83, 0.52]} castShadow receiveShadow>
+      <sphereGeometry args={[0.56, 12, 8]} />
+      <meshStandardMaterial color="#e5a93b" metalness={0.36} roughness={0.48} />
+      <Edges color="#6e4f27" threshold={30} />
+    </mesh>
+    <Cone radius={0.23} height={0.54} segments={8} position={[0, 3.38, 0]} color="#e5a93b" />
+    <Box size={[0.035, 0.72, 0.035]} position={[0, 4.12, 0]} color="#b98937" />
+    <Box size={[0.24, 0.035, 0.035]} position={[0, 4.18, 0]} color="#b98937" />
+    {[-0.62, 0.62].flatMap((x) => [-0.62, 0.62].map((z) => <group key={`small-dome-${x}-${z}`}>
+      <Cylinder radius={0.23} height={0.32} segments={10} position={[x, 2.02, z]} color="#eeeae0" />
+      <mesh position={[x, 2.26, z]} scale={[0.25, 0.33, 0.25]} castShadow receiveShadow>
+        <sphereGeometry args={[0.36, 10, 7]} />
+        <meshStandardMaterial color="#255491" metalness={0.22} roughness={0.48} />
+        <Edges color="#18365e" threshold={30} />
+      </mesh>
+      <Cone radius={0.1} height={0.28} segments={8} position={[x, 2.48, z]} color="#255491" />
+    </group>))}
+    {/* Low stone railing around the cathedral square. */}
+    {[-0.9, 0.9].flatMap((x) => [-0.9, 0.9].map((z) => <Box key={`railing-post-${x}-${z}`} size={[0.08, 0.34, 0.08]} position={[x, 0.29, z]} color="#c6c2b8" />))}
+    <Box size={[1.72, 0.06, 0.05]} position={[0, 0.41, -0.9]} color="#c6c2b8" />
+    <Box size={[0.05, 0.06, 1.72]} position={[-0.9, 0.41, 0]} color="#c6c2b8" />
+    <Box size={[0.05, 0.06, 1.72]} position={[0.9, 0.41, 0]} color="#c6c2b8" />
+  </group>
+}
+
+function StadiumFloodlight({ position }: { position: Vec3 }) {
+  const lightRef = useRef<THREE.SpotLight>(null)
+  useFrame(() => {
+    if (lightRef.current) lightRef.current.intensity = 2.2 * getCurrentNightLevel()
+  })
+  return <group position={position}>
+    <Box size={[0.045, 1.65, 0.045]} position={[0, 0.825, 0]} color="#6a7071" />
+    <Box size={[0.22, 0.04, 0.04]} position={[0, 1.56, 0]} color="#777d7e" />
+    <Box size={[0.075, 0.08, 0.05]} position={[-0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
+    <Box size={[0.075, 0.08, 0.05]} position={[0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
+    <spotLight ref={lightRef} color="#fff0c2" position={[0, 1.58, 0]} rotation={[-Math.PI / 2, 0, 0]} intensity={0} distance={4.8} angle={Math.PI / 5} penumbra={0.65} decay={2} />
+  </group>
+}
+
+function StadiumMesh() {
+  return <group>
+    <Box size={[2.8, 0.06, 2.8]} position={[0, 0.03, 0]} color="#d4c6ad" />
+    <Box size={[2.2, 0.08, 2.2]} position={[0, 0.1, 0]} color="#4e8c37" />
+    <Box size={[0.82, 0.035, 0.82]} position={[0, 0.16, 0]} rotation={[0, Math.PI / 4, 0]} color="#c78852" />
+    <Cylinder radius={0.07} height={0.02} segments={8} position={[0, 0.185, 0]} color="#f4ead6" />
+    {/* L-shaped stepped stands with simple roof canopies. */}
+    {[0, 1, 2].map((step) => <group key={`stand-${step}`}>
+      <Box size={[2.2, 0.14, 0.34]} position={[0, 0.22 + step * 0.13, -0.92 + step * 0.11]} color={step % 2 ? '#a89578' : '#b7a488'} />
+      <Box size={[0.34, 0.14, 2.2]} position={[-0.92 + step * 0.11, 0.22 + step * 0.13, 0]} color={step % 2 ? '#a89578' : '#b7a488'} />
+    </group>)}
+    {[-0.78, 0.78].flatMap((x) => [-0.78, 0.78].map((z) => <Box key={`canopy-${x}-${z}`} size={[0.55, 0.045, 0.42]} position={[x, 0.78, z]} color="#6b5b49" />))}
+    {[[ -1.02, -1.02], [1.02, -1.02], [-1.02, 1.02], [1.02, 1.02]].map(([x, z], i) => <StadiumFloodlight key={`stadium-light-${i}`} position={[x, 0.08, z]} />)}
+    <Box size={[0.72, 0.12, 0.04]} position={[0, 0.22, 1.08]} color="#ece4d5" />
+  </group>
+}
+
 function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'civ_school') return <group><Pad />
     <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
@@ -1232,15 +1376,23 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       dust = 4
       break
     case TileType.RESIDENTIAL:
-      model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
+      if (catalogId === 'res_panel_block') {
+        model = <PanelBlockMesh />
+        w = 2; h = 2
+      } else model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
       dust = 10
       needsWater = true
       needsPower = true
       useConstruction = true
       break
     case TileType.COMMERCIAL:
-      model = catalogId === 'com_mall' ? <group scale={[1.8, 1, 1]}><Commercial catalogId={catalogId} /></group> : <Commercial catalogId={catalogId} />
-      if (catalogId === 'com_mall') w = 2
+      if (catalogId === 'com_cinema_cosmos') {
+        model = <CinemaCosmosMesh />
+        w = 3; h = 2
+      } else {
+        model = catalogId === 'com_mall' ? <group scale={[1.8, 1, 1]}><Commercial catalogId={catalogId} /></group> : <Commercial catalogId={catalogId} />
+        if (catalogId === 'com_mall') w = 2
+      }
       dust = 10
       needsWater = true
       needsPower = true
@@ -1265,7 +1417,10 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       useConstruction = true;
       break
     case TileType.PARK:
-      if (catalogId === 'lnd_church') model = <CatalogLandmarkMesh catalogId={catalogId} />
+      if (catalogId === 'lnd_cathedral') {
+        model = <CathedralMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'lnd_church') model = <CatalogLandmarkMesh catalogId={catalogId} />
       else if (catalogId === 'lnd_park') model = <FountainSquareMesh />
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
@@ -1289,7 +1444,10 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       dust = 8
       break
     case TileType.FIRE_STATION:
-      model = <CatalogCivicMesh catalogId={catalogId} />
+      if (catalogId === 'civ_stadium') {
+        model = <StadiumMesh />
+        w = 3; h = 3
+      } else model = <CatalogCivicMesh catalogId={catalogId} />
       dust = 8
       break
     default:

@@ -4,6 +4,7 @@ import {
   Droplets,
   Factory,
   Flame,
+  Film,
   House,
   Landmark,
   Route,
@@ -12,6 +13,7 @@ import {
   Store,
   Sun,
   TreePine,
+  Trophy,
   Trash2,
   Warehouse,
   Wind,
@@ -54,11 +56,11 @@ const option = (tool: ToolId, label: string, icon: LucideIcon): DockOption => ({
 })
 
 const catalogIcons: Record<string, LucideIcon> = {
-  res_cottage: House, res_townhouse: House, res_apartment: Building2,
-  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2,
+  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2,
+  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse,
-  civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, lnd_townhall: Landmark,
-  lnd_park: TreePine, lnd_church: Church,
+  civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
+  lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church,
   utl_wind: Wind, utl_solar: Sun, utl_water: Droplets,
 }
 
@@ -83,7 +85,7 @@ const CATEGORIES: Category[] = [
     ...catalogOptions('civic'),
     option(ToolId.POLICE, 'Полицейский участок', Shield),
   ] },
-  { key: 'P', label: 'Парки', icon: TreePine, options: catalogOptions('parks') },
+  { key: 'P', label: 'Парки', icon: TreePine, options: [...catalogOptions('parks'), ...catalogOptions('landmarks')] },
   { key: 'X', label: 'Снос', icon: Trash2, options: [option(ToolId.BULLDOZE, 'Снести объект', Trash2)] },
 ]
 

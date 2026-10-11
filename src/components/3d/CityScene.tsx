@@ -168,6 +168,12 @@ function cellToWorld(x: number, y: number): [number, number, number] {
   return [x - offset, 0, y - offset]
 }
 
+function catalogCenterOffset(catalogId?: string): [number, number] {
+  const footprint = catalogId ? BUILDING_BY_ID[catalogId]?.footprint : undefined
+  if (!footprint) return [0, 0]
+  return [(footprint[0] - 1) / 2, (footprint[1] - 1) / 2]
+}
+
 function worldToCell(worldX: number, worldZ: number): Cell {
   const clamp = (value: number) => Math.min(GRID_SIZE - 1, Math.max(0, value))
   return {
@@ -324,9 +330,10 @@ const World = memo(function World({ grid }: { grid: Grid }) {
     <group>
       {grid.flat().map((cell) => {
         if (cell.type === TileType.EMPTY) return null
+        const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId)
         // Keep five homes in the CityRT visual reference strip.
         return (
-          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + (cell.catalogId === 'com_mall' ? 0.5 : 0), cell.y)}>
+          <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)}>
             <TileModel
               key={cell.type}
               type={cell.type}
@@ -435,8 +442,9 @@ function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: T
   }, [tool])
 
   if (!tile) return null
+  const [offsetX, offsetZ] = catalogCenterOffset(catalogId)
   return (
-    <group ref={group} position={cellToWorld(cell.x + (catalogId === 'com_mall' ? 0.5 : 0), cell.y)} renderOrder={20}>
+    <group ref={group} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} renderOrder={20}>
       <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
