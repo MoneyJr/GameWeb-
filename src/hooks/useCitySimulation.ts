@@ -41,6 +41,27 @@ function seededRandom(...parts: number[]): number {
   return (seed >>> 0) / 4294967296
 }
 
+const HARVEST_FAIR_END_DAY = 14
+const zoningDistance = (a: GridCell, b: GridCell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+
+function hasNearbyCatalog(grid: Grid, cell: GridCell, predicate: (id: string | undefined) => boolean, radius = 2): boolean {
+  for (let y = Math.max(0, cell.y - radius); y <= Math.min(GRID_SIZE - 1, cell.y + radius); y += 1) {
+    for (let x = Math.max(0, cell.x - radius); x <= Math.min(GRID_SIZE - 1, cell.x + radius); x += 1) {
+      const candidate = grid[y][x]
+      if (zoningDistance(cell, candidate) <= radius && predicate(candidate.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[candidate.type])) return true
+    }
+  }
+  return false
+}
+
+function isPollutingBuilding(id: string | undefined): boolean {
+  return id === 'ind_factory' || id === 'ind_workshop'
+}
+
+function isGreenAmenity(id: string | undefined): boolean {
+  return id === 'lnd_park' || id === 'lnd_church' || id === 'lnd_cathedral'
+}
+
 function residenceProfile(x: number, y: number, day = 1, minute = 0) {
   // Keep this in sync with the Residential variant used by the city renderer.
   const variant = (x * 7 + y * 13) % 4
@@ -163,7 +184,7 @@ function recomputeServices(grid: Grid): Grid {
           }
         }
       }
-      if (cell.type === TileType.COAL || cell.type === TileType.INDUSTRIAL) {
+      if (cell.type === TileType.COAL || (cell.type === TileType.INDUSTRIAL && isPollutingBuilding(cell.catalogId))) {
         coals.push([cell.x, cell.y])
       }
       if (cell.type === TileType.PARK) {
@@ -243,7 +264,7 @@ function recomputeServices(grid: Grid): Grid {
       // Smog calculation
       let smogCount = 0
       for (const [cx, cy] of coals) {
-        if (Math.abs(cell.x - cx) + Math.abs(cell.y - cy) <= 8) smogCount++
+        if (Math.abs(cell.x - cx) + Math.abs(cell.y - cy) <= 2) smogCount++
       }
       for (const [px, py] of parks) {
         if (Math.abs(cell.x - px) + Math.abs(cell.y - py) <= 1) smogCount--
@@ -421,7 +442,7 @@ function countTiles(grid: Grid): CityCounts {
 }
 
 /** Каталог задаёт готовую чистую сумму за каждый десятиминутный такт. */
-function computeNetIncome(grid: Grid, taxRates: SimState['taxRates']): number {
+function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], day: number): number {
   let total = 0
   for (const row of grid) for (const cell of row) {
     if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT) continue
@@ -432,18 +453,24 @@ function computeNetIncome(grid: Grid, taxRates: SimState['taxRates']): number {
       : entry.category === 'commercial' ? 'commercial'
         : entry.category === 'industrial' ? 'industrial' : undefined
     const taxableIncome = entry.income ?? Math.max(0, entry.tickNet)
-    const taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
+    let taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
+    if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)) taxMultiplier *= 1.3
+    if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isPollutingBuilding)) taxMultiplier *= 0.8
+    if (day <= HARVEST_FAIR_END_DAY && (catalogId === 'com_bakery' || catalogId === 'com_grocery')) taxMultiplier *= 1.2
     total += taxableIncome * taxMultiplier - (entry.maintenance ?? Math.max(0, -entry.tickNet))
   }
   return Math.round(total)
 }
 
 /** Целевое счастье учитывает нехватку воды, загрязнение и перегруз полиции. */
-function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid): number {
+function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid, day: number): number {
+  if (day <= HARVEST_FAIR_END_DAY) return 100
   if (counts.consumers === 0) return 100
   let h = 100 - crimeRate * 0.5
   if (counts.houses > 0) {
-    h -= (counts.smogHouses / counts.houses) * 20
+    h -= (counts.smogHouses / counts.houses) * 25
+    const cozyHomes = grid.flat().filter((cell) => cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)).length
+    h += (cozyHomes / counts.houses) * 5
   }
   h += globalParkValue
   for (const row of grid) for (const cell of row) {
@@ -600,13 +627,13 @@ case 'TICK': {
       }))
       const population = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
       const counts = countTiles(cityGrid)
-      const net = computeNetIncome(cityGrid, state.taxRates)
+      const net = computeNetIncome(cityGrid, state.taxRates, nextDay)
       const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION
       const crimeRate = population > totalPoliceCap && population > 0
         ? Math.min(100, Math.round(((population - totalPoliceCap) / population) * 100))
         : 0
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
-      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
+      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid, nextDay) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
       const netTickIncome = net - (state.debt > 0 && isMidnight ? DAILY_LOAN_PAYMENT : 0)
       return {
@@ -615,7 +642,7 @@ case 'TICK': {
         population,
         budget: Math.max(0, Math.round(state.budget + netTickIncome)),
         lastNet: netTickIncome,
-        happiness: Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
+        happiness: nextDay <= HARVEST_FAIR_END_DAY ? 100 : Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
         minutes: gameMinute,
         day: nextDay,
       }

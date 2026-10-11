@@ -1,4 +1,5 @@
 import { TrafficSystem } from './TrafficSystem'
+import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Edges, OrthographicCamera } from '@react-three/drei'
@@ -243,7 +244,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     const trunkGeometry = new THREE.CylinderGeometry(0.075, 0.12, 0.9, 6)
     const crownGeometry = new THREE.IcosahedronGeometry(0.7, 1)
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#493629', roughness: 1 })
-    const crownMaterial = new THREE.MeshToonMaterial({ color: '#5f7845' }) as THREE.MeshToonMaterial & { flatShading: boolean }
+    const crownMaterial = new THREE.MeshToonMaterial({ color: '#d97724' }) as THREE.MeshToonMaterial & { flatShading: boolean }
     crownMaterial.flatShading = true
     trunkMaterial.fog = false
     crownMaterial.fog = false
@@ -259,7 +260,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     const transform = new THREE.Object3D()
     // Frame the starter block with near and far forest belts while keeping an open meadow around it.
     const clusters: [number, number][] = [[0, -18], [0, -28], [18, 0], [28, 0], [0, 18], [0, 28], [-18, 0], [-28, 0]]
-    const greens = ['#405f32', '#4e6e37', '#617f43', '#73894a', '#526d3e']
+    const greens = ['#d97724', '#b43418', '#eab308', '#854d0e', '#c25b2a']
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
@@ -292,6 +293,22 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     trunks.computeBoundingSphere()
     crowns.computeBoundingSphere()
     root.add(trunks, crowns)
+
+    const leafColors = ['#d97724', '#b43418', '#eab308', '#854d0e']
+    const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), 420)
+    leaves.frustumCulled = false
+    for (let i = 0; i < leaves.count; i += 1) {
+      const cluster = clusters[i % clusters.length]
+      transform.position.set(cluster[0] + (random() - 0.5) * 16, 0.008, cluster[1] + (random() - 0.5) * 16)
+      transform.rotation.set(-Math.PI / 2, random() * Math.PI, random() * Math.PI)
+      transform.scale.setScalar(0.4 + random() * 1.1)
+      transform.updateMatrix()
+      leaves.setMatrixAt(i, transform.matrix)
+      leaves.setColorAt(i, new THREE.Color(leafColors[Math.floor(random() * leafColors.length)]))
+    }
+    leaves.instanceMatrix.needsUpdate = true
+    if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
+    root.add(leaves)
 
     const hillColors = ['#9aab7a', '#87986d', '#a3ae81']
     const hillSpecs = [
@@ -881,6 +898,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       <GroundSlab />
       <NaturalHorizon />
       <World grid={grid} />
+      <LivingCityParticles grid={grid} />
       <TrafficSystem grid={grid} />
       <InteractionLayer
         grid={grid}

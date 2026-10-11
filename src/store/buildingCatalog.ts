@@ -58,6 +58,8 @@ export const BUILDING_CATALOG: readonly BuildingCatalogEntry[] = [
   { id: 'utl_wind', name: 'Ветрогенератор', category: 'utilities', tool: ToolId.WIND, tile: TileType.WIND, cost: 140, tickNet: -2, maintenance: 2, givesEnergy: 10, model: 'wind-generator' },
   { id: 'utl_solar', name: 'Солнечная панель', category: 'utilities', tool: ToolId.SOLAR_PANEL, tile: TileType.SOLAR_PANEL, cost: 200, tickNet: -1, maintenance: 1, givesEnergy: 16, model: 'solar-station' },
   { id: 'utl_water', name: 'Водонапорная башня', category: 'utilities', tool: ToolId.WATER_PUMP, tile: TileType.WATER_PUMP, cost: 120, tickNet: -2, maintenance: 2, givesWater: 15, model: 'water-tower' },
+  { id: 'field_wheat', name: 'Пшеничное поле', category: 'parks', tool: parks, tile: TileType.FIELD_WHEAT, cost: 40, tickNet: 4, income: 4, model: 'wheat-field' },
+  { id: 'field_plow', name: 'Вспаханная пашня', category: 'parks', tool: parks, tile: TileType.FIELD_PLOW, cost: 35, tickNet: 0, model: 'plowed-field' },
 ]
 
 const canonicalById = Object.fromEntries(BUILDING_CATALOG.map((entry) => [entry.id, entry])) as Record<string, BuildingCatalogEntry>
@@ -90,4 +92,6 @@ export const DEFAULT_CATALOG_ID_BY_TILE = {
   [TileType.SOLAR_PANEL]: 'utl_solar',
   [TileType.WATER_PUMP]: 'utl_water',
   [TileType.CITY_HALL]: 'lnd_townhall',
+  [TileType.FIELD_WHEAT]: 'field_wheat',
+  [TileType.FIELD_PLOW]: 'field_plow',
 } as Partial<Record<TileTypeValue, string>>

@@ -319,7 +319,7 @@ function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotat
 }
 
 function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) {
-  const foliage = ['#43662d', '#587c3b', '#859b4c']
+  const foliage = ['#854d0e', '#d97724', '#b43418']
   return (
     <group position={position} scale={[scale, scale, scale]}>
       <Cylinder radius={0.1} radiusTop={0.06} height={0.75} segments={6} position={[0, 0.375, 0]} color="#3a281c" />
@@ -696,6 +696,7 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
         <Cylinder radius={0.018} height={0.1} segments={8} position={[0.39, 0.085, 0.4]} color="#493629" />
         <Cylinder radius={0.018} height={0.1} segments={8} position={[0.32, 0.085, 0.4]} color="#493629" />
         <Cylinder radius={0.018} height={0.1} segments={8} position={[0.46, 0.085, 0.4]} color="#493629" />
+        {[-0.31, 0.31].map((x) => <group key={`autumn-pumpkin-${x}`} position={[x, 0.08, 0.47]}><mesh scale={[0.08, 0.065, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea580c" /></mesh><Cylinder radius={0.012} height={0.035} segments={5} position={[0, 0.07, 0]} color="#526b35" /></group>)}
       </group>}
       {catalogId === 'com_grocery' && <group>
         <Box size={[0.72, 0.12, 0.05]} position={[0, 0.62, 0.34]} color="#355b58" />
@@ -1034,6 +1035,21 @@ function StadiumMesh() {
   </group>
 }
 
+function CropField({ plowed = false }: { plowed?: boolean }) {
+  return <group>
+    <Box size={[0.98, 0.035, 0.98]} position={[0, 0.018, 0]} color={plowed ? '#5c4033' : '#78914a'} />
+    {Array.from({ length: 7 }, (_, index) => {
+      const z = -0.39 + index * 0.13
+      return <group key={index}>
+        <Box size={[0.86, 0.025, 0.045]} position={[0, 0.05, z]} color={plowed ? '#38291f' : index % 2 ? '#eab308' : '#ca8a04'} />
+        {!plowed && Array.from({ length: 9 }, (_, stalk) => <Box key={stalk} size={[0.025, 0.16, 0.025]} position={[-0.37 + stalk * 0.092, 0.13, z]} rotation={[0, 0, (stalk % 2 ? -1 : 1) * 0.14]} color={stalk % 3 ? '#eab308' : '#ca8a04'} />)}
+      </group>
+    })}
+    {plowed && [-0.47, 0.47].flatMap((x) => [-0.47, 0.47].map((z) => <Box key={`${x}:${z}`} size={[0.035, 0.22, 0.035]} position={[x, 0.13, z]} color="#65462e" />))}
+    {plowed && <><Box size={[0.94, 0.03, 0.025]} position={[0, 0.22, -0.47]} color="#65462e" /><Box size={[0.94, 0.03, 0.025]} position={[0, 0.22, 0.47]} color="#65462e" /><Box size={[0.025, 0.03, 0.94]} position={[-0.47, 0.22, 0]} color="#65462e" /><Box size={[0.025, 0.03, 0.94]} position={[0.47, 0.22, 0]} color="#65462e" /></>}
+  </group>
+}
+
 function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'civ_school') return <group><Pad />
     <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
@@ -1360,7 +1376,7 @@ interface TileModelProps extends RoadLinks {
 }
 
 
-function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
+function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
   let model: ReactNode = null
   let dust = 0
   let needsWater = false
@@ -1373,6 +1389,12 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
     case TileType.ROAD:
       model = <Road north={north} south={south} east={east} west={west} variant={variant} />
       dust = 4
+      break
+    case TileType.FIELD_WHEAT:
+      model = <CropField />
+      break
+    case TileType.FIELD_PLOW:
+      model = <CropField plowed />
       break
     case TileType.RESIDENTIAL:
       if (catalogId === 'res_panel_block') {
@@ -1466,6 +1488,13 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       {needsWater && !hasWater && <NoWaterMarker />}
       {needsPower && !hasPower && <NoPowerMarker />}
       {needsSupplies && !hasSupplies && <SupplyShortageMarker />}
+      {smog && type === TileType.RESIDENTIAL && <Billboard position={[0.34, 1.18, 0]}>
+        <group>
+          <mesh position={[-0.045, 0, 0]}><circleGeometry args={[0.075, 12]} /><meshBasicMaterial color="#777d7e" transparent opacity={0.72} depthTest={false} /></mesh>
+          <mesh position={[0.045, 0.015, 0]}><circleGeometry args={[0.09, 12]} /><meshBasicMaterial color="#8b9090" transparent opacity={0.7} depthTest={false} /></mesh>
+          <mesh position={[0.12, -0.012, 0]}><circleGeometry args={[0.065, 12]} /><meshBasicMaterial color="#777d7e" transparent opacity={0.68} depthTest={false} /></mesh>
+        </group>
+      </Billboard>}
     </>
   )
 }
@@ -1522,6 +1551,7 @@ export function FountainSquareMesh() {
       {[-0.1, 0.1].map((x) => <Box key={x} size={[0.025, 0.1, 0.025]} position={[x, 0.05, 0]} color="#493629" />)}
     </group>)}
     {[-0.32, 0, 0.32].map((x) => <mesh key={`shrub-${x}`} position={[x, 0.17, -0.32]} geometry={bushGeometry} scale={0.09} castShadow receiveShadow material={getFoliageMaterial(x === 0 ? '#8f7255' : '#587c3b')}><lineSegments geometry={bushEdges} material={outlineMaterial} /></mesh>)}
+    {[-0.34, 0.34].map((x) => <mesh key={`autumn-pumpkin-${x}`} position={[x, 0.1, 0.31]} scale={[0.08, 0.065, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea580c" /></mesh>)}
   </group>
 }
 

@@ -17,6 +17,8 @@ export const TileType = {
   FIRE_STATION: 'FIRE_STATION',
   CITY_HALL: 'CITY_HALL',
   FOOTPRINT: 'FOOTPRINT',
+  FIELD_WHEAT: 'FIELD_WHEAT',
+  FIELD_PLOW: 'FIELD_PLOW',
 } as const
 
 export type TileType = (typeof TileType)[keyof typeof TileType]

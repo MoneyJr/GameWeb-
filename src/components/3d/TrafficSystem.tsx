@@ -16,6 +16,7 @@ interface CarState {
   colorIndex: number
   active: boolean
   delivery: boolean
+  vehicleType: 'car' | 'truck' | 'bus'
 }
 
 const CAR_COUNT = 12
@@ -106,8 +107,9 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
 
 export function TrafficSystem({ grid }: { grid: Grid }) {
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
-  const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, () => ({
+  const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, (_, index) => ({
     routeIndex: 0, segment: 0, reverse: false, progress: 0, colorIndex: 0, active: false, delivery: false,
+    vehicleType: index < 2 ? 'truck' as const : index < 4 ? 'bus' as const : 'car' as const,
   })))
   const groupRef = useRef<THREE.Group>(null)
   const bodyGeometry = useMemo(() => new THREE.BoxGeometry(0.3, 0.13, 0.46), [])
@@ -117,6 +119,8 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
   const bodyMaterials = useMemo(() => CAR_COLORS.map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.82 })), [])
   const cabinMaterials = useMemo(() => CABIN_COLORS.map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.8 })), [])
   const wheelMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#17191c', roughness: 1 }), [])
+  const truckMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#9a9a91', roughness: 0.95 }), [])
+  const busMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#e0ae28', roughness: 0.86 }), [])
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -140,15 +144,20 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
         car.colorIndex = Math.floor(Math.random() * CAR_COLORS.length)
         const body = mesh.children[0] as THREE.Mesh
         const cabin = mesh.children[1] as THREE.Mesh
-        body.material = bodyMaterials[car.colorIndex]
+        body.material = car.vehicleType === 'truck' ? truckMaterial : car.vehicleType === 'bus' ? busMaterial : bodyMaterials[car.colorIndex]
         cabin.material = cabinMaterials[car.colorIndex]
-        if (mesh.children[8]) mesh.children[8].visible = car.delivery
+        body.scale.set(car.vehicleType === 'bus' ? 1.25 : 1, 1, car.vehicleType === 'bus' ? 1.7 : 1)
+        cabin.scale.set(car.vehicleType === 'bus' ? 1.1 : 1, 1, car.vehicleType === 'bus' ? 1.3 : 1)
+        if (mesh.children[11]) mesh.children[11].visible = car.vehicleType === 'truck'
         car.active = true
         mesh.visible = true
       }
 
       const path = routes[car.routeIndex].path
-      car.progress += dt * CAR_SPEED
+      const nextRoad = path[Math.min(car.segment + 1, path.length - 1)]
+      const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type === TileType.ROAD ? 1 : 0), 0) : 0
+      const braking = nextDegree >= 3 && car.progress > 0.45 ? 0.34 : 1
+      car.progress += dt * CAR_SPEED * braking
       while (car.progress >= 1) {
         car.progress -= 1
         if (!car.reverse) {
@@ -189,6 +198,10 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
           <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[-0.085, 0.035, -0.235]} />
           <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[0.085, 0.035, -0.235]} />
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshStandardMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
+          <group visible={false} position={[0, 0.04, -0.48]}>
+            <mesh><boxGeometry args={[0.26, 0.18, 0.36]} /><meshStandardMaterial color="#aeb1a9" roughness={1} /><Edges color="#211e1a" /></mesh>
+            {[-1, 1].map((side) => <mesh key={side} geometry={wheelGeometry} material={wheelMaterial} position={[side * 0.14, -0.07, -0.08]} rotation={[0, 0, Math.PI / 2]} />)}
+          </group>
         </group>
       ))}
     </group>

@@ -62,6 +62,7 @@ const catalogIcons: Record<string, LucideIcon> = {
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
   lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church,
   utl_wind: Wind, utl_solar: Sun, utl_water: Droplets,
+  field_wheat: TreePine, field_plow: Route,
 }
 
 const catalogOptions = (category: BuildingCategoryId): DockOption[] => BUILDING_CATALOG
