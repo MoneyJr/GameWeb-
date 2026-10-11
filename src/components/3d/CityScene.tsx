@@ -223,7 +223,7 @@ export const GroundSlab = memo(function GroundSlab() {
 
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.005, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[350, 350]} />
         <meshStandardMaterial color="#7a9954" roughness={0.95} metalness={0} />
       </mesh>
@@ -693,14 +693,23 @@ function NightManager({ minutes, ambientRef, sunRef }: {
   const sunColor = useMemo(() => new THREE.Color(), [])
   const displayMinutes = useRef(minutes)
   useFrame(({ scene }, delta) => {
-    const minuteDelta = ((minutes - displayMinutes.current + 720) % 1440) - 720
+    // JavaScript's % keeps the sign of the dividend. Euclidean modulo keeps
+    // the shortest cyclic delta stable when the clock crosses midnight.
+    const minuteDelta = THREE.MathUtils.euclideanModulo(minutes - displayMinutes.current + 720, 1440) - 720
     displayMinutes.current = (displayMinutes.current + minuteDelta * (1 - Math.exp(-delta * 2.2)) + 1440) % 1440
     const time = displayMinutes.current
     const level = calcNightLevel(time)
     const ambient = ambientRef.current
     const sun = sunRef.current
-    const dusk = THREE.MathUtils.clamp((time - 1080) / 180, 0, 1)
-    const dawn = time >= 300 && time < 360 ? (time - 300) / 60 : 0
+    const sunAngle = (time / 1440) * Math.PI * 2
+    const sunHeight = Math.sin(sunAngle - Math.PI / 2)
+    const twilightFloor = Math.sin(Math.PI / 12)
+    const dusk = time >= 1080 && time < 1260
+      ? THREE.MathUtils.clamp(-sunHeight / Math.SQRT1_2, 0, 1)
+      : 0
+    const dawn = time >= 300 && time < 360
+      ? THREE.MathUtils.clamp((sunHeight + twilightFloor) / twilightFloor, 0, 1)
+      : 0
 
     if (time >= 360 && time < 1080) {
       background.copy(DAY_SKY)

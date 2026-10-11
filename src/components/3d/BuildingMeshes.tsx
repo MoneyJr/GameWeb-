@@ -63,6 +63,15 @@ function getToonMaterial(color: string): THREE.MeshToonMaterial {
   return material
 }
 
+const roadCurbMaterial = new THREE.MeshToonMaterial({
+  color: '#dcd4c5', gradientMap: getGradientMap(),
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+})
+const roadMarkingMaterial = new THREE.MeshToonMaterial({
+  color: '#ffffff', gradientMap: getGradientMap(),
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+})
+
 const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0.92 })
 const bushGeometry = new THREE.IcosahedronGeometry(1, 0)
 const bushEdges = new THREE.EdgesGeometry(bushGeometry)
@@ -237,44 +246,44 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
       {/* Sidewalks (тротуары с бордюрами) */}
       {isStraightX && !isIntersection && (
         <group>
-          <Box size={[1, 0.06, 0.2]} position={[0, 0.03, -0.4]} color="#dcd4c5" />
-          <Box size={[1, 0.06, 0.2]} position={[0, 0.03, 0.4]} color="#dcd4c5" />
+          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
       {isStraightZ && !isIntersection && (
         <group>
-          <Box size={[0.2, 0.06, 1]} position={[-0.4, 0.03, 0]} color="#dcd4c5" />
-          <Box size={[0.2, 0.06, 1]} position={[0.4, 0.03, 0]} color="#dcd4c5" />
+          <Box size={[0.2, 0.02, 1]} position={[-0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 1]} position={[0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
       {isIntersection && (
         <group>
-          <Box size={[0.2, 0.06, 0.2]} position={[-0.4, 0.03, -0.4]} color="#dcd4c5" />
-          <Box size={[0.2, 0.06, 0.2]} position={[0.4, 0.03, -0.4]} color="#dcd4c5" />
-          <Box size={[0.2, 0.06, 0.2]} position={[-0.4, 0.03, 0.4]} color="#dcd4c5" />
-          <Box size={[0.2, 0.06, 0.2]} position={[0.4, 0.03, 0.4]} color="#dcd4c5" />
+          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
 
       {/* Road Markings */}
       {!isIntersection && isStraightX && (
-        <Box size={[0.4, 0.01, 0.02]} position={[0, 0.045, 0]} color="#ffffff" outline={false} castShadow={false} />
+        <Box size={[0.4, 0.01, 0.02]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
       )}
       {!isIntersection && isStraightZ && (
-        <Box size={[0.02, 0.01, 0.4]} position={[0, 0.045, 0]} color="#ffffff" outline={false} castShadow={false} />
+        <Box size={[0.02, 0.01, 0.4]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
       )}
 
       {/* Zebra Crossings at Intersections */}
       {isIntersection && (
-        <group position={[0, 0.045, 0]}>
+        <group position={[0, 0.05, 0]}>
           {[-0.25, 0.25].map(x => (
             <group key={`zebra-x-${x}`} position={[x, 0, 0]}>
-              {[-0.1, 0, 0.1].map(z => <Box key={z} size={[0.1, 0.01, 0.04]} position={[0, 0, z]} color="#ffffff" outline={false} castShadow={false} />)}
+              {[-0.1, 0, 0.1].map(z => <Box key={z} size={[0.1, 0.01, 0.04]} position={[0, 0, z]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
             </group>
           ))}
           {[-0.25, 0.25].map(z => (
             <group key={`zebra-z-${z}`} position={[0, 0, z]}>
-              {[-0.1, 0, 0.1].map(x => <Box key={x} size={[0.04, 0.01, 0.1]} position={[x, 0, 0]} color="#ffffff" outline={false} castShadow={false} />)}
+              {[-0.1, 0, 0.1].map(x => <Box key={x} size={[0.04, 0.01, 0.1]} position={[x, 0, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
             </group>
           ))}
         </group>
@@ -298,16 +307,11 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
 }
 
 function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotation?: Vec3 }) {
-  const lightRef = useRef<THREE.PointLight>(null)
-  useFrame(() => {
-    if (lightRef.current) lightRef.current.intensity = 1.2 * getCurrentNightLevel()
-  })
   return (
     <group position={position} rotation={rotation}>
       <Cylinder radius={0.01} height={0.4} segments={6} position={[0, 0.2, 0]} color="#333" />
       <Box size={[0.12, 0.02, 0.02]} position={[0, 0.4, 0.05]} color="#333" />
       <Box size={[0.04, 0.02, 0.04]} position={[0, 0.39, 0.08]} color="#6b6354" material={lampBulbMaterial} outline={false} castShadow={false} />
-      <pointLight ref={lightRef} color="#ffdf88" intensity={0} distance={4.5} decay={2} position={[0, 0.38, 0.08]} />
       <mesh position={[0, 0.006, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowOuterMaterial} renderOrder={2}><circleGeometry args={[0.18, 16]} /></mesh>
       <mesh position={[0, 0.008, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowInnerMaterial} renderOrder={3}><circleGeometry args={[0.09, 16]} /></mesh>
     </group>
@@ -349,7 +353,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, getCurrentNightLevel, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -951,9 +955,9 @@ function CinemaCosmosMesh() {
     <Box size={[2.2, 1.42, 1.6]} position={[0, 0.82, -0.02]} color="#e3dbcb" />
     <Box size={[2.28, 0.18, 1.7]} position={[0, 1.53, -0.02]} color="#b7aa94" />
     <Box size={[2.38, 0.16, 0.42]} position={[0, 1.15, 0.83]} color="#d7cbb5" />
-    <Box size={[2.1, 0.78, 0.035]} position={[0, 0.65, 0.79]} color="#3a5a60" />
-    {[-0.72, -0.24, 0.24, 0.72].map((x) => <Box key={x} size={[0.025, 0.78, 0.045]} position={[x, 0.65, 0.82]} color="#c4d4d0" />)}
-    <Box size={[0.035, 0.78, 0.045]} position={[0, 0.65, 0.82]} color="#c4d4d0" />
+    <Box size={[2.1, 0.78, 0.035]} position={[0, 0.65, 0.79]} color="#203b43" />
+    {[-0.72, -0.24, 0.24, 0.72].map((x) => <Box key={x} size={[0.025, 0.78, 0.045]} position={[x, 0.65, 0.82]} color="#eee5d4" />)}
+    <Box size={[0.035, 0.78, 0.045]} position={[0, 0.65, 0.82]} color="#eee5d4" />
     {/* Side mosaic panel: a compact geometric space motif. */}
     {mosaic.map((color, i) => {
       const col = i % 5
@@ -974,7 +978,7 @@ function CathedralMesh() {
     {/* Pilasters, cornices, and tall narrow arched windows. */}
     {[-0.66, -0.22, 0.22, 0.66].map((x, i) => <group key={`front-pilaster-${i}`}>
       <Box size={[0.075, 1.58, 0.1]} position={[x, 1.02, 0.8]} color="#deded8" />
-      <Window position={[x + 0.11, 1.13, 0.8]} width={0.12} height={0.58} glass="#425b77" frame="#fffefa" cross={false} sill={false} />
+      <Window position={[x + 0.11, 1.13, 0.8]} width={0.12} height={0.58} glass="#1c2c46" frame="#fffefa" cross={false} sill={false} />
       <Cone radius={0.07} height={0.12} segments={6} position={[x + 0.11, 1.48, 0.8]} rotation={[0, 0, Math.PI]} color="#fffefa" />
     </group>)}
     <Box size={[1.82, 0.12, 1.8]} position={[0, 1.82, 0]} color="#e1e0d8" />
@@ -1005,16 +1009,11 @@ function CathedralMesh() {
 }
 
 function StadiumFloodlight({ position }: { position: Vec3 }) {
-  const lightRef = useRef<THREE.SpotLight>(null)
-  useFrame(() => {
-    if (lightRef.current) lightRef.current.intensity = 2.2 * getCurrentNightLevel()
-  })
   return <group position={position}>
     <Box size={[0.045, 1.65, 0.045]} position={[0, 0.825, 0]} color="#6a7071" />
     <Box size={[0.22, 0.04, 0.04]} position={[0, 1.56, 0]} color="#777d7e" />
     <Box size={[0.075, 0.08, 0.05]} position={[-0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
     <Box size={[0.075, 0.08, 0.05]} position={[0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
-    <spotLight ref={lightRef} color="#fff0c2" position={[0, 1.58, 0]} rotation={[-Math.PI / 2, 0, 0]} intensity={0} distance={4.8} angle={Math.PI / 5} penumbra={0.65} decay={2} />
   </group>
 }
 

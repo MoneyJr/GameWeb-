@@ -156,7 +156,7 @@ export function getGlassMaterial(color: string, lit: boolean): THREE.MeshToonMat
 }
 
 /** Лампочка уличного фонаря и два тёплых круга света на асфальте (внешний и внутренний). */
-export const lampBulbMaterial = new THREE.MeshStandardMaterial({ color: '#6b6354', emissive: '#fff2a8', emissiveIntensity: 0, roughness: 1 })
+export const lampBulbMaterial = new THREE.MeshBasicMaterial({ color: '#6b6354', toneMapped: false })
 export const lampGlowOuterMaterial = new THREE.MeshBasicMaterial({
   color: NIGHT_WINDOW_COLOR,
   transparent: true,
@@ -173,9 +173,13 @@ export const lampGlowInnerMaterial = new THREE.MeshBasicMaterial({
 })
 
 const BULB_DAY = new THREE.Color('#6b6354')
-const BULB_NIGHT = new THREE.Color('#fff2a8')
-export const vehicleHeadlightMaterial = new THREE.MeshStandardMaterial({ color: '#fff4d2', emissive: '#fff4d2', emissiveIntensity: 0, roughness: 1 })
-export const vehicleTaillightMaterial = new THREE.MeshStandardMaterial({ color: '#5b2928', emissive: '#ff3528', emissiveIntensity: 0, roughness: 1 })
+const BULB_NIGHT = new THREE.Color('#ffee88')
+export const vehicleHeadlightMaterial = new THREE.MeshBasicMaterial({ color: '#fff4d2', toneMapped: false })
+export const vehicleTaillightMaterial = new THREE.MeshBasicMaterial({ color: '#5b2928', toneMapped: false })
+const HEADLIGHT_DAY = new THREE.Color('#fff4d2')
+const HEADLIGHT_NIGHT = new THREE.Color('#ffee88')
+const TAILLIGHT_DAY = new THREE.Color('#5b2928')
+const TAILLIGHT_NIGHT = new THREE.Color('#ff3528')
 export const nightSignMaterial = new THREE.MeshStandardMaterial({ color: '#5cb3e6', emissive: '#42aaff', emissiveIntensity: 0, roughness: 1 })
 export const cinemaSignMaterial = new THREE.MeshStandardMaterial({ color: '#e8292e', emissive: '#ff2525', emissiveIntensity: 0, roughness: 1 })
 
@@ -188,11 +192,10 @@ export function applyNightLevel(level: number): void {
   currentNightLevel = level
   for (const entry of glassMaterials.values()) paintGlass(entry, level)
   lampBulbMaterial.color.lerpColors(BULB_DAY, BULB_NIGHT, level)
-  lampBulbMaterial.emissiveIntensity = level * 2.5
   lampGlowOuterMaterial.opacity = level * 0.26
   lampGlowInnerMaterial.opacity = level * 0.3
-  vehicleHeadlightMaterial.emissiveIntensity = level * 2.5
-  vehicleTaillightMaterial.emissiveIntensity = level * 1.6
+  vehicleHeadlightMaterial.color.lerpColors(HEADLIGHT_DAY, HEADLIGHT_NIGHT, level)
+  vehicleTaillightMaterial.color.lerpColors(TAILLIGHT_DAY, TAILLIGHT_NIGHT, level)
   nightSignMaterial.emissiveIntensity = level * 2.5
   cinemaSignMaterial.emissiveIntensity = level * 3
 }
