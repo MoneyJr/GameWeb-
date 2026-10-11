@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { Edges } from '@react-three/drei'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
+import { vehicleHeadlightMaterial, vehicleTaillightMaterial } from './primitives'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -116,7 +117,6 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
   const bodyMaterials = useMemo(() => CAR_COLORS.map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.82 })), [])
   const cabinMaterials = useMemo(() => CABIN_COLORS.map((color) => new THREE.MeshStandardMaterial({ color, roughness: 0.8 })), [])
   const wheelMaterial = useMemo(() => new THREE.MeshStandardMaterial({ color: '#17191c', roughness: 1 }), [])
-  const lightMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fff1b8' }), [])
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -184,8 +184,10 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
           {[-1, 1].flatMap((x) => [-1, 1].map((z) => (
             <mesh key={`${x}:${z}`} geometry={wheelGeometry} material={wheelMaterial} position={[x * 0.155, -0.025, z * 0.145]} rotation={[0, 0, Math.PI / 2]} castShadow />
           )))}
-          <mesh geometry={lightGeometry} material={lightMaterial} position={[-0.085, 0.035, 0.235]} />
-          <mesh geometry={lightGeometry} material={lightMaterial} position={[0.085, 0.035, 0.235]} />
+          <mesh geometry={lightGeometry} material={vehicleHeadlightMaterial} position={[-0.085, 0.035, 0.235]} />
+          <mesh geometry={lightGeometry} material={vehicleHeadlightMaterial} position={[0.085, 0.035, 0.235]} />
+          <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[-0.085, 0.035, -0.235]} />
+          <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[0.085, 0.035, -0.235]} />
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshStandardMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
         </group>
       ))}

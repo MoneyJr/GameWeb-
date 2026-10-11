@@ -63,7 +63,7 @@ function getToonMaterial(color: string): THREE.MeshToonMaterial {
   return material
 }
 
-const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR })
+const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0.92 })
 const bushGeometry = new THREE.IcosahedronGeometry(1, 0)
 const bushEdges = new THREE.EdgesGeometry(bushGeometry)
 
@@ -106,7 +106,7 @@ function getEdges(shape: Shape): THREE.EdgesGeometry {
     // Для гладких тел (цилиндры, конусы) рисуем только обод, для граней — все рёбра.
     const smooth =
       shape.kind === 'cylinder' || (shape.kind === 'cone' && shape.segments > 4)
-    edges = new THREE.EdgesGeometry(getGeometry(shape), smooth ? 35 : 15)
+    edges = new THREE.EdgesGeometry(getGeometry(shape), smooth ? 35 : 30)
     edgesCache.set(key, edges)
   }
   return edges
@@ -302,7 +302,9 @@ function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotat
     <group position={position} rotation={rotation}>
       <Cylinder radius={0.01} height={0.4} segments={6} position={[0, 0.2, 0]} color="#333" />
       <Box size={[0.12, 0.02, 0.02]} position={[0, 0.4, 0.05]} color="#333" />
-      <Box size={[0.04, 0.02, 0.04]} position={[0, 0.39, 0.08]} color="#ffffcc" outline={false} />
+      <Box size={[0.04, 0.02, 0.04]} position={[0, 0.39, 0.08]} color="#6b6354" material={lampBulbMaterial} outline={false} castShadow={false} />
+      <mesh position={[0, 0.006, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowOuterMaterial} renderOrder={2}><circleGeometry args={[0.18, 16]} /></mesh>
+      <mesh position={[0, 0.008, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowInnerMaterial} renderOrder={3}><circleGeometry args={[0.09, 16]} /></mesh>
     </group>
   )
 }
@@ -342,7 +344,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01 } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -659,7 +661,7 @@ export function Commercial({ catalogId }: { catalogId?: string }) {
       <Box size={[0.78, 0.03, 0.68]} position={[0, PAD_HEIGHT + 0.565, -0.02]} color="#e0b183" />
 
       {/* крыша: вывеска и кондиционер */}
-      <Box size={[0.34, 0.1, 0.04]} position={[0, PAD_HEIGHT + 0.64, 0.12]} color="#5cb3e6" />
+      <Box size={[0.34, 0.1, 0.04]} position={[0, PAD_HEIGHT + 0.64, 0.12]} color="#5cb3e6" material={nightSignMaterial} />
       <Box size={[0.16, 0.08, 0.14]} position={[-0.2, PAD_HEIGHT + 0.62, -0.1]} color="#c9ccd1" />
       <Cylinder radius={0.04} height={0.02} segments={10} position={[-0.2, PAD_HEIGHT + 0.67, -0.1]} color="#6b7078" />
 

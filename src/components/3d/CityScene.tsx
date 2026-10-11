@@ -649,12 +649,22 @@ export interface CitySceneProps {
 
 import { applyNightLevel } from './primitives'
 
-const DAY_COLOR = new THREE.Color('#eae4d5')
-const NIGHT_COLOR = new THREE.Color('#1a2130')
+const DAY_SKY = new THREE.Color('#cce2cb')
+const DUSK_SKY = new THREE.Color('#b889a2')
+const NIGHT_COLOR = new THREE.Color('#101424')
+const SUN_COLOR = new THREE.Color('#fffaf0')
+const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
+const MOON_COLOR = new THREE.Color('#2a3d5e')
+const DAY_AMBIENT = new THREE.Color('#e8ecf0')
+const DUSK_AMBIENT = new THREE.Color('#d89b91')
+const NIGHT_AMBIENT = new THREE.Color('#12172b')
+const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
+const DUSK_SUN_POSITION = new THREE.Vector3(20, 11, 14)
+const MOON_POSITION = new THREE.Vector3(-24, 28, 14)
 
 function calcNightLevel(minutes: number): number {
-  if (minutes >= 1200 && minutes < 1260) {
-    return (minutes - 1200) / 60
+  if (minutes >= 1170 && minutes < 1260) {
+    return (minutes - 1170) / 90
   }
   if (minutes >= 1260 || minutes < 300) {
     return 1
@@ -665,11 +675,79 @@ function calcNightLevel(minutes: number): number {
   return 0
 }
 
-function NightManager({ minutes }: { minutes: number }) {
-  useFrame(({ scene }) => {
-    const level = calcNightLevel(minutes)
+function NightManager({ minutes, ambientRef, sunRef }: {
+  minutes: number
+  ambientRef: MutableRefObject<THREE.AmbientLight | null>
+  sunRef: MutableRefObject<THREE.DirectionalLight | null>
+}) {
+  const background = useMemo(() => new THREE.Color(), [])
+  const ambientColor = useMemo(() => new THREE.Color(), [])
+  const sunColor = useMemo(() => new THREE.Color(), [])
+  const displayMinutes = useRef(minutes)
+  useFrame(({ scene }, delta) => {
+    const minuteDelta = ((minutes - displayMinutes.current + 720) % 1440) - 720
+    displayMinutes.current = (displayMinutes.current + minuteDelta * (1 - Math.exp(-delta * 2.2)) + 1440) % 1440
+    const time = displayMinutes.current
+    const level = calcNightLevel(time)
+    const ambient = ambientRef.current
+    const sun = sunRef.current
+    const dusk = THREE.MathUtils.clamp((time - 1080) / 180, 0, 1)
+    const dawn = time >= 300 && time < 360 ? (time - 300) / 60 : 0
+
+    if (time >= 360 && time < 1080) {
+      background.copy(DAY_SKY)
+      ambientColor.copy(DAY_AMBIENT)
+      sunColor.copy(SUN_COLOR)
+      ambient && (ambient.intensity = 0.5)
+      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.5)
+    } else if (time >= 1080 && time < 1260) {
+      background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
+      ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
+      sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.5, 0.38, dusk))
+      if (sun) {
+        sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
+        sun.intensity = THREE.MathUtils.lerp(1.5, 0.05, dusk)
+      }
+      if (dusk > 0.72) {
+        const nightBlend = (dusk - 0.72) / 0.28
+        background.lerp(NIGHT_COLOR, nightBlend)
+        ambientColor.lerp(NIGHT_AMBIENT, nightBlend)
+        sunColor.lerp(MOON_COLOR, nightBlend)
+        if (sun) {
+          sun.position.lerp(MOON_POSITION, nightBlend)
+          sun.intensity = THREE.MathUtils.lerp(0.05, 0.3, nightBlend)
+        }
+        if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.38, 0.25, nightBlend)
+      }
+    } else if (time >= 300 && time < 360) {
+      background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
+      ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
+      sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.25, 0.5, dawn))
+      if (sun) {
+        sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
+        sun.intensity = THREE.MathUtils.lerp(0.3, 1.5, dawn)
+      }
+    } else {
+      background.copy(NIGHT_COLOR)
+      ambientColor.copy(NIGHT_AMBIENT)
+      sunColor.copy(MOON_COLOR)
+      ambient && (ambient.intensity = 0.25)
+      if (sun) {
+        sun.position.copy(MOON_POSITION)
+        sun.intensity = 0.3
+      }
+    }
+
+    if (ambient) ambient.color.copy(ambientColor)
+    if (sun) sun.color.copy(sunColor)
+    if (scene.fog instanceof THREE.FogExp2) {
+      scene.fog.color.copy(background)
+      scene.fog.density = THREE.MathUtils.lerp(0.012, 0.009, level)
+    }
+    scene.background = background
     applyNightLevel(level)
-    scene.background = DAY_COLOR.clone().lerp(NIGHT_COLOR, level)
   })
   return null
 }
@@ -678,6 +756,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
   const controlsRef = useRef<PannableControls | null>(null)
+  const ambientRef = useRef<THREE.AmbientLight>(null)
+  const sunRef = useRef<THREE.DirectionalLight>(null)
   const handleTouchPreview = useCallback((cell: Cell) => {
     setTouchGhost((current) => {
       if (!current) return { cells: [cell] }
@@ -755,19 +835,20 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#eae4d5', 0.012]} />
-      <NightManager minutes={minutes} />
+      <fogExp2 attach="fog" args={['#cce2cb', 0.012]} />
+      <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
       <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={-200} far={400} />
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight intensity={0.35} color="#fff6ea" />
+      <ambientLight ref={ambientRef} intensity={0.5} color="#e8ecf0" />
       <directionalLight
+        ref={sunRef}
         position={[20, 35, 20]}
-        intensity={2.0}
-        color="#fff5df"
+        intensity={1.5}
+        color="#fffaf0"
         castShadow
         shadow-mapSize={shadowMapSize}
         shadow-camera-left={-22}
@@ -776,7 +857,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         shadow-camera-bottom={-22}
         shadow-camera-near={0.5}
         shadow-camera-far={90}
-        shadow-bias={-0.0005}
+        shadow-bias={-0.0004}
         shadow-normalBias={0.015}
       />
 
