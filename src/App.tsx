@@ -86,8 +86,11 @@ function App() {
         happiness={sim.happiness}
         waterServed={sim.waterStats.served}
         waterTotal={sim.waterStats.total}
+        waterProduced={sim.waterStats.produced}
+        waterConsumed={sim.waterStats.consumed}
         energyProduced={sim.energyStats.produced}
         energyConsumed={sim.energyStats.consumed}
+        prestige={sim.prestige}
         crimeRate={sim.capacityStats.crimeRate}
         policeCapacity={sim.capacityStats.policeCapacity}
         fireCapacity={sim.capacityStats.fireCapacity}

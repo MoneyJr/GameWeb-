@@ -319,6 +319,8 @@ function recomputeServices(grid: Grid): Grid {
 export interface CityCounts {
   energyProduced: number
   energyConsumed: number
+  waterProduced: number
+  waterConsumed: number
   roads: number
   houses: number
   houseCapacity: number
@@ -356,6 +358,8 @@ function countTiles(grid: Grid): CityCounts {
   const counts: CityCounts = {
     energyProduced: 0,
     energyConsumed: 0,
+    waterProduced: 0,
+    waterConsumed: 0,
     roads: 0,
     houses: 0,
     houseCapacity: 0,
@@ -393,8 +397,10 @@ function countTiles(grid: Grid): CityCounts {
         const entry = id ? BUILDING_BY_ID[id] : undefined
         if (entry?.category === 'utilities' || cell.type === TileType.COAL) {
           counts.energyProduced += entry?.givesEnergy ?? entry?.energy ?? (cell.type === TileType.COAL ? 60 : 0)
+          counts.waterProduced += entry?.givesWater ?? 0
         } else {
           counts.energyConsumed += entry?.energy ?? 0
+          counts.waterConsumed += entry?.water ?? 0
         }
       }
       switch (cell.type) {
@@ -785,7 +791,7 @@ export function useCitySimulation() {
 
   const waterStats = useMemo(() => {
     const counts = countTiles(state.grid)
-    return { served: counts.wateredConsumers, total: counts.consumers }
+    return { served: counts.wateredConsumers, total: counts.consumers, produced: counts.waterProduced, consumed: counts.waterConsumed }
   }, [state.grid])
 
   const energyStats = useMemo(() => {
@@ -803,6 +809,13 @@ export function useCitySimulation() {
     return { policeCapacity, fireCapacity, crimeRate }
   }, [state.grid, state.population])
 
+  const prestige = useMemo(() => {
+    const counts = countTiles(state.grid)
+    const developed = counts.houses + counts.shops + counts.factories + counts.parks
+    if (developed === 0) return 0
+    return Math.min(5, Math.round((state.happiness / 25 + counts.parks * 0.22 + counts.shops * 0.06 + counts.houses * 0.01) * 10) / 10)
+  }, [state.grid, state.happiness])
+
   return {
     grid: state.grid,
     population: state.population,
@@ -814,6 +827,7 @@ export function useCitySimulation() {
     demands,
     waterStats,
     energyStats,
+    prestige,
     capacityStats,
     minutes: state.minutes,
     ticks: state.ticks,

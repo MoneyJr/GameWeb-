@@ -108,11 +108,11 @@ export function hash01(n: number): number {
 
 /** Тёплый ламповый цвет горящих окон. */
 export const NIGHT_WINDOW_COLOR = '#ffcc44'
-const WARM_WINDOW = new THREE.Color(NIGHT_WINDOW_COLOR)
 
 interface GlassEntry {
   material: THREE.MeshToonMaterial
   dayColor: THREE.Color
+  nightColor: THREE.Color
   lit: boolean
 }
 
@@ -124,7 +124,7 @@ const GLASS_NIGHT_DARK = new THREE.Color('#2a3448')
 function paintGlass(entry: GlassEntry, level: number): void {
   if (entry.lit) {
     entry.material.emissiveIntensity = level * 1.8
-    entry.material.color.lerpColors(entry.dayColor, WARM_WINDOW, level)
+    entry.material.color.lerpColors(entry.dayColor, entry.nightColor, level)
   } else {
     entry.material.emissiveIntensity = 0
     entry.material.color.lerpColors(entry.dayColor, GLASS_NIGHT_DARK, level)
@@ -135,20 +135,20 @@ function paintGlass(entry: GlassEntry, level: number): void {
  * Материал стекла. Горящие окна (lit) ночью получают emissive-свечение #ffcc44,
  * тёмные остаются просто тёмным стеклом.
  */
-export function getGlassMaterial(color: string, lit: boolean): THREE.MeshToonMaterial {
-  const key = `${color}|${lit ? 1 : 0}`
+export function getGlassMaterial(color: string, lit: boolean, nightColor = NIGHT_WINDOW_COLOR): THREE.MeshToonMaterial {
+  const key = `${color}|${lit ? 1 : 0}|${nightColor}`
   let entry = glassMaterials.get(key)
   if (entry === undefined) {
     const material = new THREE.MeshToonMaterial({
       color,
       gradientMap: getGradientMap(),
-      emissive: WARM_WINDOW,
+      emissive: nightColor,
       emissiveIntensity: 0,
       polygonOffset: true,
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     })
-    entry = { material, dayColor: new THREE.Color(color), lit }
+    entry = { material, dayColor: new THREE.Color(color), nightColor: new THREE.Color(nightColor), lit }
     paintGlass(entry, currentNightLevel)
     glassMaterials.set(key, entry)
   }

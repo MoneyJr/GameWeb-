@@ -348,6 +348,7 @@ interface WindowProps {
   width?: number
   height?: number
   glass?: string
+  nightLight?: string
   frame?: string
   cross?: boolean
   sill?: boolean
@@ -362,6 +363,7 @@ function Window({
   width = 0.1,
   height = 0.12,
   glass = '#8fd3ff',
+  nightLight,
   frame = '#fff8ea',
   cross = true,
   sill = true,
@@ -375,7 +377,7 @@ function Window({
       <mesh
         position={[0, 0, 0.005]}
         geometry={getGeometry({ kind: 'box', size: [width, height, 0.024] })}
-        material={getGlassMaterial(glass, lit)}
+        material={getGlassMaterial(glass, lit, nightLight)}
         castShadow={false}
         receiveShadow
       />
@@ -937,26 +939,30 @@ function PanelBlockMesh() {
 }
 
 function ModernGlassTowerMesh() {
-  const floors = [0.55, 1.25, 1.95, 2.65, 3.35, 4.05]
+  const floors = Array.from({ length: 11 }, (_, index) => 0.52 + index * 0.61)
+  const glassWindow = (row: number, column: number) => ((row + column) % 3 === 0 ? '#fef08a' : '#e0f2fe')
   return <group>
     {/* Shared 2x2 landscaped plaza footprint. */}
     <Box size={[1.98, 0.08, 1.98]} position={[0, 0.04, 0]} color="#707779" />
     <Box size={[1.84, 0.035, 1.84]} position={[0, 0.095, 0]} color="#a9aaa2" />
     <Box size={[1.18, 0.06, 1.18]} position={[0, 0.14, 0]} color="#52796f" />
-    {/* A stepped glazed tower rises to 5.2 units. */}
-    <Box size={[1.2, 1.55, 1.2]} position={[0, 0.92, 0]} color="#52796f" />
-    <Box size={[1.05, 2.3, 1.05]} position={[0, 2.85, 0]} color="#638b82" />
-    <Box size={[0.9, 1.25, 0.9]} position={[0, 4.625, 0]} color="#84a98c" />
-    {[...floors].map((y) => <group key={`tower-windows-${y}`}>
-      {[-0.3, 0.3].map((x) => <Window key={`front-${x}`} position={[x, y, 0.606]} width={0.22} height={0.43} glass={y % 1.4 < 0.7 ? '#355f68' : '#e7e3ce'} frame="#edf1e8" cross={false} sill={false} />)}
-      {[-0.3, 0.3].map((z) => <Window key={`side-${z}`} position={[0.531, y, z]} facing="x" width={0.22} height={0.43} glass={y % 1.4 < 0.7 ? '#355f68' : '#e7e3ce'} frame="#edf1e8" cross={false} sill={false} />)}
+    {/* Three setbacks form a stepped business tower with a 7.2-unit roofline. */}
+    <Box size={[1.2, 2.08, 1.2]} position={[0, 1.19, 0]} color="#3d6e75" />
+    <Box size={[1.05, 2.72, 1.05]} position={[0, 3.59, 0]} color="#527f8a" />
+    <Box size={[0.9, 2.34, 0.9]} position={[0, 6.12, 0]} color="#648c99" />
+    {floors.map((y, row) => <group key={`tower-windows-${y}`}>
+      {[-0.3, 0.3].map((x, column) => <Window key={`front-${x}`} position={[x, y, 0.606]} width={0.22} height={0.43} glass="#3d6e75" nightLight={glassWindow(row, column)} frame="#f0f6f8" cross={false} sill={false} />)}
+      {[-0.3, 0.3].map((z, column) => <Window key={`side-${z}`} position={[0.531, y, z]} facing="x" width={0.22} height={0.43} glass="#648c99" nightLight={glassWindow(row, column + 2)} frame="#f0f6f8" cross={false} sill={false} />)}
     </group>)}
-    {[-0.43, -0.14, 0.14, 0.43].map((x) => <Box key={`front-lamella-${x}`} size={[0.025, 4.95, 0.035]} position={[x, 2.62, 0.615]} color="#eef2e8" />)}
-    {[-0.43, -0.14, 0.14, 0.43].map((z) => <Box key={`side-lamella-${z}`} size={[0.035, 4.95, 0.025]} position={[0.615, 2.62, z]} color="#eef2e8" />)}
-    {/* Rooftop garden and small glass pavilion. */}
-    <Box size={[0.9, 0.08, 0.9]} position={[0, 5.29, 0]} color="#6d8c46" />
-    <Box size={[0.42, 0.32, 0.36]} position={[0, 5.49, 0]} color="#8bb8ac" />
-    <Box size={[0.48, 0.035, 0.42]} position={[0, 5.66, 0]} color="#edf1e8" />
+    {[-0.43, -0.14, 0.14, 0.43].map((x) => <Box key={`front-lamella-${x}`} size={[0.025, 6.75, 0.035]} position={[x, 3.7, 0.615]} color="#f0f6f8" />)}
+    {[-0.43, -0.14, 0.14, 0.43].map((z) => <Box key={`side-lamella-${z}`} size={[0.035, 6.75, 0.025]} position={[0.615, 3.7, z]} color="#f0f6f8" />)}
+    {/* Rooftop terrace and illuminated helipad crown. */}
+    <Box size={[0.96, 0.1, 0.96]} position={[0, 7.27, 0]} color="#6d8c46" />
+    <Cylinder radius={0.34} height={0.018} segments={32} position={[0, 7.33, 0]} color="#dceef2" />
+    <Box size={[0.08, 0.02, 0.42]} position={[0, 7.35, 0]} color="#fef08a" />
+    <Box size={[0.32, 0.02, 0.08]} position={[0, 7.35, 0]} color="#fef08a" />
+    <Box size={[0.5, 0.2, 0.48]} position={[0, 7.38, -0.52]} color="#84b7c1" />
+    <Box size={[0.56, 0.025, 0.54]} position={[0, 7.49, -0.52]} color="#f0f6f8" />
     {/* Cypress trees around the tower and small square fountain in the garden. */}
     {[-0.79, 0.79].flatMap((x) => [-0.79, 0.79].map((z) => <group key={`cypress-${x}-${z}`} position={[x, 0.13, z]}>
       <Cylinder radius={0.035} radiusTop={0.025} height={0.3} segments={6} position={[0, 0.15, 0]} color="#684b35" />

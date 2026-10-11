@@ -1,20 +1,21 @@
-import { Clock, Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users, Zap } from 'lucide-react'
+import { Coins, Droplets, Frown, Meh, Moon, Pause, Play, Smile, Star, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users, Zap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/utils'
 import type { SimSpeed } from '../../types/city'
 
 interface TopBarProps {
-  
   demands: { residential: number; commercial: number; industrial: number }
-
   population: number
   budget: number
   lastNet: number
   happiness: number
   waterServed: number
   waterTotal: number
+  waterProduced: number
+  waterConsumed: number
   energyProduced: number
   energyConsumed: number
+  prestige: number
   crimeRate: number
   policeCapacity: number
   fireCapacity: number
@@ -28,259 +29,84 @@ interface TopBarProps {
 
 const SPEEDS: readonly SimSpeed[] = [1, 2, 3]
 
-function describeTime(minutes: number): { label: string; icon: ReactNode } {
-  const hour = Math.floor(minutes / 60)
-  if (hour >= 5 && hour < 8) return { label: 'Рассвет', icon: <Sunrise className="size-5 text-orange-500" /> }
-  if (hour >= 8 && hour < 18) return { label: 'День', icon: <Sun className="size-5 text-amber-500" /> }
-  if (hour >= 18 && hour < 21) return { label: 'Вечер', icon: <Sunset className="size-5 text-rose-500" /> }
-  return { label: 'Ночь', icon: <Moon className="size-5 text-indigo-500" /> }
-}
-
 function formatClock(minutes: number): string {
   const hh = String(Math.floor(minutes / 60)).padStart(2, '0')
   const mm = String(minutes % 60).padStart(2, '0')
   return `${hh}:${mm}`
 }
 
-interface StatProps {
-  id: string
-  icon: ReactNode
-  label: string
-  value: string
-  hint?: ReactNode
-  /** Меняется при каждом новом значении и перезапускает анимацию. */
-  bumpKey?: string | number
-  valueColor?: string
+function compactNumber(value: number): string {
+  return new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value)
 }
 
-function Stat({ id, icon, label, value, hint, bumpKey, valueColor }: StatProps) {
-  return (
-    <div id={id} className="flex items-center gap-3 px-4 py-2">
-      <span className="grid size-9 place-items-center rounded-xl border-2 border-ink bg-white">{icon}</span>
-      <div className="leading-tight">
-        <div className="text-[11px] font-extrabold uppercase tracking-wider text-ink-soft">{label}</div>
-        <div className="flex items-baseline gap-2">
-          <span
-            key={bumpKey}
-            data-testid={`${id}-value`}
-            className={cn("animate-[stat-bump_380ms_ease-out] text-xl font-extrabold tabular-nums", valueColor)}
-          >
-            {value}
-          </span>
-          {hint}
-        </div>
-      </div>
-    </div>
-  )
+function Metric({ id, icon, children, className, label }: { id: string; icon: ReactNode; children: ReactNode; className?: string; label: string }) {
+  return <div id={id} aria-label={label} className={cn('flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-stone-700/10 bg-white/65 px-2.5 text-xs font-semibold text-stone-800', className)}>
+    {icon}{children}
+  </div>
 }
 
 export function TopBar({
-  
-  population,
-  budget,
-  lastNet,
-  happiness,
-  waterServed,
-  waterTotal,
-  energyProduced,
-  energyConsumed,
-  crimeRate,
-  policeCapacity,
-  fireCapacity,
-  minutes,
-  day,
-  demands,
-  paused,
-  speed,
-  onTogglePause,
-  onSpeedChange,
+  population, budget, lastNet, happiness, waterServed, waterTotal,
+  waterProduced, waterConsumed, energyProduced, energyConsumed, prestige,
+  crimeRate, policeCapacity, fireCapacity, minutes, day, demands, paused,
+  speed, onTogglePause, onSpeedChange,
 }: TopBarProps) {
-  const time = describeTime(minutes)
   const positive = lastNet >= 0
-  const dryCount = waterTotal - waterServed
+  const waterDeficit = waterConsumed > waterProduced
   const energyDeficit = energyConsumed > energyProduced
   const HappinessIcon = happiness >= 70 ? Smile : happiness >= 40 ? Meh : Frown
-  const harvestFair = day <= 14
+  const timeIcon = minutes >= 300 && minutes < 480
+    ? <Sunrise className="size-3.5 text-amber-600" />
+    : minutes >= 480 && minutes < 1080
+      ? <Sun className="size-3.5 text-amber-500" />
+      : minutes >= 1080 && minutes < 1260
+      ? <Sunset className="size-3.5 text-orange-600" />
+      : minutes >= 1260 || minutes < 300
+        ? <Moon className="size-3.5 text-indigo-500" />
+        : <Sun className="size-3.5 text-amber-500" />
+  const fairActive = day <= 14
 
-  return (
-    <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 px-2 pt-[calc(env(safe-area-inset-top)+8px)] md:p-4">
-      <div className="pointer-events-auto flex h-11 max-w-[calc(100vw-16px)] items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full border border-stone-800 bg-[#F5F2EB]/95 px-1.5 py-1 text-[11px] shadow-md backdrop-blur-md md:hidden">
-        {harvestFair && <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-900">🍷 Винный фестиваль</span>}
-        <div id="stat-population-mobile" className="flex shrink-0 items-center gap-1" aria-label="Население">
-          <Users className="size-4 text-leaf" />
-          <span className="font-bold tabular-nums">{population.toLocaleString('en-US')}</span>
-        </div>
-        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
-        <div id="stat-budget-mobile" className="flex shrink-0 items-center gap-1" aria-label="Бюджет и чистый доход">
-          <Coins className="size-4 text-amber-600" />
-          <span className="font-bold tabular-nums">${Math.round(budget).toLocaleString('en-US')}</span>
-          <span className={cn('text-[10px] font-bold tabular-nums', positive ? 'text-emerald-700' : 'text-rose-700')}>
-            ({positive ? '+' : '−'}${Math.abs(lastNet).toLocaleString('en-US')})
-          </span>
-        </div>
-        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
-        <div id="stat-water-mobile" className="flex shrink-0 items-center gap-1" aria-label="Водоснабжение">
-          <Droplets className={cn('size-4', dryCount > 0 ? 'text-rose-500' : 'text-sky')} />
-          <span className="font-bold tabular-nums">{waterServed}/{waterTotal}</span>
-        </div>
-        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
-        <div id="stat-energy-mobile" className={cn('flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5', energyDeficit && 'bg-rose-100 text-rose-800')} aria-label={`Энергия: потребление ${energyConsumed}, выработка ${energyProduced}`}>
-          <Zap className={cn('size-4', energyDeficit ? 'text-rose-600' : 'text-amber-600')} />
-          <span className="font-bold tabular-nums">{energyConsumed}/{energyProduced}</span>
-          {energyDeficit && <span className="font-bold">Дефицит энергии!</span>}
-        </div>
-        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
-        <div id="stat-happiness-mobile" className="flex shrink-0 items-center gap-1" aria-label="Счастье">
-          <HappinessIcon className={cn('size-4', happiness >= 70 ? 'text-leaf' : happiness >= 40 ? 'text-amber-500' : 'text-rose-500')} />
-          <span className="font-bold tabular-nums">{happiness}%</span>
-        </div>
-        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
-        <div id="stat-time-mobile" className="flex shrink-0 items-center gap-1" aria-label={`День ${day}, ${time.label}`}>
-          <Clock className="size-4 text-ink-soft" />
-          <span className="font-bold tabular-nums">{formatClock(minutes)}</span>
-        </div>
-        <button
-          id="btn-pause-mobile"
-          type="button"
-          aria-label={paused ? 'Продолжить' : 'Пауза'}
-          aria-pressed={paused}
-          onClick={onTogglePause}
-          className={cn('grid size-7 shrink-0 place-items-center rounded-full border border-stone-800 transition-transform active:scale-95', paused ? 'bg-accent text-white' : 'bg-white text-ink')}
-        >
+  return <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center px-1.5 pt-[calc(env(safe-area-inset-top)+8px)] md:px-4">
+    <div className="pointer-events-auto flex h-11 max-w-full items-center gap-1.5 overflow-x-auto whitespace-nowrap rounded-2xl border border-stone-800/20 bg-[#F5F2EB]/90 px-2 py-1 text-xs shadow-lg backdrop-blur-md [scrollbar-width:none]">
+      <h1 className="hidden shrink-0 px-2 text-sm font-black tracking-tight text-stone-800 lg:block">Ink<span className="text-[#a65336]">ville</span></h1>
+      <Metric id="stat-population" icon={<Users className="size-3.5 text-emerald-700" />} label="Население">
+        <span data-testid="stat-population-value" className="tabular-nums">{compactNumber(population)}</span>
+      </Metric>
+      <Metric id="stat-budget" icon={<Coins className="size-3.5 text-amber-600" />} label="Бюджет и чистый доход за такт">
+        <span data-testid="stat-budget-value" className="tabular-nums">${compactNumber(Math.round(budget))}</span>
+        <span className={cn('flex items-center gap-0.5 text-[10px] tabular-nums', positive ? 'text-emerald-700' : 'text-rose-700')}>
+          {positive ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}{positive ? '+' : '−'}${compactNumber(Math.abs(lastNet))}
+        </span>
+      </Metric>
+      <Metric id="stat-energy" icon={<Zap className={cn('size-3.5', energyDeficit ? 'text-rose-600' : 'text-amber-600')} />} label={`Энергия: потребление ${energyConsumed}, выработка ${energyProduced}`} className={energyDeficit ? 'border-rose-500/40 bg-rose-100 text-rose-900' : undefined}>
+        <span data-testid="stat-energy-value" className="tabular-nums">{energyConsumed}/{energyProduced}</span>
+        {energyDeficit && <span className="text-[10px] font-bold">Дефицит энергии!</span>}
+      </Metric>
+      <Metric id="stat-water" icon={<Droplets className={cn('size-3.5', waterDeficit ? 'text-rose-600' : 'text-sky-700')} />} label={`Вода: потребление ${waterConsumed}, подача ${waterProduced}`} className={waterDeficit ? 'border-rose-500/40 bg-rose-100 text-rose-900' : undefined}>
+        <span data-testid="stat-water-value" className="tabular-nums">{waterConsumed}/{waterProduced}</span>
+      </Metric>
+      <Metric id="stat-happiness" icon={<HappinessIcon className={cn('size-3.5', happiness >= 70 ? 'text-emerald-700' : happiness >= 40 ? 'text-amber-600' : 'text-rose-600')} />} label={`Счастье жителей ${happiness} процентов`}>
+        <span data-testid="stat-happiness-value" className="tabular-nums">{happiness}%</span>
+        <span className="sr-only">Водоснабжение жителей: {waterServed}/{waterTotal}</span>
+        <span className="sr-only">Спрос: жильё {demands.residential}, торговля {demands.commercial}, промышленность {demands.industrial}</span>
+      </Metric>
+      <Metric id="stat-prestige" icon={<Star className="size-3.5 fill-amber-400 text-amber-600" />} label="Престиж города">
+        <span data-testid="stat-prestige-value">Престиж: {prestige.toFixed(1)}</span>
+      </Metric>
+      <Metric id="stat-time" icon={timeIcon} label={`День ${day}, ${formatClock(minutes)}`} className={fairActive ? 'border-amber-700/20 bg-[#fbf1d8]' : undefined}>
+        <span>{fairActive ? '🍂 Ярмарка' : 'Время'}</span><span className="tabular-nums">{formatClock(minutes)}</span>
+      </Metric>
+      <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-stone-700/10 bg-white/65 px-1">
+        <button id="btn-pause" type="button" aria-label={paused ? 'Продолжить' : 'Пауза'} aria-pressed={paused} onClick={onTogglePause}
+          className={cn('grid size-7 place-items-center rounded-full transition-colors', paused ? 'bg-[#a65336] text-white' : 'text-stone-800 hover:bg-stone-200')}>
           {paused ? <Play className="size-3.5 fill-current" /> : <Pause className="size-3.5 fill-current" />}
         </button>
+        {SPEEDS.map((value) => <button key={value} id={`btn-speed-${value}`} type="button" aria-label={`Скорость ${value}x`} aria-pressed={speed === value} onClick={() => onSpeedChange(value)}
+          className={cn('h-7 min-w-7 rounded-full px-1.5 text-[10px] font-bold transition-colors', speed === value ? 'bg-stone-800 text-white' : 'text-stone-700 hover:bg-stone-200')}>
+          {value === 3 ? '⏩' : `${value}x`}
+        </button>)}
       </div>
-
-      <div className="ink-panel pointer-events-auto hidden items-stretch divide-x-2 divide-ink/15 rounded-2xl md:flex">
-
-        
-        <div className="flex items-center gap-2 px-4">
-          <h1 className="text-xl font-black tracking-tight">
-            Ink<span className="text-accent-deep">ville</span>
-          </h1>
-        </div>
-
-        <Stat
-          id="stat-population"
-          icon={<Users className="size-5 text-leaf" />}
-          label="Население"
-          value={population.toLocaleString('en-US')}
-          bumpKey={population}
-        />
-
-        <Stat
-          id="stat-budget"
-          icon={<Coins className="size-5 text-amber-500" />}
-          label="Бюджет"
-          value={`$ ${Math.round(budget).toLocaleString('en-US')}`}
-          bumpKey={budget}
-          valueColor={budget < 0 ? "text-rose-600" : undefined}
-          hint={
-            <span
-              className={cn(
-                'flex items-center gap-0.5 text-xs font-extrabold tabular-nums',
-                positive ? 'text-emerald-600' : 'text-rose-600',
-              )}
-            >
-              {positive ? <TrendingUp className="size-3.5" /> : <TrendingDown className="size-3.5" />}
-              {positive ? '+$' : '-$'}
-              {Math.abs(lastNet)}
-            </span>
-          }
-        />
-
-        <Stat
-          id="stat-time"
-          icon={time.icon}
-          label={`День ${day} · ${time.label}`}
-          value={formatClock(minutes)}
-        />
-
-
-        
-        <div className="flex items-center gap-2 px-4">
-          <button
-            id="btn-pause"
-            type="button"
-            aria-label={paused ? 'Продолжить' : 'Пауза'}
-            aria-pressed={paused}
-            onClick={onTogglePause}
-            className={cn(
-              'grid size-10 cursor-pointer place-items-center rounded-xl border-2 border-ink transition-transform',
-              'hover:-translate-y-0.5 active:translate-y-0.5',
-              paused ? 'bg-accent text-white' : 'bg-white text-ink',
-            )}
-          >
-            {paused ? <Play className="size-5 fill-current" /> : <Pause className="size-5 fill-current" />}
-          </button>
-
-          <div className="flex overflow-hidden rounded-xl border-2 border-ink bg-white">
-            {SPEEDS.map((value) => (
-              <button
-                key={value}
-                id={`btn-speed-${value}`}
-                type="button"
-                aria-pressed={speed === value}
-                onClick={() => onSpeedChange(value)}
-                className={cn(
-                  'h-9 w-10 cursor-pointer text-sm font-extrabold transition-colors',
-                  speed === value ? 'bg-ink text-cream' : 'hover:bg-ink/10',
-                )}
-              >
-                {value}x
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {harvestFair && <div role="status" className="pointer-events-auto rounded-full border border-amber-900/25 bg-[#fbf1d8]/95 px-3 py-1 text-xs font-bold text-amber-950 shadow-md">🍷 Винный фестиваль · коммерция +20%</div>}
-      <div
-        id="stat-city-health"
-        className="ink-panel pointer-events-auto hidden items-center divide-x-2 divide-ink/15 rounded-full text-sm font-extrabold md:flex"
-      >
-        
-        <div id="stat-rci" className="flex items-center gap-1.5 px-4 py-1.5 h-[34px]">
-          <div className="flex flex-col justify-end w-2 h-full bg-ink/10 rounded overflow-hidden">
-            <div className="w-full bg-leaf transition-all duration-300" style={{ height: `${demands.residential}%` }} />
-          </div>
-          <div className="flex flex-col justify-end w-2 h-full bg-ink/10 rounded overflow-hidden">
-            <div className="w-full bg-sky transition-all duration-300" style={{ height: `${demands.commercial}%` }} />
-          </div>
-          <div className="flex flex-col justify-end w-2 h-full bg-ink/10 rounded overflow-hidden">
-            <div className="w-full bg-amber-500 transition-all duration-300" style={{ height: `${demands.industrial}%` }} />
-          </div>
-        </div>
-
-        <div id="stat-water" className="flex items-center gap-2 px-4 py-1.5">
-          <Droplets className={cn('size-4', dryCount > 0 ? 'text-rose-500' : 'text-sky')} />
-          <span className="text-ink-soft">Вода</span>
-          <span data-testid="stat-water-value" className="tabular-nums">
-            {waterServed}/{waterTotal}
-          </span>
-        </div>
-        <div id="stat-energy" className="flex items-center gap-2 px-4 py-1.5" aria-label={`Энергия: потребление ${energyConsumed}, выработка ${energyProduced}`}>
-          <Zap className={cn('size-4', energyDeficit ? 'text-rose-600' : 'text-amber-600')} />
-          <span className="text-ink-soft">Энергия</span>
-          <span data-testid="stat-energy-value" className={cn('rounded-full px-2 py-0.5 font-bold tabular-nums', energyDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-50 text-emerald-800')}>
-            {energyConsumed}/{energyProduced}
-          </span>
-          {energyDeficit && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">Дефицит энергии!</span>}
-        </div>
-        <div id="stat-happiness" tabIndex={0} aria-describedby="happiness-details" className="group relative flex items-center gap-2 px-4 py-1.5 outline-none">
-          <HappinessIcon className={cn('size-4', happiness >= 70 ? 'text-leaf' : happiness >= 40 ? 'text-amber-500' : 'text-rose-500')} />
-          <span className="text-ink-soft">Счастье</span>
-          <span data-testid="stat-happiness-value" className="tabular-nums">
-            {happiness}%
-          </span>
-          <div id="happiness-details" role="tooltip" className="pointer-events-none absolute bottom-full right-0 z-30 mb-2 hidden w-64 rounded-xl border border-ink/20 bg-[#fbf9f4] p-3 text-left text-xs font-medium leading-relaxed text-ink shadow-lg group-hover:block group-focus:block">
-            <div className={cn('font-bold', crimeRate > 0 ? 'text-rose-700' : 'text-emerald-800')}>
-              Преступность: {crimeRate}% ({crimeRate > 0 ? 'Нехватка участков' : 'Полиция в норме'})
-            </div>
-            <div className="mt-1 text-ink-soft">Полиция: {policeCapacity.toLocaleString('ru-RU')} жителей · Пожарные: {fireCapacity.toLocaleString('ru-RU')} жителей</div>
-            <div className="mt-1 text-[10px] text-ink-soft">Норма на участок: 800 жителей</div>
-          </div>
-        </div>
-      </div>
-    </header>
-  )
+      <div className="sr-only" role="tooltip">Преступность: {crimeRate}% · Полиция: {policeCapacity} жителей · Пожарные: {fireCapacity} жителей</div>
+    </div>
+  </header>
 }
