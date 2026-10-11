@@ -178,6 +178,10 @@ export const vehicleHeadlightMaterial = new THREE.MeshStandardMaterial({ color: 
 export const vehicleTaillightMaterial = new THREE.MeshStandardMaterial({ color: '#5b2928', emissive: '#ff3528', emissiveIntensity: 0, roughness: 1 })
 export const nightSignMaterial = new THREE.MeshStandardMaterial({ color: '#5cb3e6', emissive: '#42aaff', emissiveIntensity: 0, roughness: 1 })
 
+export function getCurrentNightLevel(): number {
+  return currentNightLevel
+}
+
 /** Применяет уровень ночи (0 — день, 1 — глубокая ночь) ко всем светящимся материалам. */
 export function applyNightLevel(level: number): void {
   currentNightLevel = level

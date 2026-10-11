@@ -298,11 +298,16 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
 }
 
 function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotation?: Vec3 }) {
+  const lightRef = useRef<THREE.PointLight>(null)
+  useFrame(() => {
+    if (lightRef.current) lightRef.current.intensity = 1.2 * getCurrentNightLevel()
+  })
   return (
     <group position={position} rotation={rotation}>
       <Cylinder radius={0.01} height={0.4} segments={6} position={[0, 0.2, 0]} color="#333" />
       <Box size={[0.12, 0.02, 0.02]} position={[0, 0.4, 0.05]} color="#333" />
       <Box size={[0.04, 0.02, 0.04]} position={[0, 0.39, 0.08]} color="#6b6354" material={lampBulbMaterial} outline={false} castShadow={false} />
+      <pointLight ref={lightRef} color="#ffdf88" intensity={0} distance={4.5} decay={2} position={[0, 0.38, 0.08]} />
       <mesh position={[0, 0.006, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowOuterMaterial} renderOrder={2}><circleGeometry args={[0.18, 16]} /></mesh>
       <mesh position={[0, 0.008, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowInnerMaterial} renderOrder={3}><circleGeometry args={[0.09, 16]} /></mesh>
     </group>
@@ -344,7 +349,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, getCurrentNightLevel, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({

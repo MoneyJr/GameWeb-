@@ -651,13 +651,13 @@ import { applyNightLevel } from './primitives'
 
 const DAY_SKY = new THREE.Color('#cce2cb')
 const DUSK_SKY = new THREE.Color('#b889a2')
-const NIGHT_COLOR = new THREE.Color('#101424')
+const NIGHT_COLOR = new THREE.Color('#141b2d')
 const SUN_COLOR = new THREE.Color('#fffaf0')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
-const MOON_COLOR = new THREE.Color('#2a3d5e')
+const MOON_COLOR = new THREE.Color('#7aa2dc')
 const DAY_AMBIENT = new THREE.Color('#e8ecf0')
 const DUSK_AMBIENT = new THREE.Color('#d89b91')
-const NIGHT_AMBIENT = new THREE.Color('#12172b')
+const NIGHT_AMBIENT = new THREE.Color('#243354')
 const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
 const DUSK_SUN_POSITION = new THREE.Vector3(20, 11, 14)
 const MOON_POSITION = new THREE.Vector3(-24, 28, 14)
@@ -716,27 +716,27 @@ function NightManager({ minutes, ambientRef, sunRef }: {
         sunColor.lerp(MOON_COLOR, nightBlend)
         if (sun) {
           sun.position.lerp(MOON_POSITION, nightBlend)
-          sun.intensity = THREE.MathUtils.lerp(0.05, 0.3, nightBlend)
+        sun.intensity = THREE.MathUtils.lerp(0.05, 0.55, nightBlend)
         }
-        if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.38, 0.25, nightBlend)
+        if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.38, 0.7, nightBlend)
       }
     } else if (time >= 300 && time < 360) {
       background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
       ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
       sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.25, 0.5, dawn))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn))
       if (sun) {
         sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
-        sun.intensity = THREE.MathUtils.lerp(0.3, 1.5, dawn)
+        sun.intensity = THREE.MathUtils.lerp(0.55, 1.5, dawn)
       }
     } else {
       background.copy(NIGHT_COLOR)
       ambientColor.copy(NIGHT_AMBIENT)
       sunColor.copy(MOON_COLOR)
-      ambient && (ambient.intensity = 0.25)
+      ambient && (ambient.intensity = 0.7)
       if (sun) {
         sun.position.copy(MOON_POSITION)
-        sun.intensity = 0.3
+        sun.intensity = 0.55
       }
     }
 
