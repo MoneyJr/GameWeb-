@@ -100,7 +100,7 @@ export function TopBar({
   return (
     <header className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center gap-2 px-2 pt-[calc(env(safe-area-inset-top)+8px)] md:p-4">
       <div className="pointer-events-auto flex h-11 max-w-[calc(100vw-16px)] items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full border border-stone-800 bg-[#F5F2EB]/95 px-1.5 py-1 text-[11px] shadow-md backdrop-blur-md md:hidden">
-        {harvestFair && <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-900">🍂 Ярмарка</span>}
+        {harvestFair && <span className="rounded-full bg-amber-100 px-2 py-1 font-bold text-amber-900">🍷 Винный фестиваль</span>}
         <div id="stat-population-mobile" className="flex shrink-0 items-center gap-1" aria-label="Население">
           <Users className="size-4 text-leaf" />
           <span className="font-bold tabular-nums">{population.toLocaleString('en-US')}</span>
@@ -222,7 +222,7 @@ export function TopBar({
           </div>
         </div>
       </div>
-      {harvestFair && <div role="status" className="pointer-events-auto rounded-full border border-amber-900/25 bg-[#fbf1d8]/95 px-3 py-1 text-xs font-bold text-amber-950 shadow-md">🍂 Ярмарка урожая · коммерция +20%</div>}
+      {harvestFair && <div role="status" className="pointer-events-auto rounded-full border border-amber-900/25 bg-[#fbf1d8]/95 px-3 py-1 text-xs font-bold text-amber-950 shadow-md">🍷 Винный фестиваль · коммерция +20%</div>}
       <div
         id="stat-city-health"
         className="ink-panel pointer-events-auto hidden items-center divide-x-2 divide-ink/15 rounded-full text-sm font-extrabold md:flex"

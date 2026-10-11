@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls } from '@react-three/drei'
+import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
@@ -71,14 +71,14 @@ function ShowcaseCity() {
       <color attach="background" args={['#eae4d5']} />
       <fogExp2 attach="fog" args={['#eae4d5', 0.015]} />
       <ambientLight intensity={0.5} color="#fff6e8" />
-      <directionalLight position={[20, 23, 14]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
+      <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
-        <meshStandardMaterial color="#7a9954" roughness={1} />
+        <meshToonMaterial color="#a69a69" />
       </mesh>
       {hills.map((hill, i) => <mesh key={`hill-${i}`} position={[hill.x, -0.12, hill.z]} scale={hill.scale} receiveShadow>
-        <icosahedronGeometry args={[1, 2]} /><meshStandardMaterial color={i % 2 ? '#91a36b' : '#9aa875'} roughness={1} flatShading />
+        <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
       </mesh>)}
       {trees.map((tree, i) => <ShowcaseTree key={`forest-${i}`} {...tree} />)}
       {city.map(({ x, z, type, i, north, south, east, west }) => (
@@ -97,7 +97,7 @@ function ShowcaseCity() {
   )
 }
 
-const forestLeafMaterials = ['#43662d', '#587c3b', '#859b4c', '#647d3e'].map((color) => {
+const forestLeafMaterials = ['#d97724', '#b43418', '#eab308', '#ca8a04'].map((color) => {
   const material = new THREE.MeshToonMaterial({ color })
   ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
   return material
@@ -107,37 +107,37 @@ function ShowcaseTree({ x, z, scale, pine, seed }: { x: number; z: number; scale
   const crown = forestLeafMaterials[Math.floor(seed * forestLeafMaterials.length)]
   return <group position={[x, 0, z]} scale={scale}>
     <mesh position={[0, 0.55, 0]} castShadow receiveShadow>
-      <cylinderGeometry args={[0.045, 0.09, 1.1, 6]} /><meshStandardMaterial color="#493421" roughness={0.95} />
+      <cylinderGeometry args={[0.045, 0.09, 1.1, 6]} /><meshToonMaterial color="#493421" /><Edges color="#261c14" threshold={28} />
     </mesh>
     {pine ? <>
       {[0.9, 1.35, 1.75].map((y, i) => <mesh key={y} position={[0, y, 0]} rotation={[0.1 * i, seed * 4 + i, 0]} castShadow receiveShadow>
-        <icosahedronGeometry args={[0.58 - i * 0.095, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + i) % 4]} attach="material" />
+        <icosahedronGeometry args={[0.58 - i * 0.095, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + i) % 4]} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>)}
     </> : <>
       <mesh position={[0, 1.38, 0]} rotation={[0.15, seed * 5, 0]} castShadow receiveShadow>
-        <icosahedronGeometry args={[0.74, 1]} /><primitive object={crown} attach="material" />
+        <icosahedronGeometry args={[0.74, 1]} /><primitive object={crown} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>
       <mesh position={[0.32, 1.62, -0.1]} rotation={[0.3, seed * 8, 0]} castShadow receiveShadow>
-        <icosahedronGeometry args={[0.42, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + 1) % 4]} attach="material" />
+        <icosahedronGeometry args={[0.42, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + 1) % 4]} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>
     </>}
   </group>
 }
 
 function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
-  const foliage = ['#43662d', '#587c3b', '#859b4c', '#587c3b']
+  const foliage = ['#d97724', '#b43418', '#eab308', '#ca8a04']
   const leafMaterials = useMemo(() => foliage.map(color => {
     const material = new THREE.MeshToonMaterial({ color })
     ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
     return material
   }), [])
   const accentMaterial = useMemo(() => {
-    const material = new THREE.MeshToonMaterial({ color: '#859b4c' })
+    const material = new THREE.MeshToonMaterial({ color: '#eab308' })
     ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
     return material
   }, [])
   return <group position={position}>
-    <mesh position={[1, 0.025, 1]} receiveShadow><boxGeometry args={[1.94, 0.05, 1.94]} /><meshStandardMaterial color="#6d8c46" roughness={0.98} /></mesh>
+    <mesh position={[1, 0.025, 1]} receiveShadow><boxGeometry args={[1.94, 0.05, 1.94]} /><meshToonMaterial color="#8b9454" /><Edges color="#261c14" threshold={28} /></mesh>
     <mesh position={[1, 0.056, 1]} receiveShadow><boxGeometry args={[1.82, 0.012, 0.18]} /><meshStandardMaterial color="#c8b99d" roughness={1} /></mesh>
     <mesh position={[1, 0.057, 1]} receiveShadow><boxGeometry args={[0.18, 0.014, 1.82]} /><meshStandardMaterial color="#c8b99d" roughness={1} /></mesh>
     {/* Low timber edging keeps each green square legible against the streets. */}
@@ -172,8 +172,8 @@ function ShowcaseBuilding({ styleIndex, commercial, variant }: { styleIndex: num
   const front = 0.465
   const windowYs = Array.from({ length: floors }, (_, floor) => 0.34 + floor * 0.43)
   return <group>
-    <mesh position={[0, 0.11, 0]} receiveShadow castShadow><boxGeometry args={[0.96, 0.22, 0.96]} /><meshStandardMaterial color="#d4ccc0" roughness={0.95} /></mesh>
-    <mesh position={[0, 0.22 + height / 2, 0]} castShadow receiveShadow><boxGeometry args={[0.9, height, 0.9]} /><meshStandardMaterial color={style.wall} roughness={0.94} /></mesh>
+    <mesh position={[0, 0.11, 0]} receiveShadow castShadow><boxGeometry args={[0.96, 0.22, 0.96]} /><meshToonMaterial color="#d4ccc0" /><Edges color="#261c14" threshold={28} /></mesh>
+    <mesh position={[0, 0.22 + height / 2, 0]} castShadow receiveShadow><boxGeometry args={[0.9, height, 0.9]} /><meshToonMaterial color={style.wall} /><Edges color="#261c14" threshold={28} /></mesh>
     {commercial ? <>
       <mesh position={[0, 0.47, front + 0.012]}><boxGeometry args={[0.66, 0.36, 0.025]} /><meshStandardMaterial color="#304552" metalness={0.12} roughness={0.3} /></mesh>
       <mesh position={[0, 0.47, front + 0.03]}><boxGeometry args={[0.58, 0.29, 0.014]} /><meshStandardMaterial color="#a8c4c4" roughness={0.22} /></mesh>
@@ -203,8 +203,8 @@ function ShowcaseBuilding({ styleIndex, commercial, variant }: { styleIndex: num
     </group>}
     {style.name !== 'modern' && (style.name === 'half-timber'
       ? <group>
-        <mesh position={[-0.19, 0.24 + height + 0.23, 0]} rotation={[0, 0, -0.58]} castShadow><boxGeometry args={[0.56, 0.085, 1.02]} /><meshStandardMaterial color={style.roof} roughness={0.95} /></mesh>
-        <mesh position={[0.19, 0.24 + height + 0.23, 0]} rotation={[0, 0, 0.58]} castShadow><boxGeometry args={[0.56, 0.085, 1.02]} /><meshStandardMaterial color={style.roof} roughness={0.95} /></mesh>
+        <mesh position={[-0.19, 0.24 + height + 0.23, 0]} rotation={[0, 0, -0.58]} castShadow><boxGeometry args={[0.56, 0.085, 1.02]} /><meshToonMaterial color={style.roof} /><Edges color="#261c14" threshold={28} /></mesh>
+        <mesh position={[0.19, 0.24 + height + 0.23, 0]} rotation={[0, 0, 0.58]} castShadow><boxGeometry args={[0.56, 0.085, 1.02]} /><meshToonMaterial color={style.roof} /><Edges color="#261c14" threshold={28} /></mesh>
       </group>
       : <group>
         <mesh position={[0, 0.24 + height + 0.08, 0]} castShadow><boxGeometry args={[0.98, 0.14, 0.98]} /><meshStandardMaterial color={style.roof} roughness={0.92} /></mesh>
@@ -240,6 +240,14 @@ function ShowcasePiazza() {
       <mesh position={[0, 0.13, 0]} castShadow><boxGeometry args={[0.42, 0.07, 0.16]} /><meshStandardMaterial color="#79583a" /></mesh>
       <mesh position={[0, 0.25, -0.06]} castShadow><boxGeometry args={[0.42, 0.16, 0.045]} /><meshStandardMaterial color="#79583a" /></mesh>
     </group>)}
+    {/* Harvest wine stall, oak barrels, and small bunting at the piazza edge. */}
+    <group position={[1.03, 0.06, -0.93]}>
+      {[-0.19, 0.19].map((x) => <mesh key={`market-post-${x}`} position={[x, 0.25, 0]} castShadow><boxGeometry args={[0.035, 0.5, 0.035]} /><meshToonMaterial color="#76513a" /><Edges color="#261c14" threshold={28} /></mesh>)}
+      <mesh position={[0, 0.51, 0]} castShadow><boxGeometry args={[0.47, 0.07, 0.3]} /><meshToonMaterial color="#f4ead8" /><Edges color="#261c14" threshold={28} /></mesh>
+      {[-0.15, -0.05, 0.05, 0.15].map((x, i) => <mesh key={`market-stripe-${i}`} position={[x, 0.55, 0.015]}><boxGeometry args={[0.06, 0.018, 0.27]} /><meshToonMaterial color={i % 2 ? '#b43418' : '#d97724'} /></mesh>)}
+      {[-0.27, 0.27].map((x) => <mesh key={`barrel-${x}`} position={[x, 0.11, 0.15]}><cylinderGeometry args={[0.075, 0.07, 0.18, 8]} /><meshToonMaterial color="#8b5b34" /><Edges color="#261c14" threshold={28} /></mesh>)}
+      {Array.from({ length: 5 }, (_, i) => <mesh key={`bunting-${i}`} position={[-0.35 + i * 0.17, 0.71 - (i % 2) * 0.035, -0.09]} rotation={[0, 0, Math.PI]}><coneGeometry args={[0.055, 0.12, 3]} /><meshToonMaterial color={['#b43418', '#eab308', '#2e6c64'][i % 3]} /></mesh>)}
+    </group>
   </group>
 }
 

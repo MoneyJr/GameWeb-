@@ -2,7 +2,7 @@ import { TrafficSystem } from './TrafficSystem'
 import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Edges, OrthographicCamera } from '@react-three/drei'
+import { Edges, Html, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
@@ -226,7 +226,7 @@ export const GroundSlab = memo(function GroundSlab() {
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[350, 350]} />
-        <meshStandardMaterial color="#7a9954" roughness={0.95} metalness={0} />
+        <meshToonMaterial color="#a69a69" />
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -310,22 +310,74 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
     root.add(leaves)
 
-    const hillColors = ['#9aab7a', '#87986d', '#a3ae81']
+    const hillColors = ['#a98b58', '#9b7548', '#b49a66']
     const hillSpecs = [
       [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
       [-78, -12, 14, 4.2, 11], [80, 20, 15, 4.8, 12], [-65, 68, 18, 5, 13], [8, 82, 20, 4.5, 14], [70, 64, 16, 4.1, 12],
     ]
     hillSpecs.forEach(([x, z, sx, sy, sz], index) => {
-      const hill = new THREE.Mesh(
-        new THREE.SphereGeometry(1, 10, 7),
-        new THREE.MeshStandardMaterial({ color: hillColors[index % hillColors.length], roughness: 1, flatShading: true }),
-      )
+      const hillMaterial = new THREE.MeshToonMaterial({ color: hillColors[index % hillColors.length] })
+      ;(hillMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
+      const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7), hillMaterial)
       hill.position.set(x, sy * 0.65 - 0.3, z)
       hill.scale.set(sx, sy, sz)
       hill.castShadow = true
       hill.receiveShadow = true
+      const hillOutline = new THREE.LineSegments(
+        new THREE.EdgesGeometry(hill.geometry, 28),
+        new THREE.LineBasicMaterial({ color: '#261c14', transparent: true, opacity: 0.75 }),
+      )
+      hill.add(hillOutline)
       root.add(hill)
     })
+    // Draw vineyard terraces as two instanced layers so the distant slopes read
+    // as cultivated land without adding hundreds of separate draw calls.
+    const vineColors = ['#d97724', '#ca8a04', '#b43418', '#eab308']
+    const rowMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 0.045, 0.1),
+      new THREE.MeshToonMaterial({ color: '#795b36' }),
+      hillSpecs.length * 5,
+    )
+    const vineLeafMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' })
+    ;(vineLeafMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
+    const leafMesh = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(0.16, 0),
+      vineLeafMaterial,
+      hillSpecs.length * 5 * 9,
+    )
+    let rowIndex = 0
+    let leafIndex = 0
+    hillSpecs.forEach(([x, z, sx, sy, sz], hillIndex) => {
+      for (let row = 0; row < 5; row += 1) {
+        const localZ = (row - 2) * sz * 0.19
+        const profile = Math.sqrt(Math.max(0.12, 1 - (localZ * localZ) / (sz * sz)))
+        const y = sy * 0.65 - 0.3 + sy * profile * 0.54 + 0.05
+        transform.position.set(x, y, z + localZ)
+        transform.rotation.set(0, (hillIndex % 2) * Math.PI / 2, 0)
+        transform.scale.set(sx * 1.7, 1, 1)
+        transform.updateMatrix()
+        rowMesh.setMatrixAt(rowIndex, transform.matrix)
+        for (let vine = 0; vine < 9; vine += 1) {
+          const t = vine / 8 - 0.5
+          const vx = x + t * sx * 1.35
+          const vz = z + localZ
+          transform.position.set(vx, y + 0.08 + random() * 0.05, vz + (random() - 0.5) * 0.13)
+          transform.rotation.set(random() * 0.3, random() * Math.PI, random() * 0.3)
+          transform.scale.setScalar(0.65 + random() * 0.55)
+          transform.updateMatrix()
+          leafMesh.setMatrixAt(leafIndex, transform.matrix)
+          leafMesh.setColorAt(leafIndex, new THREE.Color(vineColors[(vine + row + hillIndex) % vineColors.length]))
+          leafIndex += 1
+        }
+        rowIndex += 1
+      }
+    })
+    rowMesh.instanceMatrix.needsUpdate = true
+    leafMesh.instanceMatrix.needsUpdate = true
+    if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true
+    rowMesh.castShadow = true
+    leafMesh.castShadow = true
+    root.add(rowMesh, leafMesh)
     const sea = new THREE.Mesh(new THREE.PlaneGeometry(110, 56), new THREE.MeshStandardMaterial({ color: '#83949a', roughness: 1 }))
     sea.rotation.x = -Math.PI / 2
     sea.position.set(0, -0.004, -133)
@@ -450,7 +502,7 @@ function SmogRadiusOverlay() {
 function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
   return <mesh position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
     <boxGeometry args={[0.96, 0.025, 0.96]} />
-    <meshBasicMaterial color={tint} transparent opacity={0.32} depthWrite={false} />
+    <meshBasicMaterial color={tint} transparent opacity={0.55} depthWrite={false} />
     <Edges color={tint} threshold={1} />
   </mesh>
 }
@@ -688,6 +740,8 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         const tint = valid ? '#10b981' : '#ef4444'
         const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
         const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
+        const validationReason = validatePlacement(grid, anchor, activeTool, catalogId, placementStyle)
+        const prompt = valid ? 'Доступно для постройки' : validationReason ?? 'Место занято'
         return <group>
           {cells.map((item) => <FootprintCell key={`footprint-${item.x}-${item.y}`} cell={item} tint={tint} />)}
           {modelCells.map((item) => {
@@ -699,6 +753,11 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
             } : { north: false, south: false, east: false, west: false }
             return <GhostTilePreview key={`ghost-model-${item.x}-${item.y}`} tool={activeTool} cell={item} style={placementStyle} catalogId={catalogId} tint={tint} roadLinks={links} />
           })}
+          <Html position={[anchor.x - (GRID_SIZE - 1) / 2, 1.65, anchor.y - (GRID_SIZE - 1) / 2]} center distanceFactor={18} style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+            <div className={`rounded-full border px-3 py-1 text-xs font-bold shadow-lg ${valid ? 'border-emerald-900/20 bg-emerald-50/95 text-emerald-800' : 'border-red-900/20 bg-red-50/95 text-red-800'}`}>
+              {prompt}
+            </div>
+          </Html>
         </group>
       })()}
     </group>
@@ -911,10 +970,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Canvas
-      shadows={{ type: THREE.PCFShadowMap }}
+      shadows={{ type: THREE.BasicShadowMap }}
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true
-        gl.shadowMap.type = THREE.PCFShadowMap
+        gl.shadowMap.type = THREE.BasicShadowMap
       }}
       onContextMenu={(e) => e.preventDefault()}
       flat
@@ -936,7 +995,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       <ambientLight ref={ambientRef} intensity={0.5} color="#e8ecf0" />
       <directionalLight
         ref={sunRef}
-        position={[20, 35, 20]}
+        position={[35, 50, 25]}
         intensity={1.5}
         color="#fffaf0"
         castShadow

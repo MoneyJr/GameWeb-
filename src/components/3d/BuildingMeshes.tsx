@@ -16,7 +16,7 @@ type Shape =
   | { kind: 'cylinder'; radiusTop: number; radiusBottom: number; height: number; segments: number }
   | { kind: 'cone'; radius: number; height: number; segments: number }
 
-const OUTLINE_COLOR = '#1a1816'
+const OUTLINE_COLOR = '#261c14'
 
 let gradientMap: THREE.DataTexture | null = null
 
@@ -1046,6 +1046,7 @@ function CathedralMesh() {
     <Box size={[1.72, 0.06, 0.05]} position={[0, 0.41, -0.9]} color="#c6c2b8" />
     <Box size={[0.05, 0.06, 1.72]} position={[-0.9, 0.41, 0]} color="#c6c2b8" />
     <Box size={[0.05, 0.06, 1.72]} position={[0.9, 0.41, 0]} color="#c6c2b8" />
+    <FestivalProps position={[-0.55, 0.08, 0.78]} scale={0.78} />
   </group>
 }
 
@@ -1587,6 +1588,7 @@ export function FountainSquareMesh() {
     <Cylinder radius={0.22} height={0.08} segments={8} position={[0, 0.12, 0]} color="#c7bba5" />
     <Cylinder radius={0.17} height={0.035} segments={8} position={[0, 0.17, 0]} color="#548fa5" />
     <Cylinder radius={0.025} height={0.22} segments={8} position={[0, 0.28, 0]} color="#d9d0bf" />
+    <FestivalProps position={[-0.25, 0.08, 0.29]} scale={0.56} />
     {[[0, -0.25, 0], [0, 0.25, 0], [-0.25, 0, Math.PI / 2], [0.25, 0, Math.PI / 2]].map(([x, z, angle], i) => <Box key={`path-${i}`} size={[0.1, 0.012, 0.24]} position={[x, 0.085, z]} rotation={[0, angle, 0]} color="#d0c3aa" />)}
     {[-1, 1].map((side) => <group key={side} position={[side * 0.32, 0.08, 0]}>
       <Box size={[0.28, 0.035, 0.08]} position={[0, 0.12, 0]} color="#79583a" />
@@ -1595,6 +1597,19 @@ export function FountainSquareMesh() {
     </group>)}
     {[-0.32, 0, 0.32].map((x) => <mesh key={`shrub-${x}`} position={[x, 0.17, -0.32]} geometry={bushGeometry} scale={0.09} castShadow receiveShadow material={getFoliageMaterial(x === 0 ? '#8f7255' : '#587c3b')}><lineSegments geometry={bushEdges} material={outlineMaterial} /></mesh>)}
     {[-0.34, 0.34].map((x) => <mesh key={`autumn-pumpkin-${x}`} position={[x, 0.1, 0.31]} scale={[0.08, 0.065, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea580c" /></mesh>)}
+  </group>
+}
+
+function FestivalProps({ position, scale = 1 }: { position: Vec3; scale?: number }) {
+  return <group position={position} scale={scale}>
+    {/* Striped harvest stall, tasting table, and oak casks. */}
+    <Box size={[0.42, 0.06, 0.28]} position={[0, 0.32, 0]} color="#fff4e4" />
+    {[-0.17, -0.06, 0.06, 0.17].map((x, i) => <Box key={`awning-${i}`} size={[0.11, 0.035, 0.3]} position={[x, 0.36, 0]} color={i % 2 ? '#c84935' : '#e87c32'} />)}
+    {[-0.18, 0.18].map((x) => <Box key={`stall-post-${x}`} size={[0.025, 0.32, 0.025]} position={[x, 0.16, -0.1]} color="#76513a" />)}
+    <Box size={[0.38, 0.08, 0.16]} position={[0, 0.15, 0.19]} color="#79583a" />
+    {[-0.15, 0.15].map((x) => <Cylinder key={`cask-${x}`} radius={0.065} radiusTop={0.06} height={0.15} segments={10} position={[x, 0.12, -0.18]} color="#8b5b34" />)}
+    {[-0.22, 0.22].map((x) => <mesh key={`pumpkin-${x}`} position={[x, 0.11, 0.23]} scale={[0.07, 0.055, 0.06]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea580c" /></mesh>)}
+    <Box size={[0.12, 0.025, 0.035]} position={[0, 0.58, 0]} color="#c43f2e" />
   </group>
 }
 
