@@ -1,4 +1,4 @@
-import { Clock, Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users } from 'lucide-react'
+import { Clock, Coins, Droplets, Frown, Meh, Moon, Smile, Pause, Play, Sun, Sunrise, Sunset, TrendingDown, TrendingUp, Users, Zap } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { cn } from '../../lib/utils'
 import type { SimSpeed } from '../../types/city'
@@ -13,6 +13,8 @@ interface TopBarProps {
   happiness: number
   waterServed: number
   waterTotal: number
+  energyProduced: number
+  energyConsumed: number
   crimeRate: number
   policeCapacity: number
   fireCapacity: number
@@ -80,6 +82,8 @@ export function TopBar({
   happiness,
   waterServed,
   waterTotal,
+  energyProduced,
+  energyConsumed,
   crimeRate,
   policeCapacity,
   fireCapacity,
@@ -94,6 +98,7 @@ export function TopBar({
   const time = describeTime(minutes)
   const positive = lastNet >= 0
   const dryCount = waterTotal - waterServed
+  const energyDeficit = energyConsumed > energyProduced
   const HappinessIcon = happiness >= 70 ? Smile : happiness >= 40 ? Meh : Frown
   const harvestFair = day <= 14
 
@@ -117,6 +122,12 @@ export function TopBar({
         <div id="stat-water-mobile" className="flex shrink-0 items-center gap-1" aria-label="Водоснабжение">
           <Droplets className={cn('size-4', dryCount > 0 ? 'text-rose-500' : 'text-sky')} />
           <span className="font-bold tabular-nums">{waterServed}/{waterTotal}</span>
+        </div>
+        <span className="h-5 w-px shrink-0 bg-stone-800/20" />
+        <div id="stat-energy-mobile" className={cn('flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5', energyDeficit && 'bg-rose-100 text-rose-800')} aria-label={`Энергия: потребление ${energyConsumed}, выработка ${energyProduced}`}>
+          <Zap className={cn('size-4', energyDeficit ? 'text-rose-600' : 'text-amber-600')} />
+          <span className="font-bold tabular-nums">{energyConsumed}/{energyProduced}</span>
+          {energyDeficit && <span className="font-bold">Дефицит энергии!</span>}
         </div>
         <span className="h-5 w-px shrink-0 bg-stone-800/20" />
         <div id="stat-happiness-mobile" className="flex shrink-0 items-center gap-1" aria-label="Счастье">
@@ -246,6 +257,14 @@ export function TopBar({
           <span data-testid="stat-water-value" className="tabular-nums">
             {waterServed}/{waterTotal}
           </span>
+        </div>
+        <div id="stat-energy" className="flex items-center gap-2 px-4 py-1.5" aria-label={`Энергия: потребление ${energyConsumed}, выработка ${energyProduced}`}>
+          <Zap className={cn('size-4', energyDeficit ? 'text-rose-600' : 'text-amber-600')} />
+          <span className="text-ink-soft">Энергия</span>
+          <span data-testid="stat-energy-value" className={cn('rounded-full px-2 py-0.5 font-bold tabular-nums', energyDeficit ? 'bg-rose-100 text-rose-800' : 'bg-emerald-50 text-emerald-800')}>
+            {energyConsumed}/{energyProduced}
+          </span>
+          {energyDeficit && <span className="rounded-full bg-rose-600 px-2 py-0.5 text-[10px] font-extrabold text-white">Дефицит энергии!</span>}
         </div>
         <div id="stat-happiness" tabIndex={0} aria-describedby="happiness-details" className="group relative flex items-center gap-2 px-4 py-1.5 outline-none">
           <HappinessIcon className={cn('size-4', happiness >= 70 ? 'text-leaf' : happiness >= 40 ? 'text-amber-500' : 'text-rose-500')} />

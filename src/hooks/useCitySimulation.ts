@@ -18,10 +18,6 @@ export const DAILY_LOAN_PAYMENT = 10
 export const BASE_TICK_MS = 2000
 /** Сколько игровых минут проходит за тик. Бюджет пересчитывается каждые 10 минут. */
 export const MINUTES_PER_TICK = 10
-/** Радиус водонапорной башни: на сколько клеток дорожной сети (по пути) она раздаёт воду. */
-export const WATER_RADIUS = 12
-/** Макс. длина участка дорожного графа от генератора до потребителя. */
-export const POWER_RADIUS = 10
 export const POLICE_CAPACITY_PER_STATION = 800
 export const FIRE_CAPACITY_PER_STATION = 800
 
@@ -138,8 +134,8 @@ const NEIGHBOR_STEPS: ReadonlyArray<readonly [number, number]> = [
 /**
  * Пересчитывает наличие воды и электричества.
  *
- * Вода: водонапорная башня питает примыкающие дороги, дальше вода течёт по связной дорожной сети
- * не дальше WATER_RADIUS клеток. Здание получает воду, если примыкает к запитанной дороге.
+ * Источники подключают примыкающие дороги и питают всю связную дорожную сеть.
+ * Мульти-тайловое здание подключено, если дорога касается любой клетки периметра фундамента.
  *
  * Клетки, у которых ничего не изменилось, сохраняют ссылку (важно для React.memo в 3D-сцене).
  */
@@ -194,11 +190,10 @@ function recomputeServices(grid: Grid): Grid {
     }
   }
 
-  // Water BFS
+  // Water BFS across the complete connected road component.
   for (let head = 0; head < queue.length; head += 1) {
     const [x, y] = queue[head]
     const distance = roadDistance[y][x]
-    if (distance >= WATER_RADIUS) continue
     for (const [dx, dy] of NEIGHBOR_STEPS) {
       const nx = x + dx
       const ny = y + dy
@@ -209,11 +204,10 @@ function recomputeServices(grid: Grid): Grid {
     }
   }
 
-  // Электричество следует только по непрерывным дорогам, максимум 10 клеток от генератора.
+  // Electricity follows every road reachable from any connected generator.
   for (let head = 0; head < powerQueue.length; head += 1) {
     const [x, y] = powerQueue[head]
     const distance = powerDistance[y][x]
-    if (distance >= POWER_RADIUS) continue
     for (const [dx, dy] of NEIGHBOR_STEPS) {
       const nx = x + dx
       const ny = y + dy
@@ -226,8 +220,19 @@ function recomputeServices(grid: Grid): Grid {
 
   const isWateredRoad = (x: number, y: number): boolean => isRoad(x, y) && roadDistance[y][x] > 0
   const isPoweredRoad = (x: number, y: number): boolean => isRoad(x, y) && powerDistance[y][x] > 0
-  const nextToServedRoad = (x: number, y: number, service: (x: number, y: number) => boolean) =>
-    NEIGHBOR_STEPS.some(([dx, dy]) => service(x + dx, y + dy))
+  const buildingTouchesServedRoad = (cell: GridCell, service: (x: number, y: number) => boolean) => {
+    if (cell.type === TileType.FOOTPRINT) return false
+    const size = cell.catalogId ? BUILDING_BY_ID[cell.catalogId]?.footprint : undefined
+    const width = cell.type === TileType.CITY_HALL ? 2 : size?.[0] ?? 1
+    const height = cell.type === TileType.CITY_HALL ? 2 : size?.[1] ?? 1
+    for (let dx = 0; dx < width; dx += 1) {
+      if (service(cell.x + dx, cell.y - 1) || service(cell.x + dx, cell.y + height)) return true
+    }
+    for (let dy = 0; dy < height; dy += 1) {
+      if (service(cell.x - 1, cell.y + dy) || service(cell.x + width, cell.y + dy)) return true
+    }
+    return false
+  }
   const isPoweredSource = (x: number, y: number) => powerSources.some(([sx, sy]) => sx === x && sy === y)
 
   const component = grid.map((row) => row.map(() => -1))
@@ -259,7 +264,7 @@ function recomputeServices(grid: Grid): Grid {
       let hasWater = false
       if (cell.type === TileType.WATER_PUMP) hasWater = true
       else if (cell.type === TileType.ROAD) hasWater = isWateredRoad(cell.x, cell.y)
-      else if (occupied) hasWater = nextToServedRoad(cell.x, cell.y, isWateredRoad)
+      else if (occupied) hasWater = buildingTouchesServedRoad(cell, isWateredRoad)
       
       // Smog calculation
       let smogCount = 0
@@ -278,7 +283,7 @@ function recomputeServices(grid: Grid): Grid {
 
       let hasPower = false
       if (cell.type === TileType.WIND || cell.type === TileType.SOLAR_PANEL || cell.type === TileType.COAL) hasPower = true
-      else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || nextToServedRoad(cell.x, cell.y, isPoweredRoad)
+      else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || buildingTouchesServedRoad(cell, isPoweredRoad)
 
       const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
       const catalogEntry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
@@ -312,6 +317,8 @@ function recomputeServices(grid: Grid): Grid {
 }
 
 export interface CityCounts {
+  energyProduced: number
+  energyConsumed: number
   roads: number
   houses: number
   houseCapacity: number
@@ -347,6 +354,8 @@ export let globalParkValue = 0;
 function countTiles(grid: Grid): CityCounts {
   let parkValue = 0;
   const counts: CityCounts = {
+    energyProduced: 0,
+    energyConsumed: 0,
     roads: 0,
     houses: 0,
     houseCapacity: 0,
@@ -379,6 +388,15 @@ function countTiles(grid: Grid): CityCounts {
   }
   for (const row of grid) {
     for (const cell of row) {
+      if (cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD && cell.type !== TileType.FOOTPRINT) {
+        const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+        const entry = id ? BUILDING_BY_ID[id] : undefined
+        if (entry?.category === 'utilities' || cell.type === TileType.COAL) {
+          counts.energyProduced += entry?.givesEnergy ?? entry?.energy ?? (cell.type === TileType.COAL ? 60 : 0)
+        } else {
+          counts.energyConsumed += entry?.energy ?? 0
+        }
+      }
       switch (cell.type) {
         case TileType.ROAD:
           counts.roads += 1
@@ -770,6 +788,11 @@ export function useCitySimulation() {
     return { served: counts.wateredConsumers, total: counts.consumers }
   }, [state.grid])
 
+  const energyStats = useMemo(() => {
+    const counts = countTiles(state.grid)
+    return { produced: counts.energyProduced, consumed: counts.energyConsumed }
+  }, [state.grid])
+
   const capacityStats = useMemo(() => {
     const counts = countTiles(state.grid)
     const policeCapacity = counts.policeStations * POLICE_CAPACITY_PER_STATION
@@ -790,6 +813,7 @@ export function useCitySimulation() {
     debt: state.debt,
     demands,
     waterStats,
+    energyStats,
     capacityStats,
     minutes: state.minutes,
     ticks: state.ticks,
