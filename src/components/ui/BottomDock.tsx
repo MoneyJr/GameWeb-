@@ -38,6 +38,7 @@ interface DockOption {
   icon: LucideIcon
   tool: ToolId
   cost: number
+  footprint?: [number, number]
 }
 
 interface Category {
@@ -56,7 +57,7 @@ const option = (tool: ToolId, label: string, icon: LucideIcon): DockOption => ({
 })
 
 const catalogIcons: Record<string, LucideIcon> = {
-  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2,
+  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2,
   com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse,
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
@@ -74,6 +75,7 @@ const catalogOptions = (category: BuildingCategoryId): DockOption[] => BUILDING_
     icon: catalogIcons[entry.id] ?? Store,
     tool: entry.tool,
     cost: entry.cost,
+    footprint: entry.footprint,
   }))
 
 const CATEGORIES: Category[] = [
@@ -154,9 +156,9 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
           {selectedCategory.options.map((item) => {
             const Icon = item.icon
             const selected = item.catalogId ? selectedCatalogId === item.catalogId : activeTool === item.tool
-            return <button key={item.id} type="button" aria-pressed={selected} title={`${item.label} · $${item.cost}`} onClick={() => chooseOption(selectedCategory, item)} className="dock-item-button">
+            return <button key={item.id} type="button" aria-pressed={selected} title={`${item.label} · $${item.cost}${item.footprint ? ` · ${item.footprint[0]}x${item.footprint[1]}` : ''}`} onClick={() => chooseOption(selectedCategory, item)} className="dock-item-button">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#eee9df] text-[#332c24]"><Icon size={23} strokeWidth={1.7} /></span>
-              <span className="flex min-w-0 flex-col gap-1"><span className="truncate text-xs font-semibold leading-tight">{item.label}</span><span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">${item.cost}</span></span>
+              <span className="flex min-w-0 flex-col gap-1"><span className="truncate text-xs font-semibold leading-tight">{item.label}</span><span className="flex items-center gap-1"><span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">${item.cost}</span>{item.footprint && <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[9px] font-bold text-stone-600">{item.footprint[0]}x{item.footprint[1]}</span>}</span></span>
             </button>
           })}
         </div>}

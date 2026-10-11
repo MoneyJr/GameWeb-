@@ -527,8 +527,22 @@ function reducer(state: SimState, action: Action): SimState {
       // Check space
       for (let dy = 0; dy < h; dy++) {
         for (let dx = 0; dx < w; dx++) {
-          if (!inBounds(x+dx, y+dy) || state.grid[y+dy][x+dx].type !== TileType.EMPTY) return state;
+          if (!inBounds(x+dx, y+dy)) return { ...state, notice: { id: Date.now(), text: 'Фундамент выходит за пределы карты.' } }
+          if (state.grid[y+dy][x+dx].type !== TileType.EMPTY) return { ...state, notice: { id: Date.now(), text: 'Место занято.' } }
         }
+      }
+
+      if (tool !== ToolId.ROAD) {
+        let roadAccess = false
+        for (let dx = 0; dx < w; dx += 1) {
+          roadAccess ||= (inBounds(x + dx, y - 1) && state.grid[y - 1][x + dx].type === TileType.ROAD)
+          roadAccess ||= (inBounds(x + dx, y + h) && state.grid[y + h][x + dx].type === TileType.ROAD)
+        }
+        for (let dy = 0; dy < h; dy += 1) {
+          roadAccess ||= (inBounds(x - 1, y + dy) && state.grid[y + dy][x - 1].type === TileType.ROAD)
+          roadAccess ||= (inBounds(x + w, y + dy) && state.grid[y + dy][x + w].type === TileType.ROAD)
+        }
+        if (!roadAccess) return { ...state, notice: { id: Date.now(), text: 'Нужна дорога у края фундамента.' } }
       }
 
       let newGrid = state.grid.map((row, r) =>

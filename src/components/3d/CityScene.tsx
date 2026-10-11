@@ -397,6 +397,35 @@ interface TouchGhost {
   cells: Cell[]
 }
 
+function placementFootprint(tool: ToolId, catalogId?: string, style?: string): [number, number] {
+  const footprint = catalogId ? BUILDING_BY_ID[catalogId]?.footprint : undefined
+  if (footprint) return footprint
+  if (tool === ToolId.CITY_HALL) return [2, 2]
+  if (tool === ToolId.PARK && style === 'PARK') return [2, 2]
+  if (tool === ToolId.PARK && style === 'LARGE_PARK') return [3, 3]
+  return [1, 1]
+}
+
+function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string): string | null {
+  const [width, depth] = placementFootprint(tool, catalogId, style)
+  if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'За пределами карты'
+  for (let y = cell.y; y < cell.y + depth; y += 1) {
+    for (let x = cell.x; x < cell.x + width; x += 1) {
+      if (grid[y][x].type !== TileType.EMPTY) return 'Место занято'
+    }
+  }
+  if (tool === ToolId.ROAD) return null
+  for (let x = cell.x; x < cell.x + width; x += 1) {
+    if (cell.y > 0 && grid[cell.y - 1][x].type === TileType.ROAD) return null
+    if (cell.y + depth < GRID_SIZE && grid[cell.y + depth][x].type === TileType.ROAD) return null
+  }
+  for (let y = cell.y; y < cell.y + depth; y += 1) {
+    if (cell.x > 0 && grid[y][cell.x - 1].type === TileType.ROAD) return null
+    if (cell.x + width < GRID_SIZE && grid[y][cell.x + width].type === TileType.ROAD) return null
+  }
+  return 'Нужна дорога'
+}
+
 function straightCellLine(start: Cell, end: Cell): Cell[] {
   const useX = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y)
   const target = useX
@@ -418,6 +447,14 @@ function SmogRadiusOverlay() {
   )
 }
 
+function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
+  return <mesh position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
+    <boxGeometry args={[0.96, 0.025, 0.96]} />
+    <meshBasicMaterial color={tint} transparent opacity={0.32} depthWrite={false} />
+    <Edges color={tint} threshold={1} />
+  </mesh>
+}
+
 function HoverHighlight({ color }: { color: string }) {
   const material = useRef<THREE.MeshBasicMaterial>(null)
 
@@ -436,7 +473,7 @@ function HoverHighlight({ color }: { color: string }) {
   )
 }
 
-function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: ToolId; cell: Cell; style?: string; catalogId?: string; roadLinks: { north: boolean; south: boolean; east: boolean; west: boolean } }) {
+function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { tool: ToolId; cell: Cell; style?: string; catalogId?: string; tint: string; roadLinks: { north: boolean; south: boolean; east: boolean; west: boolean } }) {
   const group = useRef<THREE.Group>(null)
   const tile = TOOL_DEFINITIONS[tool].tile
 
@@ -449,14 +486,14 @@ function GhostTilePreview({ tool, cell, style, catalogId, roadLinks }: { tool: T
         ghostMaterial.transparent = true
         ghostMaterial.opacity = 0.48
         ghostMaterial.depthWrite = false
-        if ('color' in ghostMaterial) (ghostMaterial as THREE.MeshStandardMaterial).color.lerp(new THREE.Color('#b7edbb'), 0.28)
+        if ('color' in ghostMaterial) (ghostMaterial as THREE.Material & { color: THREE.Color }).color.set(tint)
         clonedMaterials.push(ghostMaterial)
         return ghostMaterial
       }
       object.material = Array.isArray(object.material) ? object.material.map(clone) : clone(object.material)
     })
     return () => clonedMaterials.forEach((material) => material.dispose())
-  }, [tool])
+  }, [tool, tint, cell.x, cell.y, catalogId])
 
   if (!tile) return null
   const [offsetX, offsetZ] = catalogCenterOffset(catalogId)
@@ -481,6 +518,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
     },
     [activeTool, catalogId, onPlace, onRemove],
   )
+  const footprint = placementFootprint(activeTool, catalogId, placementStyle)
 
   useEffect(() => {
     const trackTouchMove = (event: PointerEvent) => {
@@ -595,7 +633,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
     if (activeTool === ToolId.BULLDOZE) {
       highlightColor = current === TileType.EMPTY ? '#c9c4b5' : '#ff5a4d'
     } else if (activeTool !== ToolId.CURSOR) {
-      highlightColor = current === TOOL_DEFINITIONS[activeTool].tile ? '#c9c4b5' : '#6fe37f'
+      highlightColor = validatePlacement(grid, hovered, activeTool, catalogId, placementStyle) === null ? '#10b981' : '#ef4444'
     }
   }
 
@@ -633,7 +671,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         <planeGeometry args={[GRID_SIZE, GRID_SIZE]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} />
       </mesh>
-            {hovered !== null && (
+      {hovered !== null && (
         <group position={cellToWorld(hovered.x, hovered.y)}>
             <HoverHighlight color={highlightColor} />
           {(activeTool === ToolId.COAL || activeTool === ToolId.INDUSTRIAL) && (
@@ -641,18 +679,28 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
           )}
         </group>
       )}
-      {isTouchDevice && ghost && activeTool !== ToolId.BULLDOZE && (
-        ghost.cells.map((cell) => {
-          const cells = ghost.cells
-          const roadLinks = {
-            north: cells.some((other) => other.x === cell.x && other.y === cell.y - 1),
-            south: cells.some((other) => other.x === cell.x && other.y === cell.y + 1),
-            east: cells.some((other) => other.x === cell.x + 1 && other.y === cell.y),
-            west: cells.some((other) => other.x === cell.x - 1 && other.y === cell.y),
-          }
-          return <GhostTilePreview key={`${cell.x},${cell.y}`} tool={activeTool} cell={cell} style={placementStyle} catalogId={catalogId} roadLinks={roadLinks} />
-        })
-      )}
+      {(isTouchDevice ? ghost?.cells[0] : hovered) && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (() => {
+        const anchor = (isTouchDevice ? ghost?.cells[0] : hovered)!
+        const roadCells = activeTool === ToolId.ROAD ? (isTouchDevice ? ghost?.cells ?? [] : [anchor]) : []
+        const valid = activeTool === ToolId.ROAD
+          ? roadCells.every((item) => validatePlacement(grid, item, activeTool, catalogId, placementStyle) === null)
+          : validatePlacement(grid, anchor, activeTool, catalogId, placementStyle) === null
+        const tint = valid ? '#10b981' : '#ef4444'
+        const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
+        const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
+        return <group>
+          {cells.map((item) => <FootprintCell key={`footprint-${item.x}-${item.y}`} cell={item} tint={tint} />)}
+          {modelCells.map((item) => {
+            const links = activeTool === ToolId.ROAD ? {
+              north: (isTouchDevice ? ghost?.cells ?? [] : []).some((other) => other.x === item.x && other.y === item.y - 1),
+              south: (isTouchDevice ? ghost?.cells ?? [] : []).some((other) => other.x === item.x && other.y === item.y + 1),
+              east: (isTouchDevice ? ghost?.cells ?? [] : []).some((other) => other.x === item.x + 1 && other.y === item.y),
+              west: (isTouchDevice ? ghost?.cells ?? [] : []).some((other) => other.x === item.x - 1 && other.y === item.y),
+            } : { north: false, south: false, east: false, west: false }
+            return <GhostTilePreview key={`ghost-model-${item.x}-${item.y}`} tool={activeTool} cell={item} style={placementStyle} catalogId={catalogId} tint={tint} roadLinks={links} />
+          })}
+        </group>
+      })()}
     </group>
   )
 }
@@ -796,7 +844,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
     setTouchGhost((current) => {
       if (!current) return { cells: [cell] }
       if (activeTool === ToolId.ROAD) return { cells: straightCellLine(current.cells[0], cell) }
-      return null
+      return current.cells[0].x === cell.x && current.cells[0].y === cell.y ? current : { cells: [cell] }
     })
   }, [activeTool])
   const handleRoadLinePreview = useCallback((cells: Cell[]) => {
@@ -816,7 +864,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       controls.update()
     }
   }, [])
-  useEffect(() => setTouchGhost(null), [activeTool])
+  useEffect(() => setTouchGhost(null), [activeTool, catalogId])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
   const isReferencePreview = new URLSearchParams(window.location.search).get('preview') === 'cityrt'
   const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
@@ -847,6 +895,14 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
     camera.updateProjectionMatrix()
     controls.update()
   }
+  const unitCost = catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost
+  const ghostCost = unitCost * (activeTool === ToolId.ROAD ? touchGhost?.cells.length ?? 1 : 1)
+  const ghostPlacementError = touchGhost
+    ? activeTool === ToolId.ROAD
+      ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle)).find(Boolean) ?? null
+      : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle)
+    : null
+  const ghostCanPlace = ghostPlacementError === null && budget >= ghostCost
   return (
     <>
       <div
@@ -918,31 +974,33 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       </div>
       {isTouchDevice && touchGhost && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
         <div
-          className="pointer-events-none absolute inset-x-0 z-30 flex justify-center gap-2"
+          className="pointer-events-none absolute inset-x-0 z-30 flex flex-col items-center gap-2"
           style={{ bottom: 'calc(9.5rem + env(safe-area-inset-bottom))' }}
           aria-label="Подтверждение постройки"
         >
-          <button
-            type="button"
-            onClick={() => {
-              const unitCost = catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost
-              const cost = unitCost * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)
-              touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y, catalogId))
-              if (budget >= cost) setTouchGhost(null)
-            }}
-            className="pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border border-emerald-900/30 bg-emerald-600 px-4 text-sm font-bold text-white shadow-lg active:scale-95"
-            aria-label={`Построить за $${(catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost) * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}`}
-          >
-            <span aria-hidden="true">✓</span><span>${(catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost) * (activeTool === ToolId.ROAD ? touchGhost.cells.length : 1)}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setTouchGhost(null)}
-            className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-stone-500/40 bg-stone-600 text-xl font-bold text-white shadow-lg active:scale-95"
-            aria-label="Отменить постройку"
-          >
-            ×
-          </button>
+          {ghostPlacementError && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{ghostPlacementError}</div>}
+          {!ghostPlacementError && budget < ghostCost && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">Недостаточно средств</div>}
+          <div className="flex justify-center gap-2">
+            <button
+              type="button"
+              disabled={!ghostCanPlace}
+              onClick={() => {
+                if (!ghostCanPlace) return
+                touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y, catalogId))
+                setTouchGhost(null)
+              }}
+              className={`pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border px-4 text-sm font-bold text-white shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${ghostCanPlace ? 'border-emerald-900/30 bg-emerald-600' : 'border-red-900/30 bg-red-600'}`}
+              aria-label={`Построить за $${ghostCost}`}
+            >
+              <span aria-hidden="true">✓</span><span>${ghostCost}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setTouchGhost(null)}
+              className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-stone-500/40 bg-stone-600 text-xl font-bold text-white shadow-lg active:scale-95"
+              aria-label="Отменить постройку"
+            >×</button>
+          </div>
         </div>
       )}
       <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2 md:hidden" aria-label="Управление масштабом камеры">

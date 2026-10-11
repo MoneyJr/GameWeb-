@@ -936,6 +936,46 @@ function PanelBlockMesh() {
   </group>
 }
 
+function ModernGlassTowerMesh() {
+  const floors = [0.55, 1.25, 1.95, 2.65, 3.35, 4.05]
+  return <group>
+    {/* Shared 2x2 landscaped plaza footprint. */}
+    <Box size={[1.98, 0.08, 1.98]} position={[0, 0.04, 0]} color="#707779" />
+    <Box size={[1.84, 0.035, 1.84]} position={[0, 0.095, 0]} color="#a9aaa2" />
+    <Box size={[1.18, 0.06, 1.18]} position={[0, 0.14, 0]} color="#52796f" />
+    {/* A stepped glazed tower rises to 5.2 units. */}
+    <Box size={[1.2, 1.55, 1.2]} position={[0, 0.92, 0]} color="#52796f" />
+    <Box size={[1.05, 2.3, 1.05]} position={[0, 2.85, 0]} color="#638b82" />
+    <Box size={[0.9, 1.25, 0.9]} position={[0, 4.625, 0]} color="#84a98c" />
+    {[...floors].map((y) => <group key={`tower-windows-${y}`}>
+      {[-0.3, 0.3].map((x) => <Window key={`front-${x}`} position={[x, y, 0.606]} width={0.22} height={0.43} glass={y % 1.4 < 0.7 ? '#355f68' : '#e7e3ce'} frame="#edf1e8" cross={false} sill={false} />)}
+      {[-0.3, 0.3].map((z) => <Window key={`side-${z}`} position={[0.531, y, z]} facing="x" width={0.22} height={0.43} glass={y % 1.4 < 0.7 ? '#355f68' : '#e7e3ce'} frame="#edf1e8" cross={false} sill={false} />)}
+    </group>)}
+    {[-0.43, -0.14, 0.14, 0.43].map((x) => <Box key={`front-lamella-${x}`} size={[0.025, 4.95, 0.035]} position={[x, 2.62, 0.615]} color="#eef2e8" />)}
+    {[-0.43, -0.14, 0.14, 0.43].map((z) => <Box key={`side-lamella-${z}`} size={[0.035, 4.95, 0.025]} position={[0.615, 2.62, z]} color="#eef2e8" />)}
+    {/* Rooftop garden and small glass pavilion. */}
+    <Box size={[0.9, 0.08, 0.9]} position={[0, 5.29, 0]} color="#6d8c46" />
+    <Box size={[0.42, 0.32, 0.36]} position={[0, 5.49, 0]} color="#8bb8ac" />
+    <Box size={[0.48, 0.035, 0.42]} position={[0, 5.66, 0]} color="#edf1e8" />
+    {/* Cypress trees around the tower and small square fountain in the garden. */}
+    {[-0.79, 0.79].flatMap((x) => [-0.79, 0.79].map((z) => <group key={`cypress-${x}-${z}`} position={[x, 0.13, z]}>
+      <Cylinder radius={0.035} radiusTop={0.025} height={0.3} segments={6} position={[0, 0.15, 0]} color="#684b35" />
+      <Cone radius={0.14} height={0.42} segments={6} position={[0, 0.42, 0]} color="#355e48" />
+      <Cone radius={0.1} height={0.38} segments={6} position={[0, 0.68, 0]} color="#4f795c" />
+    </group>))}
+    <Cylinder radius={0.2} height={0.09} segments={12} position={[0, 0.18, -0.77]} color="#d5d0c4" />
+    <Cylinder radius={0.15} height={0.025} segments={12} position={[0, 0.235, -0.77]} color="#5b9bad" />
+    {[-1, 1].map((side) => <group key={`tower-bench-${side}`} position={[side * 0.76, 0.14, 0.22]} rotation={[0, Math.PI / 2, 0]}>
+      <Box size={[0.34, 0.035, 0.085]} position={[0, 0.12, 0]} color="#79583a" />
+      <Box size={[0.34, 0.12, 0.025]} position={[0, 0.2, -0.03]} color="#79583a" />
+    </group>)}
+    {/* Glass entry canopy on the street-facing edge. */}
+    <Box size={[0.62, 0.035, 0.24]} position={[0, 0.42, 0.77]} color="#dce8e2" />
+    <Box size={[0.06, 0.28, 0.06]} position={[-0.26, 0.27, 0.83]} color="#a9c8c0" />
+    <Box size={[0.06, 0.28, 0.06]} position={[0.26, 0.27, 0.83]} color="#a9c8c0" />
+  </group>
+}
+
 function CinemaLetter({ letter, x }: { letter: string; x: number }) {
   const bar = (key: string, size: Vec3, position: Vec3, rotation: Vec3 = [0, 0, 0]) => <Box key={key} size={size} position={position} rotation={rotation} color="#e8292e" material={cinemaSignMaterial} />
   const upright = bar('upright', [0.035, 0.2, 0.06], [0, 0, 0])
@@ -1399,6 +1439,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
     case TileType.RESIDENTIAL:
       if (catalogId === 'res_panel_block') {
         model = <PanelBlockMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'res_modern_glass_tower') {
+        model = <ModernGlassTowerMesh />
         w = 2; h = 2
       } else model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
       dust = 10
