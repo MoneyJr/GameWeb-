@@ -1,6 +1,6 @@
 import { TrafficSystem } from './TrafficSystem'
 import { LivingCityParticles } from './LivingCityParticles'
-import { memo, Suspense, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { Edges, Html, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
@@ -554,19 +554,10 @@ function straightCellLine(start: Cell, end: Cell): Cell[] {
 }
 
 
-function SmogRadiusOverlay() {
-  return (
-    <mesh position={[0, 0.03, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-      <circleGeometry args={[8, 48]} />
-      <meshBasicMaterial color="#ef4444" transparent opacity={0.15} depthWrite={false} />
-    </mesh>
-  )
-}
-
 function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
   return <mesh position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
     <boxGeometry args={[0.96, 0.025, 0.96]} />
-    <meshBasicMaterial color={tint} transparent opacity={0.38} depthWrite={false} depthTest />
+    <meshBasicMaterial color={tint} transparent opacity={0.5} depthWrite={false} depthTest />
   </mesh>
 }
 
@@ -584,11 +575,11 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
   const group = useRef<THREE.Group>(null)
   const tile = TOOL_DEFINITIONS[tool].tile
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const ghostMaterial = new THREE.MeshBasicMaterial({
       color: tint,
       transparent: true,
-      opacity: 0.35,
+      opacity: 0.5,
       depthWrite: false,
       depthTest: true,
       side: THREE.DoubleSide,
@@ -609,7 +600,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
   if (!tile) return null
   const [offsetX, offsetZ] = catalogCenterOffset(catalogId)
   return (
-    <group ref={group} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} renderOrder={20}>
+    <group ref={group} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} scale={[1, 1, 1]} renderOrder={20}>
       <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
@@ -618,7 +609,9 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
 function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle, catalogId }: InteractionLayerProps) {
   const { t } = useI18n()
   const { gl } = useThree()
-  const [hovered, setHovered] = useState<Cell | null>(null)
+  const [hoverState, setHoverState] = useState<{ cell: Cell; tool: ToolId; catalogId?: string } | null>(null)
+  const hovered = hoverState?.tool === activeTool && hoverState.catalogId === catalogId ? hoverState.cell : null
+  const setHovered = (cell: Cell | null) => setHoverState(cell ? { cell, tool: activeTool, catalogId } : null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
   const touchTap = useRef<{ pointerId: number; x: number; y: number; cell: Cell; moved: boolean } | null>(null)
@@ -651,7 +644,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       gl.domElement.removeEventListener('pointerleave', clearHover)
       window.removeEventListener('pointermove', clearOutsideCanvas)
     }
-  }, [activeTool, gl])
+  }, [activeTool, catalogId, gl])
 
   useEffect(() => {
     const trackTouchMove = (event: PointerEvent) => {
@@ -716,7 +709,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       setHovered(null)
       return
     }
-    setHovered((prev) => (prev !== null && prev.x === cell.x && prev.y === cell.y ? prev : cell))
+    if (!hovered || hovered.x !== cell.x || hovered.y !== cell.y) setHovered(cell)
     const drag = roadDrag.current
     if (drag?.pointerId === event.nativeEvent.pointerId) {
       if (Math.hypot(event.nativeEvent.clientX - drag.x, event.nativeEvent.clientY - drag.y) > 10) {
@@ -821,9 +814,6 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
       {hovered !== null && (
         <group position={cellToWorld(hovered.x, hovered.y)}>
             <HoverHighlight color={highlightColor} />
-          {(activeTool === ToolId.COAL || activeTool === ToolId.INDUSTRIAL) && (
-            <SmogRadiusOverlay />
-          )}
         </group>
       )}
       {(isTouchDevice ? ghost?.cells[0] : hovered) && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (() => {
