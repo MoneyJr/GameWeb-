@@ -125,6 +125,7 @@ function App() {
         placementStyle={resStyle}
       />
 
+      <div className="pointer-events-none absolute inset-0 z-30 animate-hud-fade-in [&>*]:pointer-events-auto">
       <TopBar
         population={sim.population}
         budget={sim.budget}
@@ -160,6 +161,7 @@ function App() {
       )}
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
+      </div>
       {welcome && <div key={welcome.nonce} className={`fixed bottom-24 left-4 z-40 max-w-[min(360px,calc(100vw-32px))] transition-all duration-500 sm:left-6 ${dismissedWelcomeNonce !== welcome.nonce ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
         <div className="relative rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-4 pl-14 text-sm font-semibold leading-relaxed text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur-md">
           <span aria-hidden="true" className="absolute left-3 top-3 grid size-9 place-items-center rounded-full border border-[#2C241D]/25 bg-[#e6d5b7] text-xl">{welcome.returning ? '🐱' : '🧑‍🎨'}</span>

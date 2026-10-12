@@ -2,13 +2,55 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
+import { OrbitControls as ThreeOrbitControls } from 'three-stdlib'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
 import { InkOutlinePassEffect, ToonShadingSetup } from '../3d/InkOutlinePass'
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 
-function ShowcaseCity() {
+type MenuControls = ThreeOrbitControls
+
+function MenuCameraFlight({ active, controlsRef, onComplete }: { active: boolean; controlsRef: React.MutableRefObject<MenuControls | null>; onComplete: () => void }) {
+  const { camera } = useThree()
+  const startPosition = useRef(new THREE.Vector3())
+  const startTarget = useRef(new THREE.Vector3())
+  const startTime = useRef(0)
+  const completed = useRef(false)
+  useEffect(() => {
+    if (!active) return
+    startPosition.current.copy(camera.position)
+    startTarget.current.copy(controlsRef.current?.target ?? new THREE.Vector3(5, 0.9, -1))
+    startTime.current = performance.now()
+    completed.current = false
+    if (controlsRef.current) controlsRef.current.enabled = false
+  }, [active, camera, controlsRef])
+  useFrame(() => {
+    if (!active || completed.current) return
+    const t = Math.min(1, (performance.now() - startTime.current) / 2000)
+    const eased = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    camera.position.lerpVectors(startPosition.current, new THREE.Vector3(12, 16, 16), eased)
+    const target = controlsRef.current?.target
+    if (target) {
+      target.copy(startTarget.current).lerp(new THREE.Vector3(0, 0, 0), eased)
+      controlsRef.current?.update()
+    }
+    camera.lookAt(0, 0, 0)
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.fov = THREE.MathUtils.lerp(24, 30, eased)
+      camera.updateProjectionMatrix()
+    }
+    if (t >= 1) {
+      completed.current = true
+      if (controlsRef.current) controlsRef.current.enabled = true
+      onComplete()
+    }
+  })
+  return null
+}
+
+function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: boolean; onFlightComplete: () => void }) {
+  const controlsRef = useRef<MenuControls | null>(null)
   const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
     const cells: { x: number; z: number; type: TileType }[] = []
     const roads = new Set<string>()
@@ -95,7 +137,8 @@ function ShowcaseCity() {
       <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
       <ambientLight intensity={0.65} color="#ecdcc9" />
       <directionalLight position={[35, 50, 25]} intensity={1.4} color="#fff7ea" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
-      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
+      <OrbitControls ref={controlsRef} autoRotate={!transitioning} autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
+      <MenuCameraFlight active={transitioning} controlsRef={controlsRef} onComplete={onFlightComplete} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
         <meshToonMaterial color="#cfb997" />
@@ -449,6 +492,8 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const [showProgress, setShowProgress] = useState(true)
   const [progress, setProgress] = useState(0)
   const [leaving, setLeaving] = useState(false)
+  const [transitioning, setTransitioning] = useState(false)
+  const pendingStart = useRef<{ mode: 'new' | 'continue' | 'sandbox'; profile?: CityProfile } | null>(null)
   const [hasSave, setHasSave] = useState(() => {
     try { return Boolean(localStorage.getItem('inkville-save-v2')) } catch { return false }
   })
@@ -491,10 +536,20 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     setAssetsReady(true)
   }, [])
   const begin = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
-    if (!ready || leaving) return
-    setLeaving(true)
-    window.setTimeout(() => onStart(mode, profile), 650)
+    if (!ready || leaving || transitioning) return
+    pendingStart.current = { mode, profile }
+    setTransitioning(true)
   }
+  const finishFlight = useCallback(() => {
+    setLeaving(true)
+    const start = pendingStart.current
+    pendingStart.current = null
+    if (start) window.setTimeout(() => onStart(start.mode, start.profile), 250)
+  }, [onStart])
+  useEffect(() => () => {
+    // If this screen is dismissed during a transition, do not leave its callback pending.
+    pendingStart.current = null
+  }, [])
   const createCity = () => {
     const profile = { cityName: cityName.trim(), mayorName: mayorName.trim() || t('title.mayorPlaceholder'), createdAt: new Date().toISOString() }
     if (!profile.cityName) return
@@ -531,13 +586,13 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const actionKeys = ['title.newCity', 'title.continue', 'title.sandbox', 'title.settings']
   const actionIndex = (key: string) => actionKeys.indexOf(key)
   return (
-    <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-700 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [10, 15, 18], fov: 38 }} gl={{ antialias: true }}>
-        <ShowcaseCity />
+    <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-300 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [28, 42, 38], fov: 24 }} gl={{ antialias: true }}>
+        <ShowcaseCity transitioning={transitioning} onFlightComplete={finishFlight} />
         <ShowcaseSceneReady onReady={markAssetsReady} />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
-      <section style={{ left: 48, right: 'auto' }} className="fixed left-12 right-auto top-1/2 z-40 w-[calc(100vw-64px)] max-w-[340px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-6 text-[#2c241d] shadow-[8px_8px_0px_#2C241D] md:w-[380px] md:max-w-none">
+      <section style={{ left: 48, right: 'auto' }} className={`fixed left-12 right-auto top-1/2 z-40 w-[calc(100vw-64px)] max-w-[340px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-6 text-[#2c241d] shadow-[8px_8px_0px_#2C241D] transition-all duration-[400ms] md:w-[380px] md:max-w-none ${transitioning ? 'pointer-events-none -translate-x-12 opacity-0' : 'translate-x-0 opacity-100'}`}>
         <div className="mb-4 flex items-start justify-between gap-2">
           <span className="inline-flex max-w-[220px] rounded-full border border-[#2C241D]/30 bg-[#fffaf0]/70 px-3 py-1 text-[9px] font-black uppercase tracking-[.13em] text-[#66513b]">{t('title.handInk')}</span>
           <select aria-label={t('language.label')} value={language} onChange={event => setLanguage(event.target.value as Language)} className="h-8 shrink-0 rounded-lg border border-[#2C241D]/40 bg-[#fffaf0] px-1.5 text-[10px] font-bold">
