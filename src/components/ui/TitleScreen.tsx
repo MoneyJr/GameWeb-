@@ -70,7 +70,7 @@ function ShowcaseCity() {
   return (
     <>
       <color attach="background" args={['#eae4d5']} />
-      <fogExp2 attach="fog" args={['#e5dacf', 0.008]} />
+      <fogExp2 attach="fog" args={['#e5dacf', 0.002]} />
       <ambientLight intensity={0.5} color="#fff6e8" />
       <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />

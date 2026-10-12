@@ -570,18 +570,10 @@ function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
 }
 
 function HoverHighlight({ color }: { color: string }) {
-  const material = useRef<THREE.MeshBasicMaterial>(null)
-
-  useFrame(({ clock }) => {
-    if (material.current !== null) {
-      material.current.opacity = 0.42 + Math.sin(clock.elapsedTime * 5) * 0.12
-    }
-  })
-
   return (
-    <mesh position={[0, 0.05, 0]} renderOrder={10}>
-      <boxGeometry args={[1, 0.1, 1]} />
-      <meshBasicMaterial ref={material} color={color} transparent opacity={0.5} depthWrite={false} />
+    <mesh position={[0, 0.018, 0]} renderOrder={10}>
+      <boxGeometry args={[0.94, 0.012, 0.94]} />
+      <meshBasicMaterial color={color} transparent opacity={0.2} depthWrite={false} />
       <Edges color="#1a1a1a" />
     </mesh>
   )
@@ -742,7 +734,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
     act(cell)
   }
 
-  let highlightColor = '#ffffff'
+  let highlightColor = '#c9aa71'
   if (hovered !== null) {
     const current = grid[hovered.y][hovered.x].type
     if (activeTool === ToolId.BULLDOZE) {
@@ -784,7 +776,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         onPointerOut={() => setHovered(null)}
       >
         <planeGeometry args={[GRID_SIZE, GRID_SIZE]} />
-        <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+        <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} side={THREE.DoubleSide} />
       </mesh>
       {hovered !== null && (
         <group position={cellToWorld(hovered.x, hovered.y)}>
@@ -948,7 +940,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = THREE.MathUtils.lerp(0.008, 0.009, level)
+      scene.fog.density = THREE.MathUtils.lerp(0.002, 0.0025, level)
     }
     scene.background = background
     applyNightLevel(level)
@@ -1048,7 +1040,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#e5dacf', 0.008]} />
+      <fogExp2 attach="fog" args={['#e5dacf', 0.002]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
