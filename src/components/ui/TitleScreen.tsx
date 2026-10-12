@@ -4,6 +4,7 @@ import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
+import { useI18n } from '../../i18n/I18nProvider'
 
 function ShowcaseCity() {
   const { city, parks, trees, hills } = useMemo(() => {
@@ -69,7 +70,7 @@ function ShowcaseCity() {
   return (
     <>
       <color attach="background" args={['#eae4d5']} />
-      <fogExp2 attach="fog" args={['#eae4d5', 0.015]} />
+      <fogExp2 attach="fog" args={['#e5dacf', 0.008]} />
       <ambientLight intensity={0.5} color="#fff6e8" />
       <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />
@@ -269,9 +270,8 @@ function ParkLights() {
 }
 
 interface TitleScreenProps { onStart: (mode: 'new' | 'continue' | 'sandbox') => void }
-const loadingLabels = ['Затачиваем карандаши...', 'Укладываем брусчатку...', 'Заливаем чернила...']
-
 export function TitleScreen({ onStart }: TitleScreenProps) {
+  const { t } = useI18n()
   const [ready, setReady] = useState(false)
   const [progress, setProgress] = useState(0)
   const [leaving, setLeaving] = useState(false)
@@ -300,20 +300,20 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
       <div className="absolute inset-y-0 left-0 flex w-full max-w-[560px] items-center px-8 sm:px-14">
         <section className="w-full rounded-[28px] border border-white/60 bg-[#f7f2e7]/75 p-7 shadow-[0_24px_70px_rgba(34,34,30,.22)] backdrop-blur-sm sm:p-10">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#34312b]/25 bg-white/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[.23em] text-[#665a48]">A city drawn by hand</div>
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#34312b]/25 bg-white/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[.23em] text-[#665a48]">{t('title.eyebrow')}</div>
           <h1 className="font-serif text-6xl font-black italic tracking-[-.07em] text-[#26251f] sm:text-7xl">Inkville</h1>
-          <p className="mt-2 text-sm font-semibold tracking-[.16em] text-[#6b6255]">A Hand-Drawn City Builder</p>
+          <p className="mt-2 text-sm font-semibold tracking-[.16em] text-[#6b6255]">{t('title.tagline')}</p>
           <div className="mt-8 h-2 overflow-hidden rounded-full border border-[#332f28]/60 bg-[#d8d0c0]">
             <div className="h-full bg-[repeating-linear-gradient(135deg,#a6653d_0px,#a6653d_4px,#d59c61_4px,#d59c61_7px)] transition-[width] duration-100" style={{ width: `${progress}%` }} />
           </div>
-          {!ready ? <p className="mt-3 h-5 text-xs font-semibold text-[#746958]">{loadingLabels[Math.min(2, Math.floor(progress / 34))]}</p> : (
+          {!ready ? <p className="mt-3 h-5 text-xs font-semibold text-[#746958]">{t(`title.loading${Math.min(3, Math.floor(progress / 34) + 1)}`)}</p> : (
             <div className="mt-6 grid gap-3">
-              <button onClick={() => begin('new')} className="rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-5 py-3 text-sm font-black text-[#28251e] shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">Начать строительство / New City</button>
-              {hasSave && <button onClick={() => begin('continue')} className="rounded-xl border-2 border-[#292720]/70 bg-[#f7f3eb] px-5 py-3 text-sm font-bold text-[#38342c]">Продолжить / Continue</button>}
-              <button onClick={() => begin('sandbox')} className="rounded-xl border border-[#292720]/35 bg-white/35 px-5 py-2.5 text-sm font-semibold text-[#514b40] transition hover:bg-white/65">Песочница / Sandbox</button>
+              <button onClick={() => begin('new')} className="rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-5 py-3 text-sm font-black text-[#28251e] shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">{t('title.newCity')}</button>
+              {hasSave && <button onClick={() => begin('continue')} className="rounded-xl border-2 border-[#292720]/70 bg-[#f7f3eb] px-5 py-3 text-sm font-bold text-[#38342c]">{t('title.continue')}</button>}
+              <button onClick={() => begin('sandbox')} className="rounded-xl border border-[#292720]/35 bg-white/35 px-5 py-2.5 text-sm font-semibold text-[#514b40] transition hover:bg-white/65">{t('title.sandbox')}</button>
             </div>
           )}
-          <p className="mt-7 text-[10px] font-semibold uppercase tracking-[.18em] text-[#8b806e]">Inkville · Since the first brick</p>
+          <p className="mt-7 text-[10px] font-semibold uppercase tracking-[.18em] text-[#8b806e]">{t('title.footer')}</p>
         </section>
       </div>
     </div>

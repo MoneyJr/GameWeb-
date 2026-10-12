@@ -1,5 +1,6 @@
 import {
   Building2,
+  Grape,
   Church,
   Droplets,
   Factory,
@@ -23,6 +24,7 @@ import { useEffect, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { ToolId } from '../../types/city'
 import { BUILDING_CATALOG, type BuildingCategoryId } from '../../store/buildingCatalog'
+import { useI18n } from '../../i18n/I18nProvider'
 
 interface BottomDockProps {
   activeTool: ToolId
@@ -34,7 +36,7 @@ interface BottomDockProps {
 interface DockOption {
   id: string
   catalogId?: string
-  label: string
+  labelKey: string
   icon: LucideIcon
   tool: ToolId
   cost: number
@@ -43,22 +45,22 @@ interface DockOption {
 
 interface Category {
   key: string
-  label: string
+  labelKey: string
   icon: LucideIcon
   options: DockOption[]
 }
 
-const option = (tool: ToolId, label: string, icon: LucideIcon): DockOption => ({
+const option = (tool: ToolId, labelKey: string, icon: LucideIcon): DockOption => ({
   id: tool,
-  label,
+  labelKey,
   icon,
   tool,
   cost: TOOL_DEFINITIONS[tool].cost,
 })
 
 const catalogIcons: Record<string, LucideIcon> = {
-  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2,
-  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film,
+  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2, res_half_timbered: House, res_cozy_estate: House,
+  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse,
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
   lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church,
@@ -71,7 +73,7 @@ const catalogOptions = (category: BuildingCategoryId): DockOption[] => BUILDING_
   .map((entry) => ({
     id: entry.id,
     catalogId: entry.id,
-    label: entry.name,
+    labelKey: `building.${entry.id}`,
     icon: catalogIcons[entry.id] ?? Store,
     tool: entry.tool,
     cost: entry.cost,
@@ -79,20 +81,21 @@ const catalogOptions = (category: BuildingCategoryId): DockOption[] => BUILDING_
   }))
 
 const CATEGORIES: Category[] = [
-  { key: '1', label: 'Дороги', icon: Route, options: [option(ToolId.ROAD, 'Асфальтовая дорога', Route)] },
-  { key: 'U', label: 'Сети', icon: Droplets, options: catalogOptions('utilities') },
-  { key: 'H', label: 'Жильё', icon: House, options: catalogOptions('residential') },
-  { key: 'S', label: 'Коммерция', icon: Store, options: catalogOptions('commercial') },
-  { key: 'I', label: 'Промзона', icon: Factory, options: catalogOptions('industrial') },
-  { key: 'V', label: 'Службы', icon: Shield, options: [
+  { key: '1', labelKey: 'category.roads', icon: Route, options: [option(ToolId.ROAD, 'item.road', Route)] },
+  { key: 'U', labelKey: 'category.utilities', icon: Droplets, options: catalogOptions('utilities') },
+  { key: 'H', labelKey: 'category.residential', icon: House, options: catalogOptions('residential') },
+  { key: 'S', labelKey: 'category.commercial', icon: Store, options: catalogOptions('commercial') },
+  { key: 'I', labelKey: 'category.industrial', icon: Factory, options: catalogOptions('industrial') },
+  { key: 'V', labelKey: 'category.services', icon: Shield, options: [
     ...catalogOptions('civic'),
-    option(ToolId.POLICE, 'Полицейский участок', Shield),
+    option(ToolId.POLICE, 'item.police', Shield),
   ] },
-  { key: 'P', label: 'Парки', icon: TreePine, options: [...catalogOptions('parks'), ...catalogOptions('landmarks')] },
-  { key: 'X', label: 'Снос', icon: Trash2, options: [option(ToolId.BULLDOZE, 'Снести объект', Trash2)] },
+  { key: 'P', labelKey: 'category.parks', icon: TreePine, options: [...catalogOptions('parks'), ...catalogOptions('landmarks')] },
+  { key: 'X', labelKey: 'category.demolish', icon: Trash2, options: [option(ToolId.BULLDOZE, 'item.demolish', Trash2)] },
 ]
 
 export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogSelect }: BottomDockProps) {
+  const { t } = useI18n()
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const selectedCategory = CATEGORIES.find((category) => category.key === activeCategory)
 
@@ -137,7 +140,7 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
   }, [activeCategory, onSelect, onCatalogSelect])
 
   return (
-    <nav aria-label="Строительство" className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 flex max-w-[calc(100vw-12px)] justify-center">
+    <nav aria-label={t('category.construction')} className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 flex max-w-[calc(100vw-12px)] justify-center">
       <style>{`
         .dock-category-bar { display:flex; width:min(672px,calc(100vw - 12px)); align-items:center; justify-content:space-around; gap:3px; overflow-x:auto; scrollbar-width:none; border:1px solid rgba(43,43,43,.2); border-radius:16px; background:rgba(244,241,234,.95); padding:8px 16px; color:#262626; box-shadow:0 20px 32px rgba(20,16,12,.2); backdrop-filter:blur(12px); }
         .dock-category-bar::-webkit-scrollbar,.dock-submenu::-webkit-scrollbar { display:none; }
@@ -152,21 +155,24 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
         @media(max-width:767px) { .dock-category-bar { justify-content:flex-start; padding:5px 6px; } .dock-category-button { min-width:64px; flex-basis:64px; height:52px; gap:2px; } .dock-category-button svg { width:20px; height:20px; } .dock-category-button span { font-size:9px; } .dock-submenu { max-width:calc(100vw - 16px); } .dock-item-button { width:145px; min-width:145px; height:62px; } }
       `}</style>
       <div className="pointer-events-auto relative flex flex-col items-center">
-        {selectedCategory && <div className="dock-submenu" aria-label={`Предметы категории ${selectedCategory.label}`}>
+        {selectedCategory && <div className="dock-submenu" aria-label={`${t('category.construction')}: ${t(selectedCategory.labelKey)}`}>
           {selectedCategory.options.map((item) => {
             const Icon = item.icon
             const selected = item.catalogId ? selectedCatalogId === item.catalogId : activeTool === item.tool
-            return <button key={item.id} type="button" aria-pressed={selected} title={`${item.label} · $${item.cost}${item.footprint ? ` · ${item.footprint[0]}x${item.footprint[1]}` : ''}`} onClick={() => chooseOption(selectedCategory, item)} className="dock-item-button">
+            const label = t(item.labelKey)
+            const description = item.catalogId ? t(`description.${item.catalogId}`) : ''
+            return <button key={item.id} type="button" aria-pressed={selected} title={`${label} · $${item.cost}${item.footprint ? ` · ${item.footprint[0]}x${item.footprint[1]}` : ''}`} onClick={() => chooseOption(selectedCategory, item)} className="dock-item-button">
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#eee9df] text-[#332c24]"><Icon size={23} strokeWidth={1.7} /></span>
-              <span className="flex min-w-0 flex-col gap-1"><span className="truncate text-xs font-semibold leading-tight">{item.label}</span><span className="flex items-center gap-1"><span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">${item.cost}</span>{item.footprint && <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[9px] font-bold text-stone-600">{item.footprint[0]}x{item.footprint[1]}</span>}</span></span>
+              <span className="flex min-w-0 flex-col gap-1"><span className="truncate text-xs font-semibold leading-tight">{label}</span>{description && <span className="truncate text-[9px] text-stone-500">{description}</span>}<span className="flex items-center gap-1"><span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">${item.cost}</span>{item.footprint && <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[9px] font-bold text-stone-600">{item.footprint[0]}x{item.footprint[1]}</span>}</span></span>
             </button>
           })}
         </div>}
-        <div className="dock-category-bar" aria-label="Категории строительства">
+        <div className="dock-category-bar" aria-label={t('category.construction')}>
           {CATEGORIES.map((category) => {
             const Icon = category.icon
-            return <button key={category.key} type="button" title={`${category.label} [${category.key}]`} aria-pressed={activeCategory === category.key} onClick={() => chooseCategory(category)} className="dock-category-button shrink-0">
-              <Icon className="size-6 text-[#292824]" strokeWidth={1.7} /><span>{category.label}</span>
+            const label = t(category.labelKey)
+            return <button key={category.key} type="button" title={`${label} [${category.key}]`} aria-pressed={activeCategory === category.key} onClick={() => chooseCategory(category)} className="dock-category-button shrink-0">
+              <Icon className="size-6 text-[#292824]" strokeWidth={1.7} /><span>{label}</span>
             </button>
           })}
         </div>

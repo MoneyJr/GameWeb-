@@ -662,7 +662,78 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
     </group>
   )
 }
+
+function HalfTimberedHouseMesh() {
+  return <group>
+    <ResidentialBase />
+    <Box size={[0.84, 0.68, 0.78]} position={[0, 0.39, -0.015]} color="#f1e4cd" />
+    <Box size={[0.86, 0.055, 0.82]} position={[0, 0.75, -0.015]} color="#cbb99a" />
+    <Box size={[0.55, 0.67, 0.76]} position={[0, 1.08, -0.015]} color="#f4ead8" />
+    <Window position={[-0.2, 0.39, 0.38]} width={0.14} height={0.22} glass="#3d5960" frame="#f8f1e3" />
+    <Window position={[0.2, 0.39, 0.38]} width={0.14} height={0.22} glass="#3d5960" frame="#f8f1e3" />
+    <Window position={[-0.13, 0.91, 0.37]} width={0.13} height={0.2} glass="#3d5960" frame="#f8f1e3" />
+    <Window position={[0.13, 0.91, 0.37]} width={0.13} height={0.2} glass="#3d5960" frame="#f8f1e3" />
+    {/* Exposed timber frame and steep terracotta roof. */}
+    {[-0.39, 0, 0.39].map((x) => <Box key={`timber-post-${x}`} size={[0.035, 0.7, 0.045]} position={[x, 0.39, 0.415]} color="#39291f" />)}
+    {[0.17, 0.55, 0.76].map((y) => <Box key={`timber-beam-${y}`} size={[0.82, 0.035, 0.045]} position={[0, y, 0.42]} color="#39291f" />)}
+    {[-1, 1].map((side) => <Box key={`timber-brace-${side}`} size={[0.04, 0.47, 0.05]} position={[side * 0.25, 0.37, 0.45]} rotation={[0, 0, side * -0.62]} color="#39291f" />)}
+    <Box size={[0.57, 0.1, 0.92]} position={[-0.19, 1.49, 0]} rotation={[0, 0, -0.57]} color="#b84a28" />
+    <Box size={[0.57, 0.1, 0.92]} position={[0.19, 1.49, 0]} rotation={[0, 0, 0.57]} color="#b84a28" />
+    <Box size={[0.13, 0.35, 0.13]} position={[-0.27, 1.05, -0.2]} color="#8d3f2d" />
+    {[-0.36, 0.36].map((x) => <group key={`entry-lamp-${x}`} position={[x, 0.33, 0.47]}>
+      <Box size={[0.025, 0.18, 0.025]} position={[0, 0.06, 0]} color="#34312a" />
+      <Box size={[0.095, 0.08, 0.07]} position={[0, 0.17, 0]} color="#ffdf88" material={lampBulbMaterial} />
+    </group>)}
+  </group>
+}
+
+function CozyEstateMesh() {
+  return <group>
+    <ResidentialBase />
+    <Box size={[0.66, 0.36, 0.58]} position={[-0.1, 0.34, -0.08]} color="#d4c7ae" />
+    <Box size={[0.72, 0.07, 0.64]} position={[-0.1, 0.56, -0.08]} color="#a84b31" />
+    <Box size={[0.46, 0.42, 0.64]} position={[-0.1, 0.78, -0.08]} rotation={[0, 0, Math.PI / 4]} color="#b84a28" />
+    <Window position={[-0.25, 0.34, 0.22]} width={0.13} height={0.14} glass="#49636a" frame="#f4ead8" />
+    <Window position={[0.03, 0.34, 0.22]} width={0.13} height={0.14} glass="#49636a" frame="#f4ead8" />
+    <Box size={[0.32, 0.025, 0.5]} position={[0.28, 0.025, 0.16]} color="#c9b99a" />
+    {/* Low garden fencing and a pumpkin patch. */}
+    {[-0.38, -0.12, 0.14, 0.4].map((x) => <Box key={`estate-fence-${x}`} size={[0.025, 0.12, 0.025]} position={[x, 0.1, 0.42]} color="#76513a" />)}
+    <Box size={[0.82, 0.025, 0.025]} position={[0.01, 0.15, 0.42]} color="#76513a" />
+    {[-0.28, -0.08, 0.12].map((x) => <mesh key={`estate-pumpkin-${x}`} position={[x, 0.11, 0.29]} scale={[0.08, 0.06, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea721c" /></mesh>)}
+    <Cylinder radius={0.045} height={0.48} segments={6} position={[0.31, 0.25, -0.28]} color="#65462e" />
+    {[[0.31, 0.56, -0.28], [0.43, 0.52, -0.22], [0.22, 0.49, -0.35]].map((position, index) => <mesh key={`estate-maple-${index}`} position={position as Vec3} castShadow receiveShadow><icosahedronGeometry args={[index ? 0.19 : 0.24, 1]} /><meshToonMaterial color={index % 2 ? '#b43418' : '#eab308'} /></mesh>)}
+  </group>
+}
+function WineTavernMesh() {
+  return <group>
+    <CommercialBase />
+    <Box size={[0.82, 0.48, 0.72]} position={[0, PAD_HEIGHT + 0.24, -0.02]} color="#d5b98d" />
+    <Box size={[0.9, 0.08, 0.82]} position={[0, 0.54, -0.02]} color="#9c452e" />
+    <Box size={[0.58, 0.52, 0.72]} position={[0, 0.81, -0.02]} color="#e2c99f" />
+    <Window position={[-0.18, 0.34, 0.35]} width={0.19} height={0.2} glass="#38565a" frame="#f5ead8" />
+    <Window position={[0.18, 0.34, 0.35]} width={0.19} height={0.2} glass="#38565a" frame="#f5ead8" />
+    <Box size={[0.3, 0.24, 0.06]} position={[0, 0.31, 0.39]} color="#65402d" />
+    <Box size={[0.72, 0.045, 0.62]} position={[0, 1.11, -0.02]} color="#a94830" />
+    <Box size={[0.58, 0.08, 0.13]} position={[0, 1.17, 0.37]} color="#edd4a6" />
+    <Box size={[0.48, 0.04, 0.12]} position={[0, 0.62, 0.48]} rotation={[0.24, 0, 0]} color="#b84a28" />
+    {/* Wine casks at the doorway and outdoor tasting tables. */}
+    {[-0.39, 0.39].map((x) => <group key={`wine-cask-${x}`} position={[x, 0.08, 0.45]}>
+      <Cylinder radius={0.095} radiusTop={0.075} height={0.2} segments={10} position={[0, 0.1, 0]} color="#845331" />
+      <Cylinder radius={0.099} height={0.018} segments={10} position={[0, -0.055, 0]} color="#4f4336" />
+      <Cylinder radius={0.089} height={0.018} segments={10} position={[0, 0.055, 0]} color="#4f4336" />
+    </group>)}
+    {[-0.28, 0.28].map((x) => <group key={`wine-table-${x}`} position={[x, 0.06, 0.72]}>
+      <Cylinder radius={0.12} height={0.035} segments={12} position={[0, 0.22, 0]} color="#8a5937" />
+      <Cylinder radius={0.018} height={0.22} segments={6} position={[0, 0.1, 0]} color="#583c2b" />
+    </group>)}
+    {/* Hanging grape sign. */}
+    <Box size={[0.16, 0.14, 0.025]} position={[0, 1.4, 0.43]} color="#533a30" />
+    {[-0.055, 0, 0.055].map((x, i) => <mesh key={`grape-${i}`} position={[x, 1.38 - (i === 1 ? 0.055 : 0), 0.45]}><sphereGeometry args={[0.035, 8, 6]} /><meshToonMaterial color={i === 1 ? '#6e3c65' : '#7a4d72'} /></mesh>)}
+  </group>
+}
+
 export function Commercial({ catalogId }: { catalogId?: string }) {
+  if (catalogId === 'com_wine_tavern') return <WineTavernMesh />
   const stripes = [-0.275, -0.165, -0.055, 0.055, 0.165, 0.275]
   return (
     <group>
@@ -1450,6 +1521,10 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'res_modern_glass_tower') {
         model = <ModernGlassTowerMesh />
         w = 2; h = 2
+      } else if (catalogId === 'res_half_timbered') {
+        model = <HalfTimberedHouseMesh />
+      } else if (catalogId === 'res_cozy_estate') {
+        model = <CozyEstateMesh />
       } else model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
       dust = 10
       needsWater = true

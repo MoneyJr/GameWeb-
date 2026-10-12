@@ -9,6 +9,7 @@ import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
+import { useI18n } from '../../i18n/I18nProvider'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -154,11 +155,12 @@ function StableMapControls({
 }
 
 function SceneLoadingOverlay() {
+  const { t } = useI18n()
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-[#eae4d5]/65 backdrop-blur-[2px]" role="status" aria-live="polite">
       <div className="flex items-center gap-3 rounded-full border border-[#34312b]/20 bg-[#fbf9f4]/90 px-5 py-3 text-sm font-semibold text-[#514b40] shadow-lg">
         <span className="h-4 w-4 animate-spin rounded-full border-2 border-[#a6653d]/25 border-t-[#a6653d]" />
-        Готовим город…
+        {t('title.loading1')}
       </div>
     </div>
   )
@@ -310,7 +312,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
     root.add(leaves)
 
-    const hillColors = ['#a98b58', '#9b7548', '#b49a66']
+    const hillColors = ['#c49a45', '#a36f32', '#8b7355']
     const hillSpecs = [
       [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
       [-78, -12, 14, 4.2, 11], [80, 20, 15, 4.8, 12], [-65, 68, 18, 5, 13], [8, 82, 20, 4.5, 14], [70, 64, 16, 4.1, 12],
@@ -329,6 +331,14 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       )
       hill.add(hillOutline)
       root.add(hill)
+      const lowerRidgeMaterial = new THREE.MeshToonMaterial({ color: hillColors[(index + 1) % hillColors.length] })
+      ;(lowerRidgeMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
+      const lowerRidge = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), lowerRidgeMaterial)
+      lowerRidge.position.set(x + (index % 2 ? -sx * 0.58 : sx * 0.58), 0.02, z + sz * 0.22)
+      lowerRidge.scale.set(sx * 0.9, sy * 0.46, sz * 0.78)
+      lowerRidge.castShadow = true
+      lowerRidge.receiveShadow = true
+      root.add(lowerRidge)
     })
     // Draw vineyard terraces as two instanced layers so the distant slopes read
     // as cultivated land without adding hundreds of separate draw calls.
@@ -378,14 +388,36 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     rowMesh.castShadow = true
     leafMesh.castShadow = true
     root.add(rowMesh, leafMesh)
-    const sea = new THREE.Mesh(new THREE.PlaneGeometry(110, 56), new THREE.MeshStandardMaterial({ color: '#83949a', roughness: 1 }))
-    sea.rotation.x = -Math.PI / 2
-    sea.position.set(0, -0.004, -133)
-    root.add(sea)
-    const shore = new THREE.Mesh(new THREE.PlaneGeometry(110, 5), new THREE.MeshStandardMaterial({ color: '#cfc09e', roughness: 1 }))
-    shore.rotation.x = -Math.PI / 2
-    shore.position.set(0, -0.003, -104)
-    root.add(shore)
+    const riverCenter = (x: number) => -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
+    const ribbon = (halfWidth: number, side = 0, edgeOffset = 0) => {
+      const positions: number[] = []
+      const indices: number[] = []
+      const samples = 180
+      for (let i = 0; i <= samples; i += 1) {
+        const x = -105 + (210 * i) / samples
+        const z = riverCenter(x)
+        positions.push(x, 0.012 + side * 0.001, z + edgeOffset - halfWidth, x, 0.012 + side * 0.001, z + edgeOffset + halfWidth)
+        if (i < samples) {
+          const a = i * 2
+          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
+        }
+      }
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+      geometry.setIndex(indices)
+      geometry.computeVertexNormals()
+      return geometry
+    }
+    const riverBanks = new THREE.Mesh(ribbon(4.05), new THREE.MeshToonMaterial({ color: '#c49a45', side: THREE.DoubleSide }))
+    const river = new THREE.Mesh(ribbon(3.35, 1), new THREE.MeshToonMaterial({ color: '#2b6cb0', side: THREE.DoubleSide }))
+    riverBanks.receiveShadow = true
+    river.receiveShadow = true
+    root.add(riverBanks, river)
+    for (const side of [-1, 1]) {
+      const foam = new THREE.Mesh(ribbon(0.26, 2, side * 3.48), new THREE.MeshBasicMaterial({ color: '#f1eadb', transparent: true, opacity: 0.82, side: THREE.DoubleSide }))
+      // Pale ribbons mark the waterline with a soft illustrated foam edge.
+      root.add(foam)
+    }
     return root
   }, [])
 
@@ -397,6 +429,13 @@ const World = memo(function World({ grid }: { grid: Grid }) {
     x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE && grid[y][x].type === TileType.ROAD
   return (
     <group>
+      {grid[0].map((cell) => {
+        const crossesNorthEdge = cell.type === TileType.ROAD && grid[1][cell.x]?.type === TileType.ROAD
+        if (!crossesNorthEdge) return null
+        const x = cell.x - (GRID_SIZE - 1) / 2
+        const riverZ = -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
+        return <StoneArchBridge key={`bridge-${cell.x}`} x={x} riverZ={riverZ} />
+      })}
       {grid.flat().map((cell) => {
         if (cell.type === TileType.EMPTY) return null
         const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId)
@@ -426,6 +465,29 @@ const World = memo(function World({ grid }: { grid: Grid }) {
     </group>
   )
 })
+
+function StoneArchBridge({ x, riverZ }: { x: number; riverZ: number }) {
+  const boundaryZ = -(GRID_SIZE - 1) / 2 - 0.5
+  const length = Math.max(8.5, boundaryZ - riverZ + 4)
+  const centerZ = (boundaryZ + riverZ) / 2
+  const postCount = Math.max(6, Math.floor(length / 1.15))
+  const archGeometry = useMemo(() => {
+    const points = Array.from({ length: 13 }, (_, i) => {
+      const z = -length / 2 + (length * i) / 12
+      const t = i / 12
+      return new THREE.Vector3(0, 0.08 + Math.sin(t * Math.PI) * 0.2, z)
+    })
+    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 40, 0.12, 6, false)
+  }, [length])
+  return <group position={[x, 0, centerZ]}>
+    <mesh position={[0, 0.35, 0]} castShadow receiveShadow><boxGeometry args={[2.05, 0.28, length]} /><meshToonMaterial color="#b6aa95" /><Edges color="#261c14" threshold={28} /></mesh>
+    {[-0.94, 0.94].map(side => <group key={side}>
+      <mesh geometry={archGeometry} position={[side, 0, 0]} castShadow><meshToonMaterial color="#9d907d" /><Edges color="#261c14" threshold={28} /></mesh>
+      <mesh position={[side, 0.62, 0]} castShadow><boxGeometry args={[0.16, 0.42, length]} /><meshToonMaterial color="#c8bca7" /><Edges color="#261c14" threshold={28} /></mesh>
+      {Array.from({ length: postCount }, (_, i) => <mesh key={i} position={[side, 0.92, -length / 2 + (length * i) / (postCount - 1)]} castShadow><boxGeometry args={[0.22, 0.2, 0.2]} /><meshToonMaterial color="#d2c5af" /><Edges color="#261c14" threshold={28} /></mesh>)}
+    </group>)}
+  </group>
+}
 
 /* -------------------------------------------------------------------------- */
 /*  Интерактивный слой: Hover Plane + подсветка тайла + "рисование" мышью         */
@@ -460,10 +522,10 @@ function placementFootprint(tool: ToolId, catalogId?: string, style?: string): [
 
 function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string): string | null {
   const [width, depth] = placementFootprint(tool, catalogId, style)
-  if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'За пределами карты'
+  if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'ghost.outOfBounds'
   for (let y = cell.y; y < cell.y + depth; y += 1) {
     for (let x = cell.x; x < cell.x + width; x += 1) {
-      if (grid[y][x].type !== TileType.EMPTY) return 'Место занято'
+      if (grid[y][x].type !== TileType.EMPTY) return 'ghost.occupied'
     }
   }
   if (tool === ToolId.ROAD) return null
@@ -475,7 +537,7 @@ function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: str
     if (cell.x > 0 && grid[y][cell.x - 1].type === TileType.ROAD) return null
     if (cell.x + width < GRID_SIZE && grid[y][cell.x + width].type === TileType.ROAD) return null
   }
-  return 'Нужна дорога'
+  return 'ghost.road'
 }
 
 function straightCellLine(start: Cell, end: Cell): Cell[] {
@@ -557,6 +619,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
 }
 
 function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle, catalogId }: InteractionLayerProps) {
+  const { t } = useI18n()
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
@@ -741,7 +804,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
         const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
         const validationReason = validatePlacement(grid, anchor, activeTool, catalogId, placementStyle)
-        const prompt = valid ? 'Доступно для постройки' : validationReason ?? 'Место занято'
+        const prompt = valid ? t('ghost.available') : t(validationReason ?? 'ghost.occupied')
         return <group>
           {cells.map((item) => <FootprintCell key={`footprint-${item.x}-${item.y}`} cell={item} tint={tint} />)}
           {modelCells.map((item) => {
@@ -781,7 +844,7 @@ export interface CitySceneProps {
 
 import { applyNightLevel } from './primitives'
 
-const DAY_SKY = new THREE.Color('#cce2cb')
+const DAY_SKY = new THREE.Color('#e5dacf')
 const DUSK_SKY = new THREE.Color('#b889a2')
 const NIGHT_COLOR = new THREE.Color('#141b2d')
 const SUN_COLOR = new THREE.Color('#fffaf0')
@@ -885,7 +948,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = THREE.MathUtils.lerp(0.012, 0.009, level)
+      scene.fog.density = THREE.MathUtils.lerp(0.008, 0.009, level)
     }
     scene.background = background
     applyNightLevel(level)
@@ -894,6 +957,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
 }
 
 export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget = 0, placementStyle, catalogId }: CitySceneProps) {
+  const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
   const controlsRef = useRef<PannableControls | null>(null)
@@ -984,7 +1048,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#cce2cb', 0.012]} />
+      <fogExp2 attach="fog" args={['#e5dacf', 0.008]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
@@ -1035,10 +1099,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         <div
           className="pointer-events-none absolute inset-x-0 z-30 flex flex-col items-center gap-2"
           style={{ bottom: 'calc(9.5rem + env(safe-area-inset-bottom))' }}
-          aria-label="Подтверждение постройки"
+          aria-label={t('ghost.confirm')}
         >
-          {ghostPlacementError && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{ghostPlacementError}</div>}
-          {!ghostPlacementError && budget < ghostCost && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">Недостаточно средств</div>}
+          {ghostPlacementError && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{t(ghostPlacementError)}</div>}
+          {!ghostPlacementError && budget < ghostCost && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{t('ghost.noMoney')}</div>}
           <div className="flex justify-center gap-2">
             <button
               type="button"
@@ -1049,15 +1113,15 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
                 setTouchGhost(null)
               }}
               className={`pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border px-4 text-sm font-bold text-white shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${ghostCanPlace ? 'border-emerald-900/30 bg-emerald-600' : 'border-red-900/30 bg-red-600'}`}
-              aria-label={`Построить за $${ghostCost}`}
+              aria-label={`${t('ghost.confirm')} $${ghostCost}`}
             >
-              <span aria-hidden="true">✓</span><span>${ghostCost}</span>
+              <span aria-hidden="true">✓</span><span>{t('ghost.confirm')} · ${ghostCost}</span>
             </button>
             <button
               type="button"
               onClick={() => setTouchGhost(null)}
               className="pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border border-stone-500/40 bg-stone-600 text-xl font-bold text-white shadow-lg active:scale-95"
-              aria-label="Отменить постройку"
+              aria-label={t('ghost.cancel')}
             >×</button>
           </div>
         </div>
