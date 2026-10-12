@@ -10,6 +10,7 @@ import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
+import { InkOutlinePassEffect, ToonShadingSetup } from './InkOutlinePass'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -565,7 +566,7 @@ function straightCellLine(start: Cell, end: Cell): Cell[] {
 
 
 function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
-  return <mesh position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
+  return <mesh userData={{ noInkOutline: true }} position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
     <boxGeometry args={[0.96, 0.025, 0.96]} />
     <meshBasicMaterial color={tint} transparent opacity={0.5} depthWrite={false} depthTest />
   </mesh>
@@ -610,7 +611,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
   if (!tile) return null
   const [offsetX, offsetZ] = catalogCenterOffset(catalogId)
   return (
-    <group ref={group} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} scale={[1, 1, 1]} renderOrder={20}>
+    <group ref={group} userData={{ noInkOutline: true }} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} scale={[1, 1, 1]} renderOrder={20}>
       <TileModel type={tile} style={style} catalogId={catalogId} animate={false} hasWater hasPower hasSupplies {...roadLinks} />
     </group>
   )
@@ -875,10 +876,10 @@ export interface CitySceneProps {
 
 import { applyNightLevel } from './primitives'
 
-const DAY_SKY = new THREE.Color('#e5dacf')
+const DAY_SKY = new THREE.Color('#EAE2D2')
 const DUSK_SKY = new THREE.Color('#b889a2')
 const NIGHT_COLOR = new THREE.Color('#141b2d')
-const SUN_COLOR = new THREE.Color('#fffaf0')
+const SUN_COLOR = new THREE.Color('#fff5e4')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
 const MOON_COLOR = new THREE.Color('#7aa2dc')
 const DAY_AMBIENT = new THREE.Color('#ecdcc9')
@@ -979,7 +980,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = THREE.MathUtils.lerp(0.002, 0.0025, level)
+      scene.fog.density = 0.006
     }
     scene.background = background
     applyNightLevel(level)
@@ -1081,7 +1082,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#e5dacf', 0.002]} />
+      <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
@@ -1126,6 +1127,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         placementStyle={placementStyle}
         catalogId={catalogId}
       />
+      <ToonShadingSetup />
+      <InkOutlinePassEffect />
       </Suspense>
     </Canvas>
       </div>

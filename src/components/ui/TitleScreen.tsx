@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
+import { InkOutlinePassEffect, ToonShadingSetup } from '../3d/InkOutlinePass'
 
 function ShowcaseCity() {
   const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
@@ -89,11 +90,11 @@ function ShowcaseCity() {
   }, [])
   return (
     <>
-      <color attach="background" args={['#eae4d5']} />
-      <fogExp2 attach="fog" args={['#e5dacf', 0.002]} />
+      <color attach="background" args={['#EAE2D2']} />
+      <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
       <ambientLight intensity={0.65} color="#ecdcc9" />
       <directionalLight position={[35, 50, 25]} intensity={1.4} color="#fff7ea" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
-      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />
+      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[4.5, 0.9, -1]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
         <meshToonMaterial color="#cfb997" />
@@ -119,8 +120,20 @@ function ShowcaseCity() {
       <Crosswalk position={[-0.6, 0.045, 4]} />
       <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
+      <ToonShadingSetup />
+      <InkOutlinePassEffect />
     </>
   )
+}
+
+function ShowcaseSceneReady({ onReady }: { onReady: () => void }) {
+  const { gl, scene, camera } = useThree()
+  useEffect(() => {
+    let active = true
+    void gl.compileAsync(scene, camera).catch(() => undefined).finally(() => { if (active) onReady() })
+    return () => { active = false }
+  }, [camera, gl, onReady, scene])
+  return null
 }
 
 const forestLeafMaterials = ['#d97724', '#b43418', '#eab308', '#ca8a04'].map((color) => {
@@ -430,6 +443,9 @@ function readCityProfile(): CityProfile | undefined {
 export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const { t, language, setLanguage } = useI18n()
   const [ready, setReady] = useState(false)
+  const [assetsReady, setAssetsReady] = useState(false)
+  const [progressComplete, setProgressComplete] = useState(false)
+  const [showProgress, setShowProgress] = useState(true)
   const [progress, setProgress] = useState(0)
   const [leaving, setLeaving] = useState(false)
   const [hasSave, setHasSave] = useState(() => {
@@ -444,13 +460,26 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     try { return localStorage.getItem('inkville-sound-enabled') !== 'false' } catch { return true }
   })
   useEffect(() => {
+    if (assetsReady) return undefined
     const started = performance.now()
     const timer = window.setInterval(() => {
-      const next = Math.min(100, ((performance.now() - started) / 1900) * 100)
+      const next = Math.min(95, ((performance.now() - started) / 1900) * 95)
       setProgress(next)
-      if (next >= 100) { setReady(true); window.clearInterval(timer) }
     }, 40)
     return () => window.clearInterval(timer)
+  }, [assetsReady])
+  useEffect(() => {
+    if (!assetsReady) return undefined
+    const finishFill = window.setTimeout(() => {
+      setProgressComplete(true)
+      setReady(true)
+    }, 500)
+    const removeBar = window.setTimeout(() => setShowProgress(false), 1000)
+    return () => { window.clearTimeout(finishFill); window.clearTimeout(removeBar) }
+  }, [assetsReady])
+  const markAssetsReady = useCallback(() => {
+    setProgress(100)
+    setAssetsReady(true)
   }, [])
   const begin = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
     if (!ready || leaving) return
@@ -478,12 +507,13 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const actionKeys = ['title.newCity', 'title.continue', 'title.sandbox', 'title.settings']
   const actionIndex = (key: string) => actionKeys.indexOf(key)
   return (
-    <div className={`absolute inset-0 z-40 overflow-hidden bg-[#eae4d5] transition-opacity duration-700 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [10, 15, 18], fov: 39 }} gl={{ antialias: true }}>
+    <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-700 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [10, 15, 18], fov: 38 }} gl={{ antialias: true }}>
         <ShowcaseCity />
+        <ShowcaseSceneReady onReady={markAssetsReady} />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
-      <section className="fixed right-2 top-1/2 z-40 w-[calc(100vw-16px)] max-w-[380px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-5 text-[#2c241d] shadow-[6px_6px_0px_#2C241D] sm:right-8 sm:p-7">
+      <section className="fixed left-12 top-1/2 z-40 w-[calc(100vw-64px)] max-w-[340px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-6 text-[#2c241d] shadow-[8px_8px_0px_#2C241D] md:w-[380px] md:max-w-none">
         <div className="mb-4 flex items-start justify-between gap-2">
           <span className="inline-flex max-w-[220px] rounded-full border border-[#2C241D]/30 bg-[#fffaf0]/70 px-3 py-1 text-[9px] font-black uppercase tracking-[.13em] text-[#66513b]">{t('title.handInk')}</span>
           <select aria-label={t('language.label')} value={language} onChange={event => setLanguage(event.target.value as Language)} className="h-8 shrink-0 rounded-lg border border-[#2C241D]/40 bg-[#fffaf0] px-1.5 text-[10px] font-bold">
@@ -492,9 +522,9 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
         </div>
         <h1 className="font-serif text-6xl font-black italic leading-none tracking-[-.07em]">Inkville</h1>
         <p className="mt-2 text-xs font-semibold tracking-[.08em] text-[#6b6255]">{t('title.tagline')}</p>
-        <div className="mt-5 h-2 overflow-hidden rounded-full border border-[#332f28]/60 bg-[#d8d0c0]">
-          <div className="h-full bg-[repeating-linear-gradient(135deg,#a6653d_0px,#a6653d_4px,#d59c61_4px,#d59c61_7px)] transition-[width] duration-100" style={{ width: `${progress}%` }} />
-        </div>
+        {showProgress && <div className={`mt-5 h-2 origin-center overflow-hidden rounded-full border border-[#332f28]/60 bg-[#d8d0c0] transition-all duration-500 ease-out ${progressComplete ? 'pointer-events-none scale-95 opacity-0' : 'scale-100 opacity-100'}`}>
+          <div className="h-full bg-[repeating-linear-gradient(135deg,#a6653d_0px,#a6653d_4px,#d59c61_4px,#d59c61_7px)] transition-[width] duration-500 ease-out" style={{ width: `${progress}%` }} />
+        </div>}
         {!ready ? <p className="mt-2 h-5 text-xs font-semibold text-[#746958]">{t(`title.loading${Math.min(3, Math.floor(progress / 34) + 1)}`)}</p> : <div className="relative mt-4 grid gap-2 pl-7">
           <span aria-hidden="true" className="pointer-events-none absolute left-0 top-0 text-2xl transition-transform duration-200" style={{ transform: `translateY(${activeAction * 56}px) rotate(-42deg)` }}>✏️</span>
           <button onPointerEnter={() => setActiveAction(actionIndex('title.newCity'))} onFocus={() => setActiveAction(actionIndex('title.newCity'))} onClick={() => setShowNaming(true)} className="h-12 rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-4 text-left text-sm font-black shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">{t('title.newCity')}</button>
