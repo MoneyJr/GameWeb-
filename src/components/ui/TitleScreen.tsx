@@ -4,7 +4,7 @@ import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
-import { useI18n } from '../../i18n/I18nProvider'
+import { useI18n, type Language } from '../../i18n/I18nProvider'
 
 function ShowcaseCity() {
   const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
@@ -335,7 +335,10 @@ function ShowcaseBuilding({ styleIndex, commercial, variant, smoke = false }: { 
 }
 
 function SmokePuffs({ position }: { position: [number, number, number] }) {
-  const puffs = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)]
+  const puffOne = useRef<THREE.Mesh>(null)
+  const puffTwo = useRef<THREE.Mesh>(null)
+  const puffThree = useRef<THREE.Mesh>(null)
+  const puffs = [puffOne, puffTwo, puffThree]
   useFrame(({ clock }) => {
     puffs.forEach((ref, i) => {
       const mesh = ref.current
@@ -346,9 +349,11 @@ function SmokePuffs({ position }: { position: [number, number, number] }) {
       ;(mesh.material as THREE.MeshBasicMaterial).opacity = (1 - phase) * 0.34
     })
   })
-  return <group position={position}>{puffs.map((ref, i) => <mesh key={i} ref={ref}>
-    <icosahedronGeometry args={[1, 0]} /><meshBasicMaterial color="#77736f" transparent opacity={0.3} depthWrite={false} />
-  </mesh>)}</group>
+  return <group position={position}>
+    <mesh ref={puffOne}><icosahedronGeometry args={[1, 0]} /><meshBasicMaterial color="#77736f" transparent opacity={0.3} depthWrite={false} /></mesh>
+    <mesh ref={puffTwo}><icosahedronGeometry args={[1, 0]} /><meshBasicMaterial color="#77736f" transparent opacity={0.3} depthWrite={false} /></mesh>
+    <mesh ref={puffThree}><icosahedronGeometry args={[1, 0]} /><meshBasicMaterial color="#77736f" transparent opacity={0.3} depthWrite={false} /></mesh>
+  </group>
 }
 
 function ShowcasePiazza() {
@@ -402,15 +407,42 @@ function ParkLights() {
   </group>)}</group>
 }
 
-interface TitleScreenProps { onStart: (mode: 'new' | 'continue' | 'sandbox') => void }
-export function TitleScreen({ onStart }: TitleScreenProps) {
-  const { t } = useI18n()
+export interface CityProfile { cityName: string; mayorName: string; createdAt: string }
+interface TitleScreenProps { onStart: (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => void; onResetProgress: () => void }
+
+const CITY_NAMES: Record<Language, string[]> = {
+  ru: ['Осенний Дол', 'Медовый Холм', 'Тихий Плёс', 'Дубовая Роща'],
+  en: ['Amber Falls', 'Oak Hollow', 'Autumn Vale', 'Willowbrook'],
+  de: ['Herbsttal', 'Eichenhain', 'Honighügel', 'Abendruh'],
+  fr: ['Val d’Automne', 'Bois de Chêne', 'Colline Dorée', 'Rivière Paisible'],
+}
+const PROFILE_KEY = 'inkville-city-profile'
+
+function readCityProfile(): CityProfile | undefined {
+  try {
+    const value = localStorage.getItem(PROFILE_KEY)
+    if (!value) return undefined
+    const profile = JSON.parse(value) as CityProfile
+    return typeof profile.cityName === 'string' ? profile : undefined
+  } catch { return undefined }
+}
+
+export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
+  const { t, language, setLanguage } = useI18n()
   const [ready, setReady] = useState(false)
   const [progress, setProgress] = useState(0)
   const [leaving, setLeaving] = useState(false)
-  const hasSave = useMemo(() => {
-    try { return Boolean(localStorage.getItem('inkville-save')) } catch { return false }
-  }, [])
+  const [hasSave, setHasSave] = useState(() => {
+    try { return Boolean(localStorage.getItem('inkville-save-v2')) } catch { return false }
+  })
+  const [showNaming, setShowNaming] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [cityName, setCityName] = useState('')
+  const [mayorName, setMayorName] = useState(() => t('title.mayorPlaceholder'))
+  const [activeAction, setActiveAction] = useState(0)
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try { return localStorage.getItem('inkville-sound-enabled') !== 'false' } catch { return true }
+  })
   useEffect(() => {
     const started = performance.now()
     const timer = window.setInterval(() => {
@@ -420,35 +452,86 @@ export function TitleScreen({ onStart }: TitleScreenProps) {
     }, 40)
     return () => window.clearInterval(timer)
   }, [])
-  const begin = (mode: 'new' | 'continue' | 'sandbox') => {
+  const begin = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
     if (!ready || leaving) return
     setLeaving(true)
-    window.setTimeout(() => onStart(mode), 650)
+    window.setTimeout(() => onStart(mode, profile), 650)
   }
+  const createCity = () => {
+    const profile = { cityName: cityName.trim(), mayorName: mayorName.trim() || t('title.mayorPlaceholder'), createdAt: new Date().toISOString() }
+    if (!profile.cityName) return
+    try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch { /* City profile is optional when storage is unavailable. */ }
+    setShowNaming(false)
+    begin('new', profile)
+  }
+  const toggleSound = (value: boolean) => {
+    setSoundEnabled(value)
+    try { localStorage.setItem('inkville-sound-enabled', String(value)) } catch { /* Storage may be disabled. */ }
+    document.documentElement.dataset.soundEnabled = String(value)
+  }
+  const resetProgress = () => {
+    try { localStorage.removeItem('inkville-save-v2'); localStorage.removeItem(PROFILE_KEY) } catch { /* Storage may be disabled. */ }
+    onResetProgress()
+    setHasSave(false)
+    setShowSettings(false)
+  }
+  const actionKeys = ['title.newCity', 'title.continue', 'title.sandbox', 'title.settings']
+  const actionIndex = (key: string) => actionKeys.indexOf(key)
   return (
     <div className={`absolute inset-0 z-40 overflow-hidden bg-[#eae4d5] transition-opacity duration-700 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [18, 21, 24], fov: 42 }} gl={{ antialias: true }}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [10, 15, 18], fov: 39 }} gl={{ antialias: true }}>
         <ShowcaseCity />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
-      <div className="absolute inset-y-0 left-0 flex w-full max-w-[560px] items-center px-8 sm:px-14">
-        <section className="w-full rounded-[28px] border border-white/60 bg-[#f7f2e7]/75 p-7 shadow-[0_24px_70px_rgba(34,34,30,.22)] backdrop-blur-sm sm:p-10">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[#34312b]/25 bg-white/45 px-3 py-1 text-[10px] font-bold uppercase tracking-[.23em] text-[#665a48]">{t('title.eyebrow')}</div>
-          <h1 className="font-serif text-6xl font-black italic tracking-[-.07em] text-[#26251f] sm:text-7xl">Inkville</h1>
-          <p className="mt-2 text-sm font-semibold tracking-[.16em] text-[#6b6255]">{t('title.tagline')}</p>
-          <div className="mt-8 h-2 overflow-hidden rounded-full border border-[#332f28]/60 bg-[#d8d0c0]">
-            <div className="h-full bg-[repeating-linear-gradient(135deg,#a6653d_0px,#a6653d_4px,#d59c61_4px,#d59c61_7px)] transition-[width] duration-100" style={{ width: `${progress}%` }} />
-          </div>
-          {!ready ? <p className="mt-3 h-5 text-xs font-semibold text-[#746958]">{t(`title.loading${Math.min(3, Math.floor(progress / 34) + 1)}`)}</p> : (
-            <div className="mt-6 grid gap-3">
-              <button onClick={() => begin('new')} className="rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-5 py-3 text-sm font-black text-[#28251e] shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">{t('title.newCity')}</button>
-              {hasSave && <button onClick={() => begin('continue')} className="rounded-xl border-2 border-[#292720]/70 bg-[#f7f3eb] px-5 py-3 text-sm font-bold text-[#38342c]">{t('title.continue')}</button>}
-              <button onClick={() => begin('sandbox')} className="rounded-xl border border-[#292720]/35 bg-white/35 px-5 py-2.5 text-sm font-semibold text-[#514b40] transition hover:bg-white/65">{t('title.sandbox')}</button>
+      <section className="fixed right-2 top-1/2 z-40 w-[calc(100vw-16px)] max-w-[380px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-5 text-[#2c241d] shadow-[6px_6px_0px_#2C241D] sm:right-8 sm:p-7">
+        <div className="mb-4 flex items-start justify-between gap-2">
+          <span className="inline-flex max-w-[220px] rounded-full border border-[#2C241D]/30 bg-[#fffaf0]/70 px-3 py-1 text-[9px] font-black uppercase tracking-[.13em] text-[#66513b]">{t('title.handInk')}</span>
+          <select aria-label={t('language.label')} value={language} onChange={event => setLanguage(event.target.value as Language)} className="h-8 shrink-0 rounded-lg border border-[#2C241D]/40 bg-[#fffaf0] px-1.5 text-[10px] font-bold">
+            <option value="ru">🇷🇺 RU</option><option value="en">🇬🇧 EN</option><option value="de">🇩🇪 DE</option><option value="fr">🇫🇷 FR</option>
+          </select>
+        </div>
+        <h1 className="font-serif text-6xl font-black italic leading-none tracking-[-.07em]">Inkville</h1>
+        <p className="mt-2 text-xs font-semibold tracking-[.08em] text-[#6b6255]">{t('title.tagline')}</p>
+        <div className="mt-5 h-2 overflow-hidden rounded-full border border-[#332f28]/60 bg-[#d8d0c0]">
+          <div className="h-full bg-[repeating-linear-gradient(135deg,#a6653d_0px,#a6653d_4px,#d59c61_4px,#d59c61_7px)] transition-[width] duration-100" style={{ width: `${progress}%` }} />
+        </div>
+        {!ready ? <p className="mt-2 h-5 text-xs font-semibold text-[#746958]">{t(`title.loading${Math.min(3, Math.floor(progress / 34) + 1)}`)}</p> : <div className="relative mt-4 grid gap-2 pl-7">
+          <span aria-hidden="true" className="pointer-events-none absolute left-0 top-0 text-2xl transition-transform duration-200" style={{ transform: `translateY(${activeAction * 56}px) rotate(-42deg)` }}>✏️</span>
+          <button onPointerEnter={() => setActiveAction(actionIndex('title.newCity'))} onFocus={() => setActiveAction(actionIndex('title.newCity'))} onClick={() => setShowNaming(true)} className="h-12 rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-4 text-left text-sm font-black shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">{t('title.newCity')}</button>
+          <button disabled={!hasSave} onPointerEnter={() => setActiveAction(actionIndex('title.continue'))} onFocus={() => setActiveAction(actionIndex('title.continue'))} onClick={() => begin('continue', readCityProfile())} className="h-12 rounded-xl border-2 border-[#292720]/70 bg-[#f7f3eb] px-4 text-left text-sm font-bold enabled:hover:bg-white disabled:cursor-not-allowed disabled:opacity-45">{t('title.continue')}</button>
+          <button onPointerEnter={() => setActiveAction(actionIndex('title.sandbox'))} onFocus={() => setActiveAction(actionIndex('title.sandbox'))} onClick={() => begin('sandbox', readCityProfile() ?? { cityName: CITY_NAMES[language][0], mayorName: t('title.mayorPlaceholder'), createdAt: new Date().toISOString() })} className="h-12 rounded-xl border border-[#292720]/35 bg-white/35 px-4 text-left text-sm font-semibold transition hover:bg-white/65">{t('title.sandbox')}</button>
+          <button onPointerEnter={() => setActiveAction(actionIndex('title.settings'))} onFocus={() => setActiveAction(actionIndex('title.settings'))} onClick={() => setShowSettings(true)} className="h-12 rounded-xl border border-[#292720]/35 bg-transparent px-4 text-left text-sm font-semibold transition hover:bg-white/45">{t('title.settings')}</button>
+        </div>}
+        <p className="mt-5 text-center text-[9px] font-semibold uppercase tracking-[.16em] text-[#8b806e]">{t('title.footer')}</p>
+      </section>
+
+      {showNaming && <div className="fixed inset-0 z-50 grid place-items-center bg-[#201a15]/45 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) setShowNaming(false) }}>
+        <form onSubmit={event => { event.preventDefault(); createCity() }} className="w-full max-w-md rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-6 text-[#2c241d] shadow-[7px_7px_0px_#2C241D] sm:p-8">
+          <h2 className="font-serif text-2xl font-black">{t('title.cityModal')}</h2>
+          <label className="mt-5 block text-xs font-bold">{t('title.cityName')}
+            <input autoFocus required maxLength={40} value={cityName} onChange={event => setCityName(event.target.value)} placeholder={t('title.cityPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+          </label>
+          <label className="mt-4 block text-xs font-bold">{t('title.mayorName')}
+            <input maxLength={32} value={mayorName} onChange={event => setMayorName(event.target.value)} placeholder={t('title.mayorPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+          </label>
+          <div className="mt-5 flex flex-wrap justify-between gap-2">
+            <button type="button" onClick={() => { const names = CITY_NAMES[language]; setCityName(names[Math.floor(Math.random() * names.length)]) }} className="rounded-lg border border-[#655340]/35 bg-white/50 px-3 py-2 text-xs font-bold">{t('title.randomName')}</button>
+            <div className="flex gap-2">
+              <button type="button" onClick={() => setShowNaming(false)} className="rounded-lg border border-[#655340]/35 px-3 py-2 text-xs font-bold">{t('title.cancel')}</button>
+              <button type="submit" className="rounded-lg border-2 border-[#292720] bg-[#d6a15f] px-4 py-2 text-xs font-black shadow-[2px_2px_0_#292720]">{t('title.startBuilding')}</button>
             </div>
-          )}
-          <p className="mt-7 text-[10px] font-semibold uppercase tracking-[.18em] text-[#8b806e]">{t('title.footer')}</p>
-        </section>
-      </div>
+          </div>
+        </form>
+      </div>}
+
+      {showSettings && <div className="fixed inset-0 z-50 grid place-items-center bg-[#201a15]/45 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) setShowSettings(false) }}>
+        <div className="w-full max-w-sm rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-6 text-[#2c241d] shadow-[7px_7px_0px_#2C241D]">
+          <h2 className="font-serif text-2xl font-black">{t('title.settings')}</h2>
+          <label className="mt-5 flex items-center justify-between gap-3 text-sm font-semibold"><span>{t('title.sound')}<small className="mt-1 block text-[10px] font-normal text-stone-600">{t('title.soundNote')}</small></span><input type="checkbox" checked={soundEnabled} onChange={event => toggleSound(event.target.checked)} className="size-5 accent-[#a6653d]" /></label>
+          <button onClick={() => { if (window.confirm(t('title.resetConfirm'))) resetProgress() }} className="mt-6 w-full rounded-xl border border-rose-800/40 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-800">{t('title.resetProgress')}</button>
+          <button onClick={() => setShowSettings(false)} className="mt-3 w-full rounded-xl border border-[#655340]/35 px-4 py-2.5 text-sm font-bold">{t('title.cancel')}</button>
+        </div>
+      </div>}
     </div>
   )
 }

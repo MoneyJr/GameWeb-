@@ -7,12 +7,18 @@ import { useCitySimulation } from './hooks/useCitySimulation'
 import { TOOL_ORDER } from './lib/cityConfig'
 import { TileType, type Grid } from './types/city'
 import { TitleScreen } from './components/ui/TitleScreen'
+import type { CityProfile } from './components/ui/TitleScreen'
+import { useI18n } from './i18n/I18nProvider'
 
 function App() {
   const sim = useCitySimulation()
+  const { t } = useI18n()
   const { setActiveTool, togglePause, notice } = sim
   const [visibleNoticeId, setVisibleNoticeId] = useState<number | null>(null)
   const [started, setStarted] = useState(new URLSearchParams(window.location.search).has('preview'))
+  const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
+  const [dismissedWelcomeNonce, setDismissedWelcomeNonce] = useState<number | null>(null)
+  const [cityHallOpen, setCityHallOpen] = useState(false)
   const titleVisible = !started
   const resStyle = "EU"
   const [catalogId, setCatalogId] = useState<string | undefined>(undefined)
@@ -35,11 +41,33 @@ function App() {
   }, [sim.grid])
 
   useEffect(() => {
-    const handle = () => setCityHallOpen(true);
-    window.addEventListener('OPEN_CITY_HALL', handle);
-    return () => window.removeEventListener('OPEN_CITY_HALL', handle);
-  }, []);
-  const [cityHallOpen, setCityHallOpen] = useState(false)
+    const handle = () => setCityHallOpen(true)
+    window.addEventListener('OPEN_CITY_HALL', handle)
+    return () => window.removeEventListener('OPEN_CITY_HALL', handle)
+  }, [])
+
+  useEffect(() => {
+    if (!welcome) return undefined
+    const timer = window.setTimeout(() => setDismissedWelcomeNonce(welcome.nonce), 7600)
+    return () => window.clearTimeout(timer)
+  }, [welcome])
+
+  const handleStart = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
+    if (mode !== 'continue') sim.reset()
+    let savedProfile = profile
+    if (mode === 'continue' && !savedProfile) {
+      try { savedProfile = JSON.parse(localStorage.getItem('inkville-city-profile') ?? 'null') as CityProfile | undefined } catch { savedProfile = undefined }
+    }
+    savedProfile ??= { cityName: 'Inkville', mayorName: 'Mayor', createdAt: new Date().toISOString() }
+    try { localStorage.setItem('inkville-city-profile', JSON.stringify(savedProfile)) } catch { /* City metadata is optional when storage is unavailable. */ }
+    const returning = mode === 'continue'
+    const greetingKeys = returning ? ['welcome.back1', 'welcome.back2', 'welcome.back3'] : ['welcome.new1', 'welcome.new2']
+    setWelcome({ cityName: savedProfile.cityName, returning, nonce: Date.now(), messageKey: greetingKeys[Math.floor(Math.random() * greetingKeys.length)] })
+    togglePause()
+    setStarted(true)
+  }
+
+  const resetProgress = () => sim.reset()
 
   // Горячие клавиши: 1–7 — инструменты, Пробел — пауза.
   useEffect(() => {
@@ -114,6 +142,13 @@ function App() {
       )}
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
+      {welcome && <div key={welcome.nonce} className={`fixed bottom-24 left-4 z-40 max-w-[min(360px,calc(100vw-32px))] transition-all duration-500 sm:left-6 ${dismissedWelcomeNonce !== welcome.nonce ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
+        <div className="relative rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-4 pl-14 text-sm font-semibold leading-relaxed text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur-md">
+          <span aria-hidden="true" className="absolute left-3 top-3 grid size-9 place-items-center rounded-full border border-[#2C241D]/25 bg-[#e6d5b7] text-xl">{welcome.returning ? '🐱' : '🧑‍🎨'}</span>
+          {t(welcome.messageKey, welcome.cityName)}
+          <button aria-label={t('title.cancel')} onClick={() => setDismissedWelcomeNonce(welcome.nonce)} className="absolute right-2 top-1 rounded-full px-2 text-lg leading-6 text-stone-500 hover:bg-black/5">×</button>
+        </div>
+      </div>}
       {cityHallOpen && (
         <CityHallModal
           onClose={() => setCityHallOpen(false)}
@@ -130,7 +165,7 @@ function App() {
         />
       )}
       </>}
-      {titleVisible && <TitleScreen onStart={(mode) => { if (mode !== 'continue') sim.reset(); togglePause(); setStarted(true) }} />}
+      {titleVisible && <TitleScreen onStart={handleStart} onResetProgress={resetProgress} />}
     </main>
   )
 }
