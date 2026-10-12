@@ -566,8 +566,7 @@ function SmogRadiusOverlay() {
 function FootprintCell({ cell, tint }: { cell: Cell; tint: string }) {
   return <mesh position={[cell.x - (GRID_SIZE - 1) / 2, 0.026, cell.y - (GRID_SIZE - 1) / 2]} renderOrder={15}>
     <boxGeometry args={[0.96, 0.025, 0.96]} />
-    <meshBasicMaterial color={tint} transparent opacity={0.55} depthWrite={false} />
-    <Edges color={tint} threshold={1} />
+    <meshBasicMaterial color={tint} transparent opacity={0.38} depthWrite={false} depthTest />
   </mesh>
 }
 
@@ -586,21 +585,25 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
   const tile = TOOL_DEFINITIONS[tool].tile
 
   useEffect(() => {
-    const clonedMaterials: THREE.Material[] = []
-    group.current?.traverse((object) => {
-      if (!(object instanceof THREE.Mesh)) return
-      const clone = (material: THREE.Material) => {
-        const ghostMaterial = material.clone()
-        ghostMaterial.transparent = true
-        ghostMaterial.opacity = 0.48
-        ghostMaterial.depthWrite = false
-        if ('color' in ghostMaterial) (ghostMaterial as THREE.Material & { color: THREE.Color }).color.set(tint)
-        clonedMaterials.push(ghostMaterial)
-        return ghostMaterial
-      }
-      object.material = Array.isArray(object.material) ? object.material.map(clone) : clone(object.material)
+    const ghostMaterial = new THREE.MeshBasicMaterial({
+      color: tint,
+      transparent: true,
+      opacity: 0.35,
+      depthWrite: false,
+      depthTest: true,
+      side: THREE.DoubleSide,
+      toneMapped: false,
     })
-    return () => clonedMaterials.forEach((material) => material.dispose())
+    group.current?.traverse((object) => {
+      if (object instanceof THREE.Line || object instanceof THREE.LineSegments || object instanceof THREE.Points) {
+        object.visible = false
+        return
+      }
+      if (!(object instanceof THREE.Mesh)) return
+      object.material = ghostMaterial
+      object.raycast = () => undefined
+    })
+    return () => ghostMaterial.dispose()
   }, [tool, tint, cell.x, cell.y, catalogId])
 
   if (!tile) return null
@@ -614,6 +617,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
 
 function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle, catalogId }: InteractionLayerProps) {
   const { t } = useI18n()
+  const { gl } = useThree()
   const [hovered, setHovered] = useState<Cell | null>(null)
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
@@ -622,12 +626,32 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
 
   const act = useCallback(
     (cell: Cell) => {
-      if (activeTool === ToolId.BULLDOZE) onRemove(cell.x, cell.y)
-      else if (activeTool !== ToolId.CURSOR) onPlace(cell.x, cell.y, catalogId)
+      if (activeTool === ToolId.BULLDOZE) {
+        if (grid[cell.y]?.[cell.x]?.type !== TileType.EMPTY) onRemove(cell.x, cell.y)
+        setHovered(null)
+      } else if (activeTool !== ToolId.CURSOR && validatePlacement(grid, cell, activeTool, catalogId, placementStyle) === null) {
+        onPlace(cell.x, cell.y, catalogId)
+        setHovered(null)
+      }
     },
-    [activeTool, catalogId, onPlace, onRemove],
+    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle],
   )
   const footprint = placementFootprint(activeTool, catalogId, placementStyle)
+
+  useEffect(() => {
+    const clearHover = () => setHovered(null)
+    const clearOutsideCanvas = (event: PointerEvent) => {
+      const bounds = gl.domElement.getBoundingClientRect()
+      if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) clearHover()
+    }
+    gl.domElement.addEventListener('pointerleave', clearHover)
+    window.addEventListener('pointermove', clearOutsideCanvas)
+    if (activeTool === ToolId.CURSOR || activeTool === ToolId.BULLDOZE) clearHover()
+    return () => {
+      gl.domElement.removeEventListener('pointerleave', clearHover)
+      window.removeEventListener('pointermove', clearOutsideCanvas)
+    }
+  }, [activeTool, gl])
 
   useEffect(() => {
     const trackTouchMove = (event: PointerEvent) => {
@@ -680,7 +704,14 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
   }, [act, activeTool, onTouchPreview, onRoadDragState])
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
-    const cell = worldToCell(event.point.x, event.point.z)
+    const bounds = gl.domElement.getBoundingClientRect()
+    const { x, z } = event.point
+    const { clientX, clientY } = event.nativeEvent
+    if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(clientX) || !Number.isFinite(clientY) || clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) {
+      setHovered(null)
+      return
+    }
+    const cell = worldToCell(x, z)
     if (!cell) {
       setHovered(null)
       return
@@ -707,7 +738,9 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
   }
 
   const handleDown = (event: ThreeEvent<PointerEvent>) => {
-    const cell = worldToCell(event.point.x, event.point.z)
+    const { x, z } = event.point
+    if (!Number.isFinite(x) || !Number.isFinite(z)) return
+    const cell = worldToCell(x, z)
     if (!cell) return
     if (event.nativeEvent.pointerType === 'touch') {
       if (!event.nativeEvent.isPrimary) {
