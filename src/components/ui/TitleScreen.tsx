@@ -7,7 +7,7 @@ import { TileType } from '../../types/city'
 import { useI18n } from '../../i18n/I18nProvider'
 
 function ShowcaseCity() {
-  const { city, parks, trees, hills, infill } = useMemo(() => {
+  const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
     const cells: { x: number; z: number; type: TileType }[] = []
     const roads = new Set<string>()
     // Two cross streets and three side streets create distinct blocks, with
@@ -22,7 +22,8 @@ function ShowcaseCity() {
     const frontageX = [-11, -10, -9, -8, -7, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
     const homes: [number, number][] = frontageX.flatMap(x => [-6, -4, 3, 5].map(z => [x, z] as [number, number]))
     const hallFootprint = new Set(['-2,-4', '-1,-4', '-2,-3', '-1,-3'])
-    const parkOrigins: [number, number][] = [[-11, 6], [9, 6]]
+    // Two neighborhood squares plus a small planted court inside every block.
+    const parkOrigins: [number, number][] = [[-11, 6], [9, 6], [-11, -2], [-5, -2], [1, -2], [7, -2]]
     const parkCells = new Set(parkOrigins.flatMap(([x, z]) => Array.from({ length: 4 }, (_, i) => `${x + (i % 2)},${z + Math.floor(i / 2)}`)))
     const piazzaCells = new Set(Array.from({ length: 9 }, (_, i) => `${-3 + (i % 3)},${-1 + Math.floor(i / 3)}`))
     const occupied = new Set([...parkCells, ...piazzaCells, ...hallFootprint])
@@ -70,7 +71,18 @@ function ShowcaseCity() {
       const seed = Math.abs(Math.sin(x * 17.31 + z * 41.77) * 43758.5453) % 1
       if (neighbors >= 2 && seed > 0.78) infill.push({ x, z, kind: Math.floor(seed * 10) % 2 })
     }
-    return { parks: parkOrigins, trees, hills, infill, city: cells.map((cell, i) => ({ ...cell, i,
+    const infillKeys = new Set(infill.map(({ x, z }) => `${x},${z}`))
+    // Landscaped courtyard tiles fill the interior block gaps so the panorama
+    // reads as a town with gardens rather than a city floating in bare soil.
+    const gardenCells: { x: number; z: number; variant: number }[] = []
+    for (let z = -3; z <= 2; z += 1) for (let x = -11; x <= 11; x += 1) {
+      const key = `${x},${z}`
+      if (occupiedKeys.has(key) || parkCells.has(key) || piazzaCells.has(key) || infillKeys.has(key)) continue
+      const seed = Math.abs(Math.sin(x * 31.7 + z * 13.9) * 43758.5453) % 1
+      gardenCells.push({ x, z, variant: Math.floor(seed * 100) })
+    }
+    const roundabouts: [number, number][] = [[-12, -13], [12, -13], [-12, 11], [12, 11]]
+    return { parks: parkOrigins, trees, hills, infill, gardenCells, roundabouts, city: cells.map((cell, i) => ({ ...cell, i,
       north: roadKeys.has(`${cell.x},${cell.z - 1}`), south: roadKeys.has(`${cell.x},${cell.z + 1}`),
       east: roadKeys.has(`${cell.x + 1},${cell.z}`), west: roadKeys.has(`${cell.x - 1},${cell.z}`),
     })) }
@@ -79,12 +91,12 @@ function ShowcaseCity() {
     <>
       <color attach="background" args={['#eae4d5']} />
       <fogExp2 attach="fog" args={['#e5dacf', 0.002]} />
-      <ambientLight intensity={0.5} color="#fff6e8" />
-      <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff1d9" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
+      <ambientLight intensity={0.65} color="#ecdcc9" />
+      <directionalLight position={[35, 50, 25]} intensity={1.4} color="#fff7ea" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[-1, 0.9, -1]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
-        <meshToonMaterial color="#a69a69" />
+        <meshToonMaterial color="#cfb997" />
       </mesh>
       {hills.map((hill, i) => <mesh key={`hill-${i}`} position={[hill.x, -0.12, hill.z]} scale={hill.scale} receiveShadow>
         <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
@@ -93,15 +105,17 @@ function ShowcaseCity() {
       {city.map(({ x, z, type, i, north, south, east, west }) => (
         <group key={`${x},${z}`} position={[x, 0, z]}>
           {type === TileType.RESIDENTIAL || type === TileType.COMMERCIAL
-            ? <ShowcaseBuilding styleIndex={type === TileType.COMMERCIAL ? 3 : Math.abs(x * 7 + z * 11) % 4} commercial={type === TileType.COMMERCIAL} variant={i % 3} />
+            ? <ShowcaseBuilding styleIndex={type === TileType.COMMERCIAL ? 3 : Math.abs(x * 7 + z * 11) % 4} commercial={type === TileType.COMMERCIAL} variant={i % 3} smoke={type === TileType.RESIDENTIAL && i % 5 === 0} />
             : <TileModel type={type} variant={i % 4} hasPower hasWater hasSupplies animate={false} north={north} south={south} east={east} west={west} />}
         </group>
       ))}
       {parks.map(([x, z], i) => <ShowcasePark key={`park-${i}`} position={[x, 0, z]} />)}
-      {[[-3, -9.25], [3, -9.25], [-3, 7.2], [3, 7.2]].map(([x, z], i) => <ShowcaseCourtyard key={`courtyard-${i}`} position={[x, 0, z]} variant={i} />)}
+      {gardenCells.map(({ x, z, variant }) => <GardenCell key={`garden-${x}-${z}`} position={[x, 0, z]} variant={variant} />)}
       {infill.map(({ x, z, kind }, i) => <MicroInfill key={`infill-${x}-${z}-${i}`} position={[x, 0, z]} kind={kind} />)}
+      {roundabouts.map(([x, z], i) => <ShowcaseRoundabout key={`roundabout-${i}`} position={[x, 0, z]} variant={i} />)}
       <ShowcasePiazza />
       <ShowcaseTraffic />
+      <ParkedShowcaseCars />
       <Crosswalk position={[-0.6, 0.045, 4]} />
       <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
@@ -167,20 +181,32 @@ function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, nu
   </group>
 }
 
-function ShowcaseCourtyard({ position, variant }: { position: [number, number, number]; variant: number }) {
-  const leaf = ['#d97724', '#eab308', '#b43418', '#ca8a04'][variant % 4]
+function GardenCell({ position, variant }: { position: [number, number, number]; variant: number }) {
+  const autumn = ['#d97724', '#b43418', '#eab308', '#ca8a04']
+  const leaf = autumn[variant % autumn.length]
   return <group position={position}>
-    <mesh position={[0, 0.018, 0]} receiveShadow><boxGeometry args={[1.72, 0.035, 1.5]} /><meshToonMaterial color="#8b9454" /></mesh>
-    <mesh position={[0, 0.042, 0]}><boxGeometry args={[1.58, 0.012, 0.12]} /><meshToonMaterial color="#c8b99d" /></mesh>
-    <mesh position={[0, 0.043, 0]}><boxGeometry args={[0.12, 0.014, 1.42]} /><meshToonMaterial color="#c8b99d" /></mesh>
-    {[-0.76, 0.76].map(x => <mesh key={x} position={[x, 0.09, 0]} castShadow><boxGeometry args={[0.035, 0.12, 1.48]} /><meshToonMaterial color="#79583a" /></mesh>)}
-    <group position={[variant % 2 ? 0.48 : -0.48, 0, variant % 2 ? -0.36 : 0.36]}>
-      <mesh position={[0, 0.44, 0]} castShadow><cylinderGeometry args={[0.045, 0.07, 0.8, 6]} /><meshToonMaterial color="#493421" /></mesh>
-      <mesh position={[0, 0.98, 0]} castShadow><icosahedronGeometry args={[0.4, 1]} /><meshToonMaterial color={leaf} /></mesh>
-      <mesh position={[0.2, 1.12, -0.06]} castShadow><icosahedronGeometry args={[0.24, 1]} /><meshToonMaterial color="#ca8a04" /></mesh>
+    <mesh position={[0, 0.014, 0]} receiveShadow><boxGeometry args={[0.96, 0.028, 0.96]} /><meshToonMaterial color={variant % 5 === 0 ? '#72894b' : '#839450'} /></mesh>
+    <mesh position={[0, 0.032, 0]}><boxGeometry args={[0.11, 0.012, 0.92]} /><meshToonMaterial color="#c8b99d" /></mesh>
+    <mesh position={[0, 0.033, 0]}><boxGeometry args={[0.92, 0.012, 0.11]} /><meshToonMaterial color="#c8b99d" /></mesh>
+    {variant % 9 === 0 ? <group position={[variant % 2 ? 0.28 : -0.28, 0.045, variant % 3 ? 0.28 : -0.28]}>
+      <mesh position={[0, 0.27, 0]} castShadow><cylinderGeometry args={[0.025, 0.045, 0.5, 5]} /><meshToonMaterial color="#493421" /></mesh>
+      <mesh position={[0, 0.59, 0]} castShadow><icosahedronGeometry args={[0.27, 1]} /><meshToonMaterial color={leaf} /></mesh>
+    </group> : <>
+      <mesh position={[-0.3, 0.1, 0.28]} castShadow><icosahedronGeometry args={[0.13, 0]} /><meshToonMaterial color={leaf} /></mesh>
+      <mesh position={[0.29, 0.11, -0.3]} castShadow><icosahedronGeometry args={[0.15, 0]} /><meshToonMaterial color={autumn[(variant + 1) % autumn.length]} /></mesh>
+    </>}
+    {variant % 4 === 0 && <mesh position={[0.05, 0.08, 0.31]} castShadow><boxGeometry args={[0.4, 0.06, 0.12]} /><meshToonMaterial color="#79583a" /></mesh>}
+  </group>
+}
+
+function ShowcaseRoundabout({ position, variant }: { position: [number, number, number]; variant: number }) {
+  return <group position={position}>
+    <mesh position={[0, 0.035, 0]} receiveShadow><cylinderGeometry args={[0.72, 0.72, 0.07, 12]} /><meshToonMaterial color="#d8d0c0" /><Edges color="#261c14" threshold={28} /></mesh>
+    <mesh position={[0, 0.079, 0]} receiveShadow><cylinderGeometry args={[0.42, 0.42, 0.025, 10]} /><meshToonMaterial color="#76864a" /></mesh>
+    <group position={[0, 0.09, 0]}>
+      <mesh position={[0, 0.24, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 0.45, 5]} /><meshToonMaterial color="#493421" /></mesh>
+      <mesh position={[0, 0.54, 0]} castShadow><icosahedronGeometry args={[0.28, 1]} /><meshToonMaterial color={['#d97724', '#b43418', '#eab308', '#ca8a04'][variant]} /></mesh>
     </group>
-    <mesh position={[0.45, 0.13, -0.5]} castShadow><boxGeometry args={[0.38, 0.06, 0.14]} /><meshToonMaterial color="#79583a" /></mesh>
-    {[-0.46, -0.28].map(x => <mesh key={x} position={[x, 0.09, -0.56]} castShadow><sphereGeometry args={[0.09, 7, 5]} /><meshToonMaterial color="#ea580c" /></mesh>)}
   </group>
 }
 
@@ -213,6 +239,20 @@ function ShowcaseTraffic() {
   return <group>{cars.map((car, i) => <ShowcaseCar key={i} {...car} />)}</group>
 }
 
+function ParkedShowcaseCars() {
+  const cars: { position: [number, number, number]; rotation: number; color: string }[] = [
+    { position: [-12.45, 0.08, -9.5], rotation: 0, color: '#b43418' },
+    { position: [12.45, 0.08, -8.8], rotation: 0, color: '#356b78' },
+    { position: [-12.45, 0.08, 7.8], rotation: 0, color: '#d6a12e' },
+    { position: [12.45, 0.08, 7.4], rotation: 0, color: '#536c47' },
+  ]
+  return <group>{cars.map((car, i) => <group key={i} position={car.position} rotation={[0, car.rotation, 0]}>
+    <mesh position={[0, 0.1, 0]} castShadow><boxGeometry args={[0.34, 0.13, 0.54]} /><meshToonMaterial color={car.color} /><Edges color="#261c14" threshold={28} /></mesh>
+    <mesh position={[0, 0.2, -0.04]}><boxGeometry args={[0.25, 0.12, 0.25]} /><meshToonMaterial color="#9bb4b8" /></mesh>
+    {[-1, 1].flatMap(side => [-1, 1].map(end => <mesh key={`${side}:${end}`} position={[side * 0.17, 0.06, end * 0.17]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.055, 0.055, 0.035, 8]} /><meshStandardMaterial color="#262626" /></mesh>))}
+  </group>)}</group>
+}
+
 function ShowcaseCar({ lane, fixed, phase, color }: { lane: 'x' | 'z'; fixed: number; phase: number; color: string }) {
   const ref = useRef<THREE.Group>(null)
   useFrame(({ clock }) => {
@@ -235,7 +275,7 @@ const facadePalettes = [
   { name: 'modern', wall: '#d6c7aa', roof: '#828894', trim: '#46525a' },
 ]
 
-function ShowcaseBuilding({ styleIndex, commercial, variant }: { styleIndex: number; commercial: boolean; variant: number }) {
+function ShowcaseBuilding({ styleIndex, commercial, variant, smoke = false }: { styleIndex: number; commercial: boolean; variant: number; smoke?: boolean }) {
   const style = facadePalettes[styleIndex]
   const roofColor = style.name === 'modern'
     ? ['#828894', '#c5bcab', '#3d4450'][variant % 3]
@@ -287,7 +327,28 @@ function ShowcaseBuilding({ styleIndex, commercial, variant }: { styleIndex: num
         </>}
       </group>)}
     <mesh position={[0, 0.25 + height, front + 0.045]} castShadow><boxGeometry args={[0.98, 0.055, 0.12]} /><meshStandardMaterial color={style.trim} roughness={0.85} /></mesh>
+    {!commercial && style.name !== 'modern' && <>
+      <mesh position={[-0.28, 0.24 + height + 0.32, -0.18]} castShadow><boxGeometry args={[0.12, 0.48, 0.12]} /><meshToonMaterial color="#8b3a2b" /><Edges color="#261c14" threshold={28} /></mesh>
+      {smoke && <SmokePuffs position={[-0.28, 0.24 + height + 0.58, -0.18]} />}
+    </>}
   </group>
+}
+
+function SmokePuffs({ position }: { position: [number, number, number] }) {
+  const puffs = [useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null), useRef<THREE.Mesh>(null)]
+  useFrame(({ clock }) => {
+    puffs.forEach((ref, i) => {
+      const mesh = ref.current
+      if (!mesh) return
+      const phase = (clock.elapsedTime * 0.32 + i / puffs.length) % 1
+      mesh.position.set(Math.sin(clock.elapsedTime * 0.7 + i) * 0.07, phase * 0.62, Math.cos(clock.elapsedTime * 0.5 + i) * 0.04)
+      mesh.scale.setScalar(0.055 + phase * 0.13)
+      ;(mesh.material as THREE.MeshBasicMaterial).opacity = (1 - phase) * 0.34
+    })
+  })
+  return <group position={position}>{puffs.map((ref, i) => <mesh key={i} ref={ref}>
+    <icosahedronGeometry args={[1, 0]} /><meshBasicMaterial color="#77736f" transparent opacity={0.3} depthWrite={false} />
+  </mesh>)}</group>
 }
 
 function ShowcasePiazza() {

@@ -230,7 +230,7 @@ export const GroundSlab = memo(function GroundSlab() {
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[350, 350]} />
-        <meshToonMaterial color="#a69a69" />
+        <meshToonMaterial color="#cfb997" />
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -881,7 +881,7 @@ const NIGHT_COLOR = new THREE.Color('#141b2d')
 const SUN_COLOR = new THREE.Color('#fffaf0')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
 const MOON_COLOR = new THREE.Color('#7aa2dc')
-const DAY_AMBIENT = new THREE.Color('#e8ecf0')
+const DAY_AMBIENT = new THREE.Color('#ecdcc9')
 const DUSK_AMBIENT = new THREE.Color('#d89b91')
 const NIGHT_AMBIENT = new THREE.Color('#243354')
 const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
@@ -933,16 +933,16 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(DAY_SKY)
       ambientColor.copy(DAY_AMBIENT)
       sunColor.copy(SUN_COLOR)
-      ambient && (ambient.intensity = 0.5)
-      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.5)
+      ambient && (ambient.intensity = 0.65)
+      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.4)
     } else if (time >= 1080 && time < 1260) {
       background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
       ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
       sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.5, 0.38, dusk))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.65, 0.38, dusk))
       if (sun) {
         sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
-        sun.intensity = THREE.MathUtils.lerp(1.5, 0.05, dusk)
+        sun.intensity = THREE.MathUtils.lerp(1.4, 0.05, dusk)
       }
       if (dusk > 0.72) {
         const nightBlend = (dusk - 0.72) / 0.28
@@ -959,10 +959,10 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
       ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
       sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.65, dawn))
       if (sun) {
         sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
-        sun.intensity = THREE.MathUtils.lerp(0.55, 1.5, dawn)
+        sun.intensity = THREE.MathUtils.lerp(0.55, 1.4, dawn)
       }
     } else {
       background.copy(NIGHT_COLOR)
@@ -1089,12 +1089,12 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight ref={ambientRef} intensity={0.5} color="#e8ecf0" />
+      <ambientLight ref={ambientRef} intensity={0.65} color="#ecdcc9" />
       <directionalLight
         ref={sunRef}
         position={[35, 50, 25]}
-        intensity={1.5}
-        color="#fffaf0"
+        intensity={1.4}
+        color="#fff7ea"
         castShadow
         shadow-mapSize={shadowMapSize}
         shadow-camera-left={-22}
