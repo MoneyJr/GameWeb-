@@ -6,6 +6,7 @@ import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
 import { InkOutlinePassEffect, ToonShadingSetup } from '../3d/InkOutlinePass'
+import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 
 function ShowcaseCity() {
   const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
@@ -94,7 +95,7 @@ function ShowcaseCity() {
       <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
       <ambientLight intensity={0.65} color="#ecdcc9" />
       <directionalLight position={[35, 50, 25]} intensity={1.4} color="#fff7ea" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
-      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[4.5, 0.9, -1]} />
+      <OrbitControls autoRotate autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
         <meshToonMaterial color="#cfb997" />
@@ -429,7 +430,7 @@ const CITY_NAMES: Record<Language, string[]> = {
   de: ['Herbsttal', 'Eichenhain', 'Honighügel', 'Abendruh'],
   fr: ['Val d’Automne', 'Bois de Chêne', 'Colline Dorée', 'Rivière Paisible'],
 }
-const PROFILE_KEY = 'inkville-city-profile'
+const PROFILE_KEY = CITY_PROFILE_KEY
 
 function readCityProfile(): CityProfile | undefined {
   try {
@@ -454,11 +455,19 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const [showNaming, setShowNaming] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [cityName, setCityName] = useState('')
-  const [mayorName, setMayorName] = useState(() => t('title.mayorPlaceholder'))
-  const [activeAction, setActiveAction] = useState(0)
-  const [soundEnabled, setSoundEnabled] = useState(() => {
-    try { return localStorage.getItem('inkville-sound-enabled') !== 'false' } catch { return true }
+  const [mayorName, setMayorName] = useState(() => {
+    try { return localStorage.getItem(MAYOR_NAME_KEY) || t('title.mayorPlaceholder') } catch { return t('title.mayorPlaceholder') }
   })
+  const [activeAction, setActiveAction] = useState(0)
+  const [audio, setAudio] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('inkville-audio-settings') ?? '{}') as Partial<{ master: number; music: number; sfx: number; musicMuted: boolean }>
+      return { master: saved.master ?? 80, music: saved.music ?? 55, sfx: saved.sfx ?? 75, musicMuted: saved.musicMuted ?? false }
+    } catch { return { master: 80, music: 55, sfx: 75, musicMuted: false } }
+  })
+  const [profileName, setProfileName] = useState(mayorName)
+  const [cityStats, setCityStats] = useState(readCityStats)
+  const [confirmReset, setConfirmReset] = useState(false)
   useEffect(() => {
     if (assetsReady) return undefined
     const started = performance.now()
@@ -490,17 +499,32 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     const profile = { cityName: cityName.trim(), mayorName: mayorName.trim() || t('title.mayorPlaceholder'), createdAt: new Date().toISOString() }
     if (!profile.cityName) return
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch { /* City profile is optional when storage is unavailable. */ }
+    try { localStorage.setItem(MAYOR_NAME_KEY, profile.mayorName) } catch { /* Mayor preference is optional when storage is unavailable. */ }
+    registerFoundedCity()
     setShowNaming(false)
     begin('new', profile)
   }
-  const toggleSound = (value: boolean) => {
-    setSoundEnabled(value)
-    try { localStorage.setItem('inkville-sound-enabled', String(value)) } catch { /* Storage may be disabled. */ }
-    document.documentElement.dataset.soundEnabled = String(value)
+  const updateAudio = (next: typeof audio) => {
+    setAudio(next)
+    try { localStorage.setItem('inkville-audio-settings', JSON.stringify(next)) } catch { /* Storage may be disabled. */ }
+    document.documentElement.dataset.soundEnabled = String(next.master > 0 && !next.musicMuted)
+    window.dispatchEvent(new CustomEvent('INKVILLE_AUDIO_SETTINGS_CHANGED', { detail: next }))
+  }
+  const saveMayorName = () => {
+    const nextName = profileName.trim() || t('title.mayorPlaceholder')
+    setProfileName(nextName)
+    setMayorName(nextName)
+    try {
+      localStorage.setItem(MAYOR_NAME_KEY, nextName)
+      const profile = readCityProfile()
+      if (profile) localStorage.setItem(PROFILE_KEY, JSON.stringify({ ...profile, mayorName: nextName }))
+    } catch { /* Profile metadata is optional when storage is unavailable. */ }
   }
   const resetProgress = () => {
-    try { localStorage.removeItem('inkville-save-v2'); localStorage.removeItem(PROFILE_KEY) } catch { /* Storage may be disabled. */ }
+    try { localStorage.removeItem('inkville-save-v2'); localStorage.removeItem(PROFILE_KEY); localStorage.removeItem(MAYOR_NAME_KEY) } catch { /* Storage may be disabled. */ }
     onResetProgress()
+    setMayorName(t('title.mayorPlaceholder'))
+    setProfileName(t('title.mayorPlaceholder'))
     setHasSave(false)
     setShowSettings(false)
   }
@@ -513,7 +537,7 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
         <ShowcaseSceneReady onReady={markAssetsReady} />
       </Canvas>
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_22%,rgba(23,28,34,0.44)_100%)]" />
-      <section className="fixed left-12 top-1/2 z-40 w-[calc(100vw-64px)] max-w-[340px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-6 text-[#2c241d] shadow-[8px_8px_0px_#2C241D] md:w-[380px] md:max-w-none">
+      <section style={{ left: 48, right: 'auto' }} className="fixed left-12 right-auto top-1/2 z-40 w-[calc(100vw-64px)] max-w-[340px] -translate-y-1/2 rounded-3xl border-double border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-6 text-[#2c241d] shadow-[8px_8px_0px_#2C241D] md:w-[380px] md:max-w-none">
         <div className="mb-4 flex items-start justify-between gap-2">
           <span className="inline-flex max-w-[220px] rounded-full border border-[#2C241D]/30 bg-[#fffaf0]/70 px-3 py-1 text-[9px] font-black uppercase tracking-[.13em] text-[#66513b]">{t('title.handInk')}</span>
           <select aria-label={t('language.label')} value={language} onChange={event => setLanguage(event.target.value as Language)} className="h-8 shrink-0 rounded-lg border border-[#2C241D]/40 bg-[#fffaf0] px-1.5 text-[10px] font-bold">
@@ -530,7 +554,7 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
           <button onPointerEnter={() => setActiveAction(actionIndex('title.newCity'))} onFocus={() => setActiveAction(actionIndex('title.newCity'))} onClick={() => setShowNaming(true)} className="h-12 rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-4 text-left text-sm font-black shadow-[3px_3px_0_#292720] transition hover:-translate-y-0.5 hover:bg-[#e0b273]">{t('title.newCity')}</button>
           <button disabled={!hasSave} onPointerEnter={() => setActiveAction(actionIndex('title.continue'))} onFocus={() => setActiveAction(actionIndex('title.continue'))} onClick={() => begin('continue', readCityProfile())} className="h-12 rounded-xl border-2 border-[#292720]/70 bg-[#f7f3eb] px-4 text-left text-sm font-bold enabled:hover:bg-white disabled:cursor-not-allowed disabled:opacity-45">{t('title.continue')}</button>
           <button onPointerEnter={() => setActiveAction(actionIndex('title.sandbox'))} onFocus={() => setActiveAction(actionIndex('title.sandbox'))} onClick={() => begin('sandbox', readCityProfile() ?? { cityName: CITY_NAMES[language][0], mayorName: t('title.mayorPlaceholder'), createdAt: new Date().toISOString() })} className="h-12 rounded-xl border border-[#292720]/35 bg-white/35 px-4 text-left text-sm font-semibold transition hover:bg-white/65">{t('title.sandbox')}</button>
-          <button onPointerEnter={() => setActiveAction(actionIndex('title.settings'))} onFocus={() => setActiveAction(actionIndex('title.settings'))} onClick={() => setShowSettings(true)} className="h-12 rounded-xl border border-[#292720]/35 bg-transparent px-4 text-left text-sm font-semibold transition hover:bg-white/45">{t('title.settings')}</button>
+          <button onPointerEnter={() => setActiveAction(actionIndex('title.settings'))} onFocus={() => setActiveAction(actionIndex('title.settings'))} onClick={() => { setProfileName(mayorName); setCityStats(readCityStats()); setConfirmReset(false); setShowSettings(true) }} className="h-12 rounded-xl border border-[#292720]/35 bg-transparent px-4 text-left text-sm font-semibold transition hover:bg-white/45">{t('title.settings')}</button>
         </div>}
         <p className="mt-5 text-center text-[9px] font-semibold uppercase tracking-[.16em] text-[#8b806e]">{t('title.footer')}</p>
       </section>
@@ -555,12 +579,39 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
       </div>}
 
       {showSettings && <div className="fixed inset-0 z-50 grid place-items-center bg-[#201a15]/45 p-4 backdrop-blur-sm" onMouseDown={event => { if (event.target === event.currentTarget) setShowSettings(false) }}>
-        <div className="w-full max-w-sm rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-6 text-[#2c241d] shadow-[7px_7px_0px_#2C241D]">
-          <h2 className="font-serif text-2xl font-black">{t('title.settings')}</h2>
-          <label className="mt-5 flex items-center justify-between gap-3 text-sm font-semibold"><span>{t('title.sound')}<small className="mt-1 block text-[10px] font-normal text-stone-600">{t('title.soundNote')}</small></span><input type="checkbox" checked={soundEnabled} onChange={event => toggleSound(event.target.checked)} className="size-5 accent-[#a6653d]" /></label>
-          <button onClick={() => { if (window.confirm(t('title.resetConfirm'))) resetProgress() }} className="mt-6 w-full rounded-xl border border-rose-800/40 bg-rose-50 px-4 py-3 text-left text-sm font-bold text-rose-800">{t('title.resetProgress')}</button>
-          <button onClick={() => setShowSettings(false)} className="mt-3 w-full rounded-xl border border-[#655340]/35 px-4 py-2.5 text-sm font-bold">{t('title.cancel')}</button>
-        </div>
+        <section role="dialog" aria-modal="true" aria-labelledby="settings-heading" className="max-h-[min(90vh,760px)] w-full max-w-lg overflow-y-auto rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-5 text-[#2c241d] shadow-[7px_7px_0px_#2C241D] sm:p-7">
+          <header className="flex items-start justify-between gap-4 border-b border-[#655340]/25 pb-4">
+            <div><span className="text-[10px] font-black uppercase tracking-[.16em] text-[#8b6748]">Inkville</span><h2 id="settings-heading" className="font-serif text-2xl font-black">{t('settings.title')}</h2></div>
+            <button aria-label={t('settings.close')} onClick={() => setShowSettings(false)} className="grid size-9 shrink-0 place-items-center rounded-full border border-[#655340]/35 text-xl hover:bg-white/60">×</button>
+          </header>
+          <div className="mt-5 rounded-2xl border border-[#655340]/25 bg-[#fffaf0]/55 p-4">
+            <h3 className="mb-3 text-sm font-black">{t('settings.audio')}</h3>
+            {([
+              ['master', 'settings.master'], ['music', 'settings.music'], ['sfx', 'settings.sfx'],
+            ] as const).map(([key, label]) => <label key={key} className="mb-3 block last:mb-0">
+              <span className="mb-1 flex items-center justify-between gap-3 text-xs font-semibold"><span>{t(label)}</span><span className="tabular-nums text-stone-600">{audio[key]}%</span></span>
+              <input aria-label={t(label)} type="range" min="0" max="100" value={audio[key]} onChange={event => updateAudio({ ...audio, [key]: Number(event.target.value) })} className="h-2 w-full cursor-pointer accent-[#a6653d]" />
+            </label>)}
+            <button onClick={() => updateAudio({ ...audio, musicMuted: !audio.musicMuted })} className="mt-3 rounded-lg border border-[#655340]/30 bg-white/60 px-3 py-1.5 text-xs font-bold">
+              {audio.musicMuted ? `🔇 ${t('settings.unmute')}` : `🔊 ${t('settings.mute')}`}
+            </button>
+          </div>
+          <div className="mt-4 rounded-2xl border border-[#655340]/25 bg-[#fffaf0]/55 p-4">
+            <h3 className="text-sm font-black">{t('settings.account')}</h3>
+            <label className="mt-3 block text-xs font-semibold">{t('settings.mayor')}
+              <input maxLength={32} value={profileName} onChange={event => setProfileName(event.target.value)} onBlur={saveMayorName} className="mt-1.5 h-10 w-full rounded-xl border border-[#655340]/35 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+            </label>
+            <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              <div className="rounded-xl bg-white/60 p-3"><span className="block text-stone-600">{t('settings.founded')}</span><strong className="mt-1 block text-base">{cityStats.foundedCities}</strong></div>
+              <div className="rounded-xl bg-white/60 p-3"><span className="block text-stone-600">{t('settings.playtime')}</span><strong className="mt-1 block text-base">{(cityStats.totalPlaySeconds / 3600).toFixed(1)} {t('settings.hours')}</strong></div>
+            </div>
+            {!confirmReset ? <button onClick={() => setConfirmReset(true)} className="mt-3 w-full rounded-xl border border-rose-800/45 bg-rose-50/70 px-3 py-2.5 text-left text-xs font-bold text-rose-800">{t('settings.reset')}</button> : <div className="mt-3 rounded-xl border border-rose-800/35 bg-rose-50 p-3">
+              <p className="text-xs font-bold text-rose-900">{t('title.resetConfirm')}</p>
+              <div className="mt-2 flex justify-end gap-2"><button onClick={() => setConfirmReset(false)} className="rounded-lg border border-stone-400 px-3 py-1.5 text-xs font-bold">{t('title.cancel')}</button><button onClick={resetProgress} className="rounded-lg border border-rose-900 bg-rose-800 px-3 py-1.5 text-xs font-bold text-white">{t('settings.confirm')}</button></div>
+            </div>}
+          </div>
+          <button onClick={() => { saveMayorName(); setShowSettings(false) }} className="mt-5 w-full rounded-xl border-2 border-[#292720] bg-[#d6a15f] px-4 py-3 text-sm font-black shadow-[3px_3px_0_#292720] hover:bg-[#e0b273]">{t('settings.saveClose')}</button>
+        </section>
       </div>}
     </div>
   )

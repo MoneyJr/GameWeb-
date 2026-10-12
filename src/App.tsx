@@ -9,6 +9,7 @@ import { TileType, type Grid } from './types/city'
 import { TitleScreen } from './components/ui/TitleScreen'
 import type { CityProfile } from './components/ui/TitleScreen'
 import { useI18n } from './i18n/I18nProvider'
+import { addPlaySeconds } from './lib/cityProfile'
 
 function App() {
   const sim = useCitySimulation()
@@ -51,6 +52,23 @@ function App() {
     const timer = window.setTimeout(() => setDismissedWelcomeNonce(welcome.nonce), 7600)
     return () => window.clearTimeout(timer)
   }, [welcome])
+
+  useEffect(() => {
+    if (!started) return undefined
+    let lastSavedAt = Date.now()
+    const persistElapsedTime = () => {
+      const now = Date.now()
+      addPlaySeconds((now - lastSavedAt) / 1000)
+      lastSavedAt = now
+    }
+    const timer = window.setInterval(persistElapsedTime, 30_000)
+    window.addEventListener('pagehide', persistElapsedTime)
+    return () => {
+      window.clearInterval(timer)
+      window.removeEventListener('pagehide', persistElapsedTime)
+      persistElapsedTime()
+    }
+  }, [started])
 
   const handleStart = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
     if (mode !== 'continue') sim.reset()
