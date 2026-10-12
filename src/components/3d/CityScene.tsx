@@ -2,7 +2,7 @@ import { TrafficSystem } from './TrafficSystem'
 import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Edges, Html, OrthographicCamera } from '@react-three/drei'
+import { Edges, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
@@ -504,6 +504,7 @@ interface InteractionLayerProps {
   onTouchPreview: (cell: Cell) => void
   onRoadLinePreview: (cells: Cell[]) => void
   onRoadDragState: (dragging: boolean) => void
+  onPlacementTooltip: (tooltip: PlacementTooltip | null) => void
   ghost: TouchGhost | null
   placementStyle?: string
   catalogId?: string
@@ -511,6 +512,15 @@ interface InteractionLayerProps {
 
 interface TouchGhost {
   cells: Cell[]
+}
+
+interface PlacementTooltip {
+  x: number
+  y: number
+  valid: boolean
+  reason: string | null
+  tool: ToolId
+  catalogId?: string
 }
 
 function placementFootprint(tool: ToolId, catalogId?: string, style?: string): [number, number] {
@@ -606,12 +616,11 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks }: { t
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, ghost, placementStyle, catalogId }: InteractionLayerProps) {
-  const { t } = useI18n()
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, onPlacementTooltip, ghost, placementStyle, catalogId }: InteractionLayerProps) {
   const { gl } = useThree()
   const [hoverState, setHoverState] = useState<{ cell: Cell; tool: ToolId; catalogId?: string } | null>(null)
   const hovered = hoverState?.tool === activeTool && hoverState.catalogId === catalogId ? hoverState.cell : null
-  const setHovered = (cell: Cell | null) => setHoverState(cell ? { cell, tool: activeTool, catalogId } : null)
+  const setHovered = useCallback((cell: Cell | null) => setHoverState(cell ? { cell, tool: activeTool, catalogId } : null), [activeTool, catalogId])
   const painting = useRef(false)
   const lastCell = useRef<Cell | null>(null)
   const touchTap = useRef<{ pointerId: number; x: number; y: number; cell: Cell; moved: boolean } | null>(null)
@@ -627,24 +636,23 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         setHovered(null)
       }
     },
-    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle],
+    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, setHovered],
   )
   const footprint = placementFootprint(activeTool, catalogId, placementStyle)
 
   useEffect(() => {
-    const clearHover = () => setHovered(null)
+    const clearHover = () => { setHovered(null); onPlacementTooltip(null) }
     const clearOutsideCanvas = (event: PointerEvent) => {
       const bounds = gl.domElement.getBoundingClientRect()
       if (event.clientX < bounds.left || event.clientX > bounds.right || event.clientY < bounds.top || event.clientY > bounds.bottom) clearHover()
     }
     gl.domElement.addEventListener('pointerleave', clearHover)
     window.addEventListener('pointermove', clearOutsideCanvas)
-    if (activeTool === ToolId.CURSOR || activeTool === ToolId.BULLDOZE) clearHover()
     return () => {
       gl.domElement.removeEventListener('pointerleave', clearHover)
       window.removeEventListener('pointermove', clearOutsideCanvas)
     }
-  }, [activeTool, catalogId, gl])
+  }, [gl, onPlacementTooltip, setHovered])
 
   useEffect(() => {
     const trackTouchMove = (event: PointerEvent) => {
@@ -702,14 +710,22 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
     const { clientX, clientY } = event.nativeEvent
     if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(clientX) || !Number.isFinite(clientY) || clientX < bounds.left || clientX > bounds.right || clientY < bounds.top || clientY > bounds.bottom) {
       setHovered(null)
+      onPlacementTooltip(null)
       return
     }
     const cell = worldToCell(x, z)
     if (!cell) {
       setHovered(null)
+      onPlacementTooltip(null)
       return
     }
     if (!hovered || hovered.x !== cell.x || hovered.y !== cell.y) setHovered(cell)
+    if (event.nativeEvent.pointerType === 'touch' || activeTool === ToolId.CURSOR || activeTool === ToolId.BULLDOZE) {
+      onPlacementTooltip(null)
+    } else {
+      const reason = validatePlacement(grid, cell, activeTool, catalogId, placementStyle)
+      onPlacementTooltip({ x: clientX, y: clientY, valid: reason === null, reason, tool: activeTool, catalogId })
+    }
     const drag = roadDrag.current
     if (drag?.pointerId === event.nativeEvent.pointerId) {
       if (Math.hypot(event.nativeEvent.clientX - drag.x, event.nativeEvent.clientY - drag.y) > 10) {
@@ -806,7 +822,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
           }
           if (touchTap.current?.pointerId === event.nativeEvent.pointerId) touchTap.current = null
         }}
-        onPointerOut={() => setHovered(null)}
+        onPointerOut={() => { setHovered(null); onPlacementTooltip(null) }}
       >
         <planeGeometry args={[GRID_SIZE, GRID_SIZE]} />
         <meshBasicMaterial transparent opacity={0} depthWrite={false} colorWrite={false} side={THREE.DoubleSide} />
@@ -825,8 +841,6 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
         const tint = valid ? '#10b981' : '#ef4444'
         const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
         const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
-        const validationReason = validatePlacement(grid, anchor, activeTool, catalogId, placementStyle)
-        const prompt = valid ? t('ghost.available') : t(validationReason ?? 'ghost.occupied')
         return <group>
           {cells.map((item) => <FootprintCell key={`footprint-${item.x}-${item.y}`} cell={item} tint={tint} />)}
           {modelCells.map((item) => {
@@ -838,11 +852,6 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
             } : { north: false, south: false, east: false, west: false }
             return <GhostTilePreview key={`ghost-model-${item.x}-${item.y}`} tool={activeTool} cell={item} style={placementStyle} catalogId={catalogId} tint={tint} roadLinks={links} />
           })}
-          <Html position={[anchor.x - (GRID_SIZE - 1) / 2, 1.65, anchor.y - (GRID_SIZE - 1) / 2]} center distanceFactor={18} style={{ pointerEvents: 'none', whiteSpace: 'nowrap' }}>
-            <div className={`rounded-full border px-3 py-1 text-xs font-bold shadow-lg ${valid ? 'border-emerald-900/20 bg-emerald-50/95 text-emerald-800' : 'border-red-900/20 bg-red-50/95 text-red-800'}`}>
-              {prompt}
-            </div>
-          </Html>
         </group>
       })()}
     </group>
@@ -982,6 +991,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
   const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
+  const [placementTooltip, setPlacementTooltip] = useState<PlacementTooltip | null>(null)
   const controlsRef = useRef<PannableControls | null>(null)
   const ambientRef = useRef<THREE.AmbientLight>(null)
   const sunRef = useRef<THREE.DirectionalLight>(null)
@@ -1009,6 +1019,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       controls.update()
     }
   }, [])
+  const handlePlacementTooltip = useCallback((tooltip: PlacementTooltip | null) => setPlacementTooltip(tooltip), [])
   useEffect(() => setTouchGhost(null), [activeTool, catalogId])
   const markSceneReady = useCallback(() => setSceneReady(true), [])
   const isReferencePreview = new URLSearchParams(window.location.search).get('preview') === 'cityrt'
@@ -1110,6 +1121,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
         onTouchPreview={handleTouchPreview}
         onRoadLinePreview={handleRoadLinePreview}
         onRoadDragState={handleRoadDragState}
+        onPlacementTooltip={handlePlacementTooltip}
         ghost={touchGhost}
         placementStyle={placementStyle}
         catalogId={catalogId}
@@ -1117,6 +1129,17 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       </Suspense>
     </Canvas>
       </div>
+      {placementTooltip && placementTooltip.tool === activeTool && placementTooltip.catalogId === catalogId && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
+        <div
+          className="pointer-events-none fixed z-50 -translate-x-1/2 -translate-y-12 px-3 py-1.5 text-xs font-bold transition-all"
+          style={{ left: placementTooltip.x, top: placementTooltip.y }}
+          role="status"
+        >
+          <span className={`block whitespace-nowrap rounded-lg border px-2.5 py-1 shadow-lg backdrop-blur-md ${placementTooltip.valid ? 'border-emerald-300 bg-emerald-100/90 text-emerald-700' : 'border-rose-300 bg-rose-100/90 text-rose-700'}`}>
+            {placementTooltip.valid ? t('ghost.available') : t(placementTooltip.reason ?? 'ghost.occupied')}
+          </span>
+        </div>
+      )}
       {isTouchDevice && touchGhost && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (
         <div
           className="pointer-events-none absolute inset-x-0 z-30 flex flex-col items-center gap-2"
