@@ -143,19 +143,26 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
     <nav aria-label={t('category.construction')} className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 flex max-w-[calc(100vw-12px)] justify-center">
       <style>{`
         .dock-category-bar { display:flex; width:min(672px,calc(100vw - 12px)); align-items:center; justify-content:space-around; gap:3px; overflow-x:auto; scrollbar-width:none; border:1px solid rgba(43,43,43,.2); border-radius:16px; background:rgba(244,241,234,.95); padding:8px 16px; color:#262626; box-shadow:0 20px 32px rgba(20,16,12,.2); backdrop-filter:blur(12px); }
-        .dock-category-bar::-webkit-scrollbar,.dock-submenu::-webkit-scrollbar { display:none; }
+        .dock-category-bar::-webkit-scrollbar { display:none; }
         .dock-category-button { display:flex; min-width:72px; flex:1 0 72px; height:58px; flex-direction:column; align-items:center; justify-content:center; gap:4px; border:1px solid transparent; border-radius:11px; padding:4px 3px; transition:background .16s,border-color .16s; }
         .dock-category-button[aria-pressed="true"] { border-color:#29251f; border-bottom:2px solid #29251f; background:#e5dfd3; }
         .dock-item-button[aria-pressed="true"] { border-color:#6c5847; background:#edd9c0; }
         .dock-category-button:hover,.dock-item-button:hover { background:#eee5d7; }
         .dock-category-button span { white-space:nowrap; font-size:11px; font-weight:600; }
-        .dock-submenu { position:absolute; bottom:calc(100% + 12px); left:50%; display:flex; width:max-content; max-width:min(90vw,760px); transform:translateX(-50%); gap:10px; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:none; border:1px solid #d6d3d1; border-radius:16px; background:rgba(250,248,245,.98); padding:8px; box-shadow:0 10px 26px rgba(20,16,12,.2); backdrop-filter:blur(12px); animation:dock-menu-in .18s ease-out; }
+        .dock-submenu { position:absolute; bottom:calc(100% + 12px); left:50%; display:flex; width:max-content; max-width:95vw; transform:translateX(-50%); gap:12px; overflow-x:auto; overflow-y:visible; overscroll-behavior-x:contain; touch-action:pan-x; scrollbar-width:thin; scrollbar-color:#a99b88 transparent; border:1px solid #d6d3d1; border-radius:16px; background:rgba(250,248,245,.98); padding:8px 16px; box-shadow:0 10px 26px rgba(20,16,12,.2); backdrop-filter:blur(12px); animation:dock-menu-in .18s ease-out; }
+        .dock-submenu::-webkit-scrollbar { height:6px; }
+        .dock-submenu::-webkit-scrollbar-thumb { border-radius:6px; background:#a99b88; }
         .dock-item-button { display:flex; width:158px; min-width:158px; height:66px; align-items:center; gap:9px; border:1px solid #d6d3d1; border-radius:12px; background:#faf8f5; padding:8px; text-align:left; }
         @keyframes dock-menu-in { from { opacity:0; transform:translate(-50%,6px) } to { opacity:1; transform:translate(-50%,0) } }
         @media(max-width:767px) { .dock-category-bar { justify-content:flex-start; padding:5px 6px; } .dock-category-button { min-width:64px; flex-basis:64px; height:52px; gap:2px; } .dock-category-button svg { width:20px; height:20px; } .dock-category-button span { font-size:9px; } .dock-submenu { max-width:calc(100vw - 16px); } .dock-item-button { width:145px; min-width:145px; height:62px; } }
       `}</style>
       <div className="pointer-events-auto relative flex flex-col items-center">
-        {selectedCategory && <div className="dock-submenu" aria-label={`${t('category.construction')}: ${t(selectedCategory.labelKey)}`}>
+        {selectedCategory && <div className="dock-submenu" aria-label={`${t('category.construction')}: ${t(selectedCategory.labelKey)}`} onWheel={(event) => {
+          if (Math.abs(event.deltaY) > Math.abs(event.deltaX)) {
+            event.currentTarget.scrollLeft += event.deltaY
+            event.preventDefault()
+          }
+        }}>
           {selectedCategory.options.map((item) => {
             const Icon = item.icon
             const selected = item.catalogId ? selectedCatalogId === item.catalogId : activeTool === item.tool

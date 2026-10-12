@@ -133,9 +133,10 @@ interface PartProps {
   outline?: boolean
   castShadow?: boolean
   material?: THREE.Material
+  raycast?: THREE.Object3D['raycast']
 }
 
-function Part({ shape, color, position, rotation, outline = true, castShadow = true, material }: PartProps) {
+function Part({ shape, color, position, rotation, outline = true, castShadow = true, material, raycast }: PartProps) {
   return (
     <mesh
       geometry={getGeometry(shape)}
@@ -144,6 +145,7 @@ function Part({ shape, color, position, rotation, outline = true, castShadow = t
       rotation={rotation}
       castShadow={castShadow}
       receiveShadow
+      raycast={raycast}
     >
       {outline && <lineSegments geometry={getEdges(shape)} material={outlineMaterial} />}
     </mesh>
@@ -1054,7 +1056,8 @@ function ModernGlassTowerMesh() {
 }
 
 function CinemaLetter({ letter, x }: { letter: string; x: number }) {
-  const bar = (key: string, size: Vec3, position: Vec3, rotation: Vec3 = [0, 0, 0]) => <Box key={key} size={size} position={position} rotation={rotation} color="#e8292e" material={cinemaSignMaterial} />
+  const noRaycast: THREE.Object3D['raycast'] = () => undefined
+  const bar = (key: string, size: Vec3, position: Vec3, rotation: Vec3 = [0, 0, 0]) => <Box key={key} size={size} position={position} rotation={rotation} color="#e8292e" material={cinemaSignMaterial} raycast={noRaycast} />
   const upright = bar('upright', [0.035, 0.2, 0.06], [0, 0, 0])
   const horizontal = (key: string, y: number) => bar(key, [0.14, 0.035, 0.06], [0, y, 0])
   const vertical = (key: string, xPos: number, y = 0) => bar(key, [0.035, 0.14, 0.06], [xPos, y, 0])

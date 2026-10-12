@@ -177,11 +177,13 @@ function catalogCenterOffset(catalogId?: string): [number, number] {
   return [(footprint[0] - 1) / 2, (footprint[1] - 1) / 2]
 }
 
-function worldToCell(worldX: number, worldZ: number): Cell {
-  const clamp = (value: number) => Math.min(GRID_SIZE - 1, Math.max(0, value))
+function worldToCell(worldX: number, worldZ: number): Cell | null {
+  const half = GRID_SIZE / 2
+  if (!Number.isFinite(worldX) || !Number.isFinite(worldZ)) return null
+  if (worldX < -half || worldZ < -half || worldX >= half || worldZ >= half) return null
   return {
-    x: clamp(Math.floor(worldX + GRID_SIZE / 2)),
-    y: clamp(Math.floor(worldZ + GRID_SIZE / 2)),
+    x: Math.floor(worldX + half),
+    y: Math.floor(worldZ + half),
   }
 }
 
@@ -679,6 +681,10 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
+    if (!cell) {
+      setHovered(null)
+      return
+    }
     setHovered((prev) => (prev !== null && prev.x === cell.x && prev.y === cell.y ? prev : cell))
     const drag = roadDrag.current
     if (drag?.pointerId === event.nativeEvent.pointerId) {
@@ -702,6 +708,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, isTouchDevice, 
 
   const handleDown = (event: ThreeEvent<PointerEvent>) => {
     const cell = worldToCell(event.point.x, event.point.z)
+    if (!cell) return
     if (event.nativeEvent.pointerType === 'touch') {
       if (!event.nativeEvent.isPrimary) {
         touchTap.current = null
