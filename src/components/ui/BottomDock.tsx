@@ -8,6 +8,7 @@ import {
   Film,
   House,
   Landmark,
+  Trees,
   Route,
   Shield,
   ShoppingBag,
@@ -60,10 +61,10 @@ const option = (tool: ToolId, labelKey: string, icon: LucideIcon): DockOption =>
 
 const catalogIcons: Record<string, LucideIcon> = {
   res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2, res_half_timbered: House, res_cozy_estate: House,
-  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape,
-  ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse,
+  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape, com_market_hall: Store,
+  ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse, ind_winery: Grape,
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
-  lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church,
+  lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church, park_rose_garden: Trees,
   utl_wind: Wind, utl_solar: Sun, utl_water: Droplets,
   field_wheat: TreePine, field_plow: Route,
 }

@@ -182,6 +182,7 @@ const TAILLIGHT_DAY = new THREE.Color('#5b2928')
 const TAILLIGHT_NIGHT = new THREE.Color('#ff3528')
 export const nightSignMaterial = new THREE.MeshStandardMaterial({ color: '#5cb3e6', emissive: '#42aaff', emissiveIntensity: 0, roughness: 1 })
 export const cinemaSignMaterial = new THREE.MeshStandardMaterial({ color: '#e8292e', emissive: '#ff2525', emissiveIntensity: 0, roughness: 1 })
+export const townHallClockMaterial = new THREE.MeshStandardMaterial({ color: '#fff1c2', emissive: '#efae48', emissiveIntensity: 0, roughness: 1 })
 
 export function getCurrentNightLevel(): number {
   return currentNightLevel
@@ -198,6 +199,7 @@ export function applyNightLevel(level: number): void {
   vehicleTaillightMaterial.color.lerpColors(TAILLIGHT_DAY, TAILLIGHT_NIGHT, level)
   nightSignMaterial.emissiveIntensity = level * 2.5
   cinemaSignMaterial.emissiveIntensity = level * 3
+  townHallClockMaterial.emissiveIntensity = level * 1.8
 }
 
 /** Зерно для выбора, какие окна здания горят ночью (задаётся тайлом). */

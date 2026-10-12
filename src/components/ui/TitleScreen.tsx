@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame } from '@react-three/fiber'
 import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { TileModel } from '../3d/BuildingMeshes'
@@ -7,7 +7,7 @@ import { TileType } from '../../types/city'
 import { useI18n } from '../../i18n/I18nProvider'
 
 function ShowcaseCity() {
-  const { city, parks, trees, hills } = useMemo(() => {
+  const { city, parks, trees, hills, infill } = useMemo(() => {
     const cells: { x: number; z: number; type: TileType }[] = []
     const roads = new Set<string>()
     // Two cross streets and three side streets create distinct blocks, with
@@ -17,11 +17,10 @@ function ShowcaseCity() {
     for (let z = -13; z <= -2; z += 1) roads.add(`0,${z}`)
     for (let z = 2; z <= 11; z += 1) roads.add(`0,${z}`)
 
-    // Compact house groups (32 homes total) face the streets and leave small
-    // internal gardens between the blocks.
-    const northGroups: [number, number][] = [-10, -9, -8, -4, -3, 2, 3, 8, 9, 10].flatMap(x => [[x, -10], [x, -8]] as [number, number][])
-    const southGroups: [number, number][] = [-10, -9, -4, -3, 2, 3, 9, 10].flatMap(x => [[x, 6], [x, 8]] as [number, number][])
-    const homes = [...northGroups, ...southGroups]
+    // Continuous street walls: the facades hug both sides of the cross streets,
+    // with short planted courts tucked into the quieter gaps behind them.
+    const frontageX = [-11, -10, -9, -8, -7, -5, -4, -3, -2, -1, 1, 2, 3, 4, 5, 7, 8, 9, 10, 11]
+    const homes: [number, number][] = frontageX.flatMap(x => [-6, -4, 3, 5].map(z => [x, z] as [number, number]))
     const hallFootprint = new Set(['-2,-4', '-1,-4', '-2,-3', '-1,-3'])
     const parkOrigins: [number, number][] = [[-11, 6], [9, 6]]
     const parkCells = new Set(parkOrigins.flatMap(([x, z]) => Array.from({ length: 4 }, (_, i) => `${x + (i % 2)},${z + Math.floor(i / 2)}`)))
@@ -61,8 +60,17 @@ function ShowcaseCity() {
       const radius = 23 + (i % 3) * 2
       return { x: Math.cos(angle) * radius, z: Math.sin(angle) * radius, scale: [3.4 + (i % 2), 0.75 + (i % 3) * 0.18, 2.8 + (i % 4) * 0.45] as [number, number, number] }
     })
+    const occupiedKeys = new Set(cells.map(({ x, z }) => `${x},${z}`))
     const roadKeys = new Set(cells.filter(cell => cell.type === TileType.ROAD).map(({ x, z }) => `${x},${z}`))
-    return { parks: parkOrigins, trees, hills, city: cells.map((cell, i) => ({ ...cell, i,
+    const infill: { x: number; z: number; kind: number }[] = []
+    for (let z = -11; z <= 9; z += 1) for (let x = -11; x <= 11; x += 1) {
+      const key = `${x},${z}`
+      if (occupiedKeys.has(key) || parkCells.has(key) || piazzaCells.has(key)) continue
+      const neighbors = [[x - 1, z], [x + 1, z], [x, z - 1], [x, z + 1]].filter(([nx, nz]) => occupiedKeys.has(`${nx},${nz}`)).length
+      const seed = Math.abs(Math.sin(x * 17.31 + z * 41.77) * 43758.5453) % 1
+      if (neighbors >= 2 && seed > 0.78) infill.push({ x, z, kind: Math.floor(seed * 10) % 2 })
+    }
+    return { parks: parkOrigins, trees, hills, infill, city: cells.map((cell, i) => ({ ...cell, i,
       north: roadKeys.has(`${cell.x},${cell.z - 1}`), south: roadKeys.has(`${cell.x},${cell.z + 1}`),
       east: roadKeys.has(`${cell.x + 1},${cell.z}`), west: roadKeys.has(`${cell.x - 1},${cell.z}`),
     })) }
@@ -90,7 +98,10 @@ function ShowcaseCity() {
         </group>
       ))}
       {parks.map(([x, z], i) => <ShowcasePark key={`park-${i}`} position={[x, 0, z]} />)}
+      {[[-3, -9.25], [3, -9.25], [-3, 7.2], [3, 7.2]].map(([x, z], i) => <ShowcaseCourtyard key={`courtyard-${i}`} position={[x, 0, z]} variant={i} />)}
+      {infill.map(({ x, z, kind }, i) => <MicroInfill key={`infill-${x}-${z}-${i}`} position={[x, 0, z]} kind={kind} />)}
       <ShowcasePiazza />
+      <ShowcaseTraffic />
       <Crosswalk position={[-0.6, 0.045, 4]} />
       <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
@@ -153,6 +164,67 @@ function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, nu
     </group>)}
     <mesh position={[1, 0.17, 1]} castShadow><boxGeometry args={[0.48, 0.07, 0.16]} /><meshStandardMaterial color="#d3bd91" /></mesh>
     <mesh position={[1, 0.27, 0.94]} castShadow><boxGeometry args={[0.48, 0.16, 0.045]} /><meshStandardMaterial color="#79583a" /></mesh>
+  </group>
+}
+
+function ShowcaseCourtyard({ position, variant }: { position: [number, number, number]; variant: number }) {
+  const leaf = ['#d97724', '#eab308', '#b43418', '#ca8a04'][variant % 4]
+  return <group position={position}>
+    <mesh position={[0, 0.018, 0]} receiveShadow><boxGeometry args={[1.72, 0.035, 1.5]} /><meshToonMaterial color="#8b9454" /></mesh>
+    <mesh position={[0, 0.042, 0]}><boxGeometry args={[1.58, 0.012, 0.12]} /><meshToonMaterial color="#c8b99d" /></mesh>
+    <mesh position={[0, 0.043, 0]}><boxGeometry args={[0.12, 0.014, 1.42]} /><meshToonMaterial color="#c8b99d" /></mesh>
+    {[-0.76, 0.76].map(x => <mesh key={x} position={[x, 0.09, 0]} castShadow><boxGeometry args={[0.035, 0.12, 1.48]} /><meshToonMaterial color="#79583a" /></mesh>)}
+    <group position={[variant % 2 ? 0.48 : -0.48, 0, variant % 2 ? -0.36 : 0.36]}>
+      <mesh position={[0, 0.44, 0]} castShadow><cylinderGeometry args={[0.045, 0.07, 0.8, 6]} /><meshToonMaterial color="#493421" /></mesh>
+      <mesh position={[0, 0.98, 0]} castShadow><icosahedronGeometry args={[0.4, 1]} /><meshToonMaterial color={leaf} /></mesh>
+      <mesh position={[0.2, 1.12, -0.06]} castShadow><icosahedronGeometry args={[0.24, 1]} /><meshToonMaterial color="#ca8a04" /></mesh>
+    </group>
+    <mesh position={[0.45, 0.13, -0.5]} castShadow><boxGeometry args={[0.38, 0.06, 0.14]} /><meshToonMaterial color="#79583a" /></mesh>
+    {[-0.46, -0.28].map(x => <mesh key={x} position={[x, 0.09, -0.56]} castShadow><sphereGeometry args={[0.09, 7, 5]} /><meshToonMaterial color="#ea580c" /></mesh>)}
+  </group>
+}
+
+function MicroInfill({ position, kind }: { position: [number, number, number]; kind: number }) {
+  return <group position={position}>
+    {kind === 0 ? <>
+      <mesh position={[0, 0.035, 0]}><boxGeometry args={[0.9, 0.06, 0.9]} /><meshToonMaterial color="#82904f" /></mesh>
+      <mesh position={[0, 0.12, -0.39]}><boxGeometry args={[0.82, 0.16, 0.045]} /><meshToonMaterial color="#79583a" /></mesh>
+      <mesh position={[-0.22, 0.17, 0.12]}><sphereGeometry args={[0.11, 7, 5]} /><meshToonMaterial color="#ea580c" /></mesh>
+      <mesh position={[0.24, 0.21, -0.08]}><icosahedronGeometry args={[0.18, 0]} /><meshToonMaterial color="#526b37" /></mesh>
+    </> : <>
+      <mesh position={[0, 0.025, 0]}><boxGeometry args={[0.94, 0.05, 0.94]} /><meshToonMaterial color="#777b79" /></mesh>
+      {[-0.22, 0.02].map(x => <mesh key={x} position={[x, 0.14, -0.12]} castShadow><boxGeometry args={[0.18, 0.22, 0.2]} /><meshToonMaterial color="#4d5657" /></mesh>)}
+      <mesh position={[0.28, 0.38, 0.22]} castShadow><cylinderGeometry args={[0.018, 0.028, 0.72, 6]} /><meshToonMaterial color="#34332e" /></mesh>
+      <mesh position={[0.28, 0.77, 0.22]}><icosahedronGeometry args={[0.075, 0]} /><meshBasicMaterial color="#ffe08a" /></mesh>
+    </>}
+  </group>
+}
+
+function ShowcaseTraffic() {
+  const cars = [
+    { lane: 'x' as const, fixed: -5.28, phase: 0, color: '#b43418' },
+    { lane: 'x' as const, fixed: 4.28, phase: 4.4, color: '#356b78' },
+    { lane: 'x' as const, fixed: -4.72, phase: 11.2, color: '#d6a12e' },
+    { lane: 'x' as const, fixed: 3.72, phase: 17.3, color: '#536c47' },
+    { lane: 'z' as const, fixed: -6.28, phase: 2.3, color: '#724d74' },
+    { lane: 'z' as const, fixed: 6.28, phase: 8.1, color: '#d27c34' },
+    { lane: 'z' as const, fixed: 11.72, phase: 14.5, color: '#e7dfcf' },
+  ]
+  return <group>{cars.map((car, i) => <ShowcaseCar key={i} {...car} />)}</group>
+}
+
+function ShowcaseCar({ lane, fixed, phase, color }: { lane: 'x' | 'z'; fixed: number; phase: number; color: string }) {
+  const ref = useRef<THREE.Group>(null)
+  useFrame(({ clock }) => {
+    if (!ref.current) return
+    const along = -11.5 + ((clock.elapsedTime * 0.48 + phase) % 23)
+    ref.current.position.set(lane === 'x' ? along : fixed, 0.08, lane === 'z' ? along : fixed)
+    ref.current.rotation.y = lane === 'z' ? Math.PI / 2 : 0
+  })
+  return <group ref={ref}>
+    <mesh position={[0, 0.1, 0]} castShadow><boxGeometry args={[0.34, 0.13, 0.54]} /><meshToonMaterial color={color} /><Edges color="#261c14" threshold={28} /></mesh>
+    <mesh position={[0, 0.2, -0.04]}><boxGeometry args={[0.25, 0.12, 0.25]} /><meshToonMaterial color="#9bb4b8" /></mesh>
+    {[-1, 1].flatMap(side => [-1, 1].map(end => <mesh key={`${side}:${end}`} position={[side * 0.17, 0.06, end * 0.17]} rotation={[0, 0, Math.PI / 2]}><cylinderGeometry args={[0.055, 0.055, 0.035, 8]} /><meshStandardMaterial color="#262626" /></mesh>))}
   </group>
 }
 

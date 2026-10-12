@@ -356,7 +356,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -810,6 +810,7 @@ function DisplayCar({ position, color }: { position: Vec3; color: string }) {
 
 /** Завод: серый цех с пилообразной крышей, кирпичная труба и бак. */
 export function Industrial({ catalogId }: { catalogId?: string }) {
+  if (catalogId === 'ind_winery') return <WineryMesh />
   return (
     <group>
       <IndustrialBase />
@@ -835,6 +836,42 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
       ))}
     </group>
   )
+}
+
+function WineryMesh() {
+  return <group>
+    <Box size={[1.94, 0.06, 0.94]} position={[0, 0.03, 0]} color="#484b49" />
+    <Box size={[1.72, 0.48, 0.72]} position={[-0.04, 0.32, -0.02]} color="#62564b" />
+    <Box size={[1.82, 0.08, 0.82]} position={[-0.04, 0.6, -0.02]} color="#56616a" />
+    {[-0.7, -0.35, 0, 0.35, 0.7].map(x => <Box key={`roof-rib-${x}`} size={[0.025, 0.04, 0.84]} position={[x, 0.655, -0.02]} color="#aeb6b6" />)}
+    <Box size={[0.54, 0.32, 0.035]} position={[0.46, 0.24, 0.35]} color="#393f42" />
+    <Box size={[0.4, 0.24, 0.025]} position={[0.46, 0.21, 0.373]} color="#252c30" />
+    {[-0.68, -0.36, -0.04].map(x => <group key={`cask-${x}`} position={[x, 0, 0.53]}>
+      <Cylinder radius={0.12} radiusTop={0.105} height={0.28} segments={12} position={[0, 0.15, 0]} color="#83552f" />
+      {[-0.1, 0.1].map(y => <Cylinder key={y} radius={0.125} height={0.025} segments={12} position={[0, 0.15 + y, 0]} color="#5f4634" />)}
+    </group>)}
+    <DisplayCar position={[0.68, 0, 0.75]} color="#9b4934" />
+    {[-0.52, 0.12].map(x => <Window key={x} position={[x, 0.33, 0.35]} width={0.24} height={0.18} glass="#5a7777" />)}
+  </group>
+}
+
+function MarketHallMesh() {
+  return <group>
+    <Box size={[1.94, 0.06, 0.94]} position={[0, 0.03, 0]} color="#c8b99d" />
+    <Box size={[1.78, 0.42, 0.68]} position={[0, 0.28, 0]} color="#e1d4bc" />
+    <Box size={[1.9, 0.055, 0.82]} position={[0, 0.53, 0]} color="#78563c" />
+    {[-0.82, -0.42, 0, 0.42, 0.82].map(x => <group key={x}>
+      <Box size={[0.035, 0.62, 0.035]} position={[x, 0.33, -0.34]} color="#554536" />
+      <Box size={[0.035, 0.62, 0.035]} position={[x, 0.33, 0.34]} color="#554536" />
+      <Box size={[0.035, 0.35, 0.035]} position={[x, 0.69, 0]} color="#554536" />
+    </group>)}
+    {[-0.62, 0, 0.62].map((x, i) => <group key={`stall-${x}`} position={[x, 0.09, 0.08]}>
+      <Box size={[0.46, 0.13, 0.28]} position={[0, 0.16, 0]} color="#9b4934" />
+      <Box size={[0.5, 0.035, 0.32]} position={[0, 0.27, 0]} color={i % 2 ? '#e8dfca' : '#b43418'} />
+      {[-0.12, 0, 0.12].map((x2, j) => <mesh key={x2} position={[x2, 0.24, 0.02]} castShadow><sphereGeometry args={[0.055, 7, 5]} /><meshToonMaterial color={j % 2 ? '#eab308' : '#b43418'} /></mesh>)}
+    </group>)}
+    <Box size={[1.76, 0.04, 0.025]} position={[0, 0.48, 0.36]} color="#52796f" />
+  </group>
 }
 
 /** Водонапорная башня: бак на четырёх опорах с красной конической крышей. */
@@ -1538,6 +1575,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       if (catalogId === 'com_cinema_cosmos') {
         model = <CinemaCosmosMesh />
         w = 3; h = 2
+      } else if (catalogId === 'com_market_hall') {
+        model = <MarketHallMesh />
+        w = 2; h = 1
       } else {
         model = catalogId === 'com_mall' ? <group scale={[1.8, 1, 1]}><Commercial catalogId={catalogId} /></group> : <Commercial catalogId={catalogId} />
         if (catalogId === 'com_mall') w = 2
@@ -1550,6 +1590,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       break
     case TileType.INDUSTRIAL:
       model = <Industrial catalogId={catalogId} />
+      if (catalogId === 'ind_winery') { w = 2; h = 1 }
       dust = 12
       needsWater = true
       needsPower = true
@@ -1571,6 +1612,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
         w = 2; h = 2
       } else if (catalogId === 'lnd_church') model = <CatalogLandmarkMesh catalogId={catalogId} />
       else if (catalogId === 'lnd_park') model = <FountainSquareMesh />
+      else if (catalogId === 'park_rose_garden') model = <RoseGardenMesh />
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />
@@ -1731,12 +1773,28 @@ export function LargeParkMesh() {
   )
 }
 
+function RoseGardenMesh() {
+  return <group>
+    <Box size={[0.98, 0.05, 0.98]} position={[0, 0.025, 0]} color="#b9aa8f" />
+    <Box size={[0.86, 0.025, 0.86]} position={[0, 0.065, 0]} color="#82904f" />
+    <Box size={[0.76, 0.018, 0.13]} position={[0, 0.09, 0]} color="#c8b99d" />
+    <Box size={[0.13, 0.018, 0.76]} position={[0, 0.09, 0]} color="#c8b99d" />
+    {[-0.32, 0.32].flatMap(x => [-0.32, 0.32].map(z => <Box key={`${x}:${z}`} size={[0.22, 0.19, 0.22]} position={[x, 0.17, z]} color="#526b37" />))}
+    {[-0.34, 0.34].flatMap(x => [-0.34, 0.34].map(z => <mesh key={`rose-${x}:${z}`} position={[x, 0.29, z]}><icosahedronGeometry args={[0.09, 0]} /><meshToonMaterial color={x * z > 0 ? '#b43418' : '#d97724'} /></mesh>))}
+    {/* White iron gazebo in the garden center. */}
+    <Cylinder radius={0.23} height={0.035} segments={12} position={[0, 0.12, 0]} color="#eee9dc" />
+    {[0, 1, 2, 3].map(i => <Cylinder key={i} radius={0.018} height={0.5} segments={6} position={[Math.cos(i * Math.PI / 2) * 0.18, 0.38, Math.sin(i * Math.PI / 2) * 0.18]} color="#f5f1e8" />)}
+    <Cone radius={0.26} height={0.22} segments={8} position={[0, 0.73, 0]} color="#f5f1e8" />
+    {[-0.38, 0.38].map(x => <Box key={`bench-${x}`} size={[0.22, 0.045, 0.07]} position={[x, 0.12, 0.05]} color="#79583a" />)}
+  </group>
+}
+
 export function CityHallMesh({ onClick }: { onClick?: () => void }) {
   return (
-    <group position={[0.5, 0, 0.5]} onClick={onClick}>
+    <group onClick={onClick}>
       <Box size={[1.98, 0.04, 1.98]} position={[0, 0.02, 0]} color="#51483f" />
       <Box size={[1.96, 0.22, 1.96]} position={[0, 0.13, 0]} color="#c8bfb0" />
-      <Box size={[1.78, 0.75, 1.78]} position={[0, 0.62, 0]} color="#dfd7c5" />
+      <Box size={[1.78, 0.75, 1.78]} position={[0, 0.62, 0]} color="#d4a373" />
       {/* Front arcade: dark recesses framed by pale stone piers. */}
       {[-0.55, 0, 0.55].map((x) => (
         <group key={x} position={[x, 0.34, 0.895]}>
@@ -1746,9 +1804,9 @@ export function CityHallMesh({ onClick }: { onClick?: () => void }) {
           <Box size={[0.06, 0.58, 0.08]} position={[0.18, 0, 0]} color="#eee4d4" />
         </group>
       ))}
-      <Box size={[0.62, 1.8, 0.62]} position={[0, 1.9, 0]} color="#dfd7c5" />
-      <Box size={[0.72, 0.13, 0.72]} position={[0, 2.83, 0]} color="#b9a991" />
-      <Box size={[0.78, 0.42, 0.78]} position={[0, 3.1, 0]} color="#cbbca5" />
+      <Box size={[0.62, 1.8, 0.62]} position={[0, 1.9, 0]} color="#d4a373" />
+      <Box size={[0.72, 0.13, 0.72]} position={[0, 2.83, 0]} color="#52796f" />
+      <Box size={[0.78, 0.42, 0.78]} position={[0, 3.1, 0]} color="#c28f61" />
       {[-0.16, 0.16].map((x) => (
         <group key={`tower-window-${x}`} position={[x, 2.25, 0.315]}>
           <Box size={[0.1, 0.38, 0.025]} position={[0, 0, 0]} color="#343b45" />
@@ -1759,11 +1817,11 @@ export function CityHallMesh({ onClick }: { onClick?: () => void }) {
       ))}
       {/* Clock dial, rim and hands on the front of the tower. */}
       <Cylinder radius={0.21} height={0.04} segments={24} position={[0, 3.1, 0.405]} rotation={[Math.PI / 2, 0, 0]} color="#57483b" />
-      <Cylinder radius={0.17} height={0.045} segments={24} position={[0, 3.1, 0.431]} rotation={[Math.PI / 2, 0, 0]} color="#f7f0df" />
+      <Cylinder radius={0.17} height={0.045} segments={24} position={[0, 3.1, 0.431]} rotation={[Math.PI / 2, 0, 0]} color="#f7f0df" material={townHallClockMaterial} />
       <Box size={[0.018, 0.11, 0.018]} position={[0, 3.13, 0.46]} color="#252a31" outline={false} />
       <Box size={[0.075, 0.018, 0.018]} position={[0.025, 3.085, 0.46]} rotation={[0, 0, -0.5]} color="#252a31" outline={false} />
-      <Cone radius={0.49} height={0.98} segments={4} position={[0, 3.8, 0]} rotation={[0, Math.PI / 4, 0]} color="#343e4e" />
-      <Cylinder radius={0.025} radiusTop={0.005} height={0.44} segments={6} position={[0, 4.53, 0]} color="#777c80" />
+      <Cone radius={0.49} height={0.98} segments={4} position={[0, 3.8, 0]} rotation={[0, Math.PI / 4, 0]} color="#52796f" />
+      <Cylinder radius={0.025} radiusTop={0.005} height={0.44} segments={6} position={[0, 4.53, 0]} color="#52796f" />
       <Box size={[0.23, 0.025, 0.015]} position={[0.06, 4.58, 0]} color="#a0a0a0" />
     </group>
   )
