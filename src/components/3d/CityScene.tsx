@@ -233,7 +233,7 @@ export const GroundSlab = memo(function GroundSlab() {
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <planeGeometry args={[350, 350]} />
-        <meshToonMaterial color="#cfb997" />
+        <meshToonMaterial color="#d8c7a5" />
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -251,7 +251,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     const trunkGeometry = new THREE.CylinderGeometry(0.075, 0.12, 0.9, 6)
     const crownGeometry = new THREE.IcosahedronGeometry(0.7, 1)
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#493629', roughness: 1 })
-    const crownMaterial = new THREE.MeshToonMaterial({ color: '#ea580c' }) as THREE.MeshToonMaterial & { flatShading: boolean }
+    const crownMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' }) as THREE.MeshToonMaterial & { flatShading: boolean }
     crownMaterial.flatShading = true
     trunkMaterial.fog = false
     crownMaterial.fog = false
@@ -265,14 +265,31 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     trunks.frustumCulled = false
     crowns.frustumCulled = false
     const transform = new THREE.Object3D()
-    // Two staggered, overlapping woodland belts form a continuous natural edge
-    // beyond the 64-cell buildable square. The playfield stays clear for roads.
-    const clusters: [number, number][] = Array.from({ length: 32 }, (_, index) => {
-      const angle = (index / 32) * Math.PI * 2
-      const radius = index % 2 ? 56 : 43
-      return [Math.cos(angle) * radius, Math.sin(angle) * radius]
-    })
-    const greens = ['#ea580c', '#c02626', '#eab308', '#854d0e', '#c25b2a']
+    const hillSpecs: [number, number, number, number, number][] = [
+      [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
+      [-78, -12, 14, 4.2, 11], [80, 20, 15, 4.8, 12], [-65, 68, 18, 5, 13], [8, 82, 20, 4.5, 14], [70, 64, 16, 4.1, 12],
+    ]
+    // Natural tree belts follow the feet of individual hills rather than
+    // forming a circular wall around the city.
+    const clusters: [number, number][] = hillSpecs.flatMap(([x, z, sx, , sz]) => [
+      [x - sx * 0.55, z + sz * 0.25], [x + sx * 0.55, z + sz * 0.25], [x, z + sz * 0.62],
+    ])
+    const riverCenter = (x: number) => -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
+    const riverWidth = 3.35 * 2
+    const distanceToRiver = (x: number, z: number) => {
+      let minDistanceSquared = Number.POSITIVE_INFINITY
+      // Find the nearest point on the curved river centerline with a small
+      // local sample; this accounts for the channel's changing tangent.
+      for (let sample = -4; sample <= 4; sample += 1) {
+        const riverX = x + sample
+        const dx = riverX - x
+        const dz = riverCenter(riverX) - z
+        minDistanceSquared = Math.min(minDistanceSquared, dx * dx + dz * dz)
+      }
+      return Math.sqrt(minDistanceSquared)
+    }
+    const insideBuildZone = (x: number, z: number) => Math.abs(x) < GRID_SIZE / 2 + 2 && Math.abs(z) < GRID_SIZE / 2 + 2
+    const foliagePalette = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824']
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
@@ -285,7 +302,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       do {
         x = cluster[0] + (random() + random() + random() - 1.5) * 6
         z = cluster[1] + (random() + random() + random() - 1.5) * 6
-      } while (Math.abs(x) < GRID_SIZE / 2 + 2 && Math.abs(z) < GRID_SIZE / 2 + 2)
+      } while (insideBuildZone(x, z) || distanceToRiver(x, z) < riverWidth / 2 + 3)
       const scale = 0.7 + random() * 1.05
       const yaw = random() * Math.PI * 2
       transform.position.set(x, 0.45 * scale, z)
@@ -297,7 +314,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       transform.scale.set(scale * (0.85 + random() * 0.3), scale * (0.9 + random() * 0.4), scale * (0.85 + random() * 0.3))
       transform.updateMatrix()
       crowns.setMatrixAt(i, transform.matrix)
-      crowns.setColorAt(i, new THREE.Color(greens[Math.floor(random() * greens.length)]))
+      crowns.setColorAt(i, new THREE.Color(foliagePalette[Math.floor(random() * foliagePalette.length)]))
     }
     trunks.instanceMatrix.needsUpdate = true
     crowns.instanceMatrix.needsUpdate = true
@@ -306,7 +323,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     crowns.computeBoundingSphere()
     root.add(trunks, crowns)
 
-    const leafColors = ['#ea580c', '#c02626', '#eab308', '#854d0e']
+    const leafColors = foliagePalette
     const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), 420)
     leaves.frustumCulled = false
     for (let i = 0; i < leaves.count; i += 1) {
@@ -323,10 +340,6 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     root.add(leaves)
 
     const hillColors = ['#c49a45', '#a36f32', '#8b7355']
-    const hillSpecs = [
-      [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
-      [-78, -12, 14, 4.2, 11], [80, 20, 15, 4.8, 12], [-65, 68, 18, 5, 13], [8, 82, 20, 4.5, 14], [70, 64, 16, 4.1, 12],
-    ]
     hillSpecs.forEach(([x, z, sx, sy, sz], index) => {
       const hillMaterial = new THREE.MeshToonMaterial({ color: hillColors[index % hillColors.length] })
       ;(hillMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
@@ -352,7 +365,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     })
     // Draw vineyard terraces as two instanced layers so the distant slopes read
     // as cultivated land without adding hundreds of separate draw calls.
-    const vineColors = ['#ea580c', '#ca8a04', '#c02626', '#eab308']
+    const vineColors = ['#d99b26', '#e5a93c', '#c86d24', '#963824']
     const rowMesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 0.045, 0.1),
       new THREE.MeshToonMaterial({ color: '#795b36' }),
@@ -398,15 +411,14 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     rowMesh.castShadow = true
     leafMesh.castShadow = true
     root.add(rowMesh, leafMesh)
-    const riverCenter = (x: number) => -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
-    const ribbon = (halfWidth: number, side = 0, edgeOffset = 0) => {
+    const ribbon = (halfWidth: number, baseY = 0, edgeOffset = 0) => {
       const positions: number[] = []
       const indices: number[] = []
       const samples = 180
       for (let i = 0; i <= samples; i += 1) {
         const x = -105 + (210 * i) / samples
         const z = riverCenter(x)
-        positions.push(x, 0.012 + side * 0.001, z + edgeOffset - halfWidth, x, 0.012 + side * 0.001, z + edgeOffset + halfWidth)
+        positions.push(x, baseY, z + edgeOffset - halfWidth, x, baseY, z + edgeOffset + halfWidth)
         if (i < samples) {
           const a = i * 2
           indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
@@ -418,16 +430,48 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       geometry.computeVertexNormals()
       return geometry
     }
-    const riverBanks = new THREE.Mesh(ribbon(4.05), new THREE.MeshToonMaterial({ color: '#c49a45', side: THREE.DoubleSide }))
-    const river = new THREE.Mesh(ribbon(3.35, 1), new THREE.MeshToonMaterial({ color: '#2b6cb0', side: THREE.DoubleSide }))
+    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.004), new THREE.MeshToonMaterial({ color: '#c9ad7f', side: THREE.DoubleSide }))
+    const river = new THREE.Mesh(ribbon(3.35, -0.3), new THREE.MeshToonMaterial({ color: '#1d5d8a', transparent: true, opacity: 0.94, side: THREE.DoubleSide }))
     riverBanks.receiveShadow = true
     river.receiveShadow = true
     root.add(riverBanks, river)
     for (const side of [-1, 1]) {
-      const foam = new THREE.Mesh(ribbon(0.26, 2, side * 3.48), new THREE.MeshBasicMaterial({ color: '#f1eadb', transparent: true, opacity: 0.82, side: THREE.DoubleSide }))
+      const foam = new THREE.Mesh(ribbon(0.18, -0.27, side * 3.43), new THREE.MeshBasicMaterial({ color: '#e2e8f0', transparent: true, opacity: 0.78, side: THREE.DoubleSide }))
       // Pale ribbons mark the waterline with a soft illustrated foam edge.
       root.add(foam)
     }
+    // Sparse low-poly stones and golden reeds articulate the bank and make
+    // the lowered channel read as a riverbed instead of a flat blue stripe.
+    const stoneCount = 180
+    const stones = new THREE.InstancedMesh(
+      new THREE.IcosahedronGeometry(0.23, 0),
+      new THREE.MeshToonMaterial({ color: '#77766f' }),
+      stoneCount,
+    )
+    const reeds = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(0.045, 0.46, 5),
+      new THREE.MeshToonMaterial({ color: '#c89a35' }),
+      stoneCount,
+    )
+    for (let i = 0; i < stoneCount; i += 1) {
+      const x = -102 + random() * 204
+      const side = i % 2 ? -1 : 1
+      const bankZ = riverCenter(x) + side * (3.9 + random() * 2.2)
+      transform.position.set(x, 0.08 + random() * 0.08, bankZ)
+      transform.rotation.set(random(), random() * Math.PI, random())
+      transform.scale.set(0.5 + random() * 0.8, 0.4 + random() * 0.6, 0.6 + random() * 0.7)
+      transform.updateMatrix()
+      stones.setMatrixAt(i, transform.matrix)
+      transform.position.set(x + (random() - 0.5) * 0.3, 0.2, bankZ + side * 0.45)
+      transform.rotation.set(0.08, random() * Math.PI, 0.1 + random() * 0.25)
+      transform.scale.setScalar(0.55 + random() * 0.8)
+      transform.updateMatrix()
+      reeds.setMatrixAt(i, transform.matrix)
+    }
+    stones.instanceMatrix.needsUpdate = true
+    reeds.instanceMatrix.needsUpdate = true
+    stones.castShadow = true
+    root.add(stones, reeds)
     return root
   }, [])
 

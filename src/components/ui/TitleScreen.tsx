@@ -180,7 +180,7 @@ function ShowcaseSceneReady({ onReady }: { onReady: () => void }) {
   return null
 }
 
-const forestLeafMaterials = ['#ea580c', '#c02626', '#eab308', '#ca8a04'].map((color) => {
+const forestLeafMaterials = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824'].map((color) => {
   const material = new THREE.MeshToonMaterial({ color })
   ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
   return material
@@ -194,21 +194,21 @@ function ShowcaseTree({ x, z, scale, pine, seed }: { x: number; z: number; scale
     </mesh>
     {pine ? <>
       {[0.9, 1.35, 1.75].map((y, i) => <mesh key={y} position={[0, y, 0]} rotation={[0.1 * i, seed * 4 + i, 0]} castShadow receiveShadow>
-        <icosahedronGeometry args={[0.58 - i * 0.095, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + i) % 4]} attach="material" /><Edges color="#261c14" threshold={28} />
+        <icosahedronGeometry args={[0.58 - i * 0.095, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 10) + i) % 10]} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>)}
     </> : <>
       <mesh position={[0, 1.38, 0]} rotation={[0.15, seed * 5, 0]} castShadow receiveShadow>
         <icosahedronGeometry args={[0.74, 1]} /><primitive object={crown} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>
       <mesh position={[0.32, 1.62, -0.1]} rotation={[0.3, seed * 8, 0]} castShadow receiveShadow>
-        <icosahedronGeometry args={[0.42, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 4) + 1) % 4]} attach="material" /><Edges color="#261c14" threshold={28} />
+        <icosahedronGeometry args={[0.42, 1]} /><primitive object={forestLeafMaterials[(Math.floor(seed * 10) + 1) % 10]} attach="material" /><Edges color="#261c14" threshold={28} />
       </mesh>
     </>}
   </group>
 }
 
 function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
-  const foliage = ['#ea580c', '#c02626', '#eab308', '#ca8a04']
+  const foliage = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824']
   const leafMaterials = useMemo(() => foliage.map(color => {
     const material = new THREE.MeshToonMaterial({ color })
     ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
@@ -239,7 +239,7 @@ function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, nu
 }
 
 function GardenCell({ position, variant }: { position: [number, number, number]; variant: number }) {
-  const autumn = ['#ea580c', '#c02626', '#eab308', '#ca8a04']
+  const autumn = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#963824', '#963824']
   const leaf = autumn[variant % autumn.length]
   return <group position={position}>
     <mesh position={[0, 0.014, 0]} receiveShadow><boxGeometry args={[0.96, 0.028, 0.96]} /><meshToonMaterial color={variant % 5 === 0 ? '#72894b' : '#839450'} /></mesh>
@@ -262,7 +262,7 @@ function ShowcaseRoundabout({ position, variant }: { position: [number, number, 
     <mesh position={[0, 0.079, 0]} receiveShadow><cylinderGeometry args={[0.42, 0.42, 0.025, 10]} /><meshToonMaterial color="#76864a" /></mesh>
     <group position={[0, 0.09, 0]}>
       <mesh position={[0, 0.24, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 0.45, 5]} /><meshToonMaterial color="#493421" /></mesh>
-      <mesh position={[0, 0.54, 0]} castShadow><icosahedronGeometry args={[0.28, 1]} /><meshToonMaterial color={['#ea580c', '#c02626', '#eab308', '#ca8a04'][variant]} /></mesh>
+      <mesh position={[0, 0.54, 0]} castShadow><icosahedronGeometry args={[0.28, 1]} /><meshToonMaterial color={['#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824', '#d99b26'][variant % 10]} /></mesh>
     </group>
   </group>
 }

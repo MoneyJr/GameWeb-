@@ -321,7 +321,7 @@ function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotat
 }
 
 function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) {
-  const foliage = ['#854d0e', '#ea580c', '#c02626']
+  const foliage = ['#d99b26', '#c86d24', '#963824']
   return (
     <group position={position} scale={[scale, scale, scale]}>
       <Cylinder radius={0.1} radiusTop={0.06} height={0.75} segments={6} position={[0, 0.375, 0]} color="#3a281c" />
