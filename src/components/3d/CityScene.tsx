@@ -33,6 +33,14 @@ interface PannableControls {
 /** Значение "кнопка ничего не делает" для OrbitControls (в типах drei null не допускается). */
 const MOUSE_NONE = -1 as THREE.MOUSE
 
+function terrainHeightAt(x: number, z: number): number {
+  const distance = Math.hypot(x, z)
+  const t = THREE.MathUtils.clamp((distance - 80) / 520, 0, 1)
+  const rise = t * t * (3 - 2 * t)
+  const distantRidges = Math.max(0, Math.sin(distance * 0.035 + Math.atan2(z, x) * 3))
+  return rise * (8 + distantRidges * 8)
+}
+
 function SceneCompiler({ onReady }: { onReady: () => void }) {
   const { gl, scene, camera } = useThree()
   useEffect(() => {
@@ -74,10 +82,14 @@ function StableMapControls({
     controls.screenSpacePanning = false
     controls.panSpeed = 1.2
     controls.zoomSpeed = 1
-    controls.minZoom = 20
-    controls.maxZoom = 250
+    // MapControls ignores distance limits for an orthographic camera, so keep
+    // equivalent zoom bounds as well as the perspective-camera bounds.
+    controls.minDistance = 18
+    controls.maxDistance = 110
+    controls.minZoom = 16
+    controls.maxZoom = 160
     controls.minPolarAngle = ISO_POLAR_ANGLE
-    controls.maxPolarAngle = ISO_POLAR_ANGLE
+    controls.maxPolarAngle = Math.PI / 2.25
     controls.target.set(...target)
     controls.mouseButtons = {
       LEFT: MOUSE_NONE,
@@ -219,7 +231,30 @@ function cellsBetween(from: Cell, to: Cell): Cell[] {
 /*  Мир: земля, сетка и все построенные тайлы                                   */
 /* -------------------------------------------------------------------------- */
 
-export const GroundSlab = memo(function GroundSlab() {
+export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: number }) {
+  const terrainMaterial = useRef<THREE.MeshToonMaterial>(null)
+  const displayedNight = useRef(0)
+  const dayTerrainColor = useMemo(() => new THREE.Color('#d8c7a5'), [])
+  const nightTerrainColor = useMemo(() => new THREE.Color('#1b2432'), [])
+  const terrainColor = useMemo(() => new THREE.Color(), [])
+  useFrame((_, delta) => {
+    const targetNight = calcNightLevel(minutes)
+    displayedNight.current += (targetNight - displayedNight.current) * (1 - Math.exp(-delta * 2.2))
+    terrainColor.copy(dayTerrainColor).lerp(nightTerrainColor, displayedNight.current)
+    terrainMaterial.current?.color.copy(terrainColor)
+  })
+  const terrain = useMemo(() => {
+    const segments = 240
+    const geometry = new THREE.PlaneGeometry(1200, 1200, segments, segments)
+    const positions = geometry.attributes.position as THREE.BufferAttribute
+    for (let i = 0; i < positions.count; i += 1) {
+      const x = positions.getX(i)
+      const z = positions.getY(i)
+      positions.setZ(i, terrainHeightAt(x, z))
+    }
+    geometry.computeVertexNormals()
+    return geometry
+  }, [])
   const gridLines = useMemo(() => {
     const helper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, '#2a3420', '#2a3420')
     if (helper.material instanceof THREE.Material) {
@@ -232,8 +267,8 @@ export const GroundSlab = memo(function GroundSlab() {
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-        <planeGeometry args={[350, 350]} />
-        <meshToonMaterial color="#d8c7a5" />
+        <primitive object={terrain} attach="geometry" />
+        <meshToonMaterial ref={terrainMaterial} color="#d8c7a5" />
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -295,12 +330,13 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       if (treeCount >= treeCapacity || Math.hypot(x, z) < 18 || distanceToRiver(x, z) < riverWidth / 2 + 2.5) return
       const scale = 0.85 + random() * 0.4
       const yaw = random() * Math.PI * 2
-      transform.position.set(x, 0.45 * scale, z)
+      const groundY = terrainHeightAt(x, z)
+      transform.position.set(x, groundY + 0.45 * scale, z)
       transform.rotation.set(0, yaw, 0)
       transform.scale.set(scale, scale * (0.82 + random() * 0.45), scale)
       transform.updateMatrix()
       trunks.setMatrixAt(treeCount, transform.matrix)
-      transform.position.y = 1.1 * scale
+      transform.position.y = groundY + 1.1 * scale
       transform.scale.set(scale * (0.85 + random() * 0.3), scale * (0.9 + random() * 0.4), scale * (0.85 + random() * 0.3))
       transform.updateMatrix()
       crowns.setMatrixAt(treeCount, transform.matrix)
@@ -310,27 +346,28 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     // A jittered grid supplies enough candidate points for visible woodland.
     // Acceptance rises smoothly outwards, and accepted edge points are emitted
     // as small 2–4 tree groups to preserve an open woodland-to-city transition.
-    const scatterStep = 2.8
-    for (let x = -102; x <= 102 && treeCount < treeCapacity; x += scatterStep) {
-      for (let z = -102; z <= 102 && treeCount < treeCapacity; z += scatterStep) {
-        const px = x + (random() - 0.5) * scatterStep * 0.55
-        const pz = z + (random() - 0.5) * scatterStep * 0.55
-        const distance = Math.hypot(px, pz)
-        if (distance < 18 || distanceToRiver(px, pz) < riverWidth / 2 + 2.5) continue
-        const density = distance < 42
-          ? THREE.MathUtils.lerp(0.1, 0.4, (distance - 18) / 24)
-          : 0.75 + random() * 0.15
-        if (random() >= density) continue
-        if (distance < 42) {
-          const groupSize = 2 + Math.floor(random() * 3)
-          for (let member = 0; member < groupSize; member += 1) {
-            const offsetX = member === 0 ? 0 : (random() + random() - 1) * 1.8
-            const offsetZ = member === 0 ? 0 : (random() + random() - 1) * 1.8
-            addTree(px + offsetX, pz + offsetZ)
-          }
-        } else {
-          addTree(px, pz)
+    for (let candidate = 0; candidate < 42000 && treeCount < treeCapacity; candidate += 1) {
+      const px = (random() * 2 - 1) * 112
+      const pz = (random() * 2 - 1) * 112
+      const distance = Math.hypot(px, pz)
+      if (distance < 18 || distanceToRiver(px, pz) < riverWidth / 2 + 2.5) continue
+      // Broad, overlapping sine fields create woodland patches and visible
+      // clearings instead of a uniform scatter of isolated trees.
+      const noise = Math.sin(px * 0.08) * Math.cos(pz * 0.08) + Math.sin((px + pz) * 0.04)
+      if (noise < 0.25) continue
+      const density = distance < 42
+        ? THREE.MathUtils.lerp(0.1, 0.4, (distance - 18) / 24)
+        : 0.75 + random() * 0.15
+      if (random() >= density) continue
+      if (distance < 42) {
+        const groupSize = 2 + Math.floor(random() * 3)
+        for (let member = 0; member < groupSize; member += 1) {
+          const offsetX = member === 0 ? 0 : (random() + random() - 1) * 1.8
+          const offsetZ = member === 0 ? 0 : (random() + random() - 1) * 1.8
+          addTree(px + offsetX, pz + offsetZ)
         }
+      } else {
+        addTree(px, pz)
       }
     }
     trunks.count = treeCount
@@ -347,7 +384,9 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     leaves.frustumCulled = false
     for (let i = 0; i < leaves.count; i += 1) {
       const cluster = clusters[i % clusters.length]
-      transform.position.set(cluster[0] + (random() - 0.5) * 16, 0.008, cluster[1] + (random() - 0.5) * 16)
+      const leafX = cluster[0] + (random() - 0.5) * 16
+      const leafZ = cluster[1] + (random() - 0.5) * 16
+      transform.position.set(leafX, terrainHeightAt(leafX, leafZ) + 0.008, leafZ)
       transform.rotation.set(-Math.PI / 2, random() * Math.PI, random() * Math.PI)
       transform.scale.setScalar(0.4 + random() * 1.1)
       transform.updateMatrix()
@@ -449,13 +488,15 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       geometry.computeVertexNormals()
       return geometry
     }
-    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.004), new THREE.MeshToonMaterial({ color: '#c9ad7f', side: THREE.DoubleSide }))
-    const river = new THREE.Mesh(ribbon(3.35, -0.3), new THREE.MeshToonMaterial({ color: '#1d5d8a', transparent: true, opacity: 0.94, side: THREE.DoubleSide }))
+    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.012), new THREE.MeshToonMaterial({ color: '#c9ad7f', side: THREE.DoubleSide }))
+    // The backdrop ground is now continuous; keep the river surface just above
+    // the terrain so the blue channel cannot be hidden beneath the 1200-unit plane.
+    const river = new THREE.Mesh(ribbon(3.35, 0.026), new THREE.MeshToonMaterial({ color: '#2b6cb0', side: THREE.DoubleSide }))
     riverBanks.receiveShadow = true
     river.receiveShadow = true
     root.add(riverBanks, river)
     for (const side of [-1, 1]) {
-      const foam = new THREE.Mesh(ribbon(0.18, -0.27, side * 3.43), new THREE.MeshBasicMaterial({ color: '#e2e8f0', transparent: true, opacity: 0.78, side: THREE.DoubleSide }))
+      const foam = new THREE.Mesh(ribbon(0.18, 0.032, side * 3.43), new THREE.MeshBasicMaterial({ color: '#e2e8f0', transparent: true, opacity: 0.78, side: THREE.DoubleSide }))
       // Pale ribbons mark the waterline with a soft illustrated foam edge.
       root.add(foam)
     }
@@ -970,7 +1011,7 @@ import { applyNightLevel } from './primitives'
 
 const DAY_SKY = new THREE.Color('#d8c7a5')
 const DUSK_SKY = new THREE.Color('#b889a2')
-const NIGHT_COLOR = new THREE.Color('#141b2d')
+const NIGHT_COLOR = new THREE.Color('#1b2432')
 const SUN_COLOR = new THREE.Color('#fff3db')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
 const MOON_COLOR = new THREE.Color('#7aa2dc')
@@ -1072,7 +1113,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = 0.0015
+      scene.fog.density = THREE.MathUtils.lerp(0.0035, 0.004, level)
     }
     scene.background = background
     applyNightLevel(level)
@@ -1187,11 +1228,11 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#d5c7b2', 0.0015]} />
+      <fogExp2 attach="fog" args={['#d8c7a5', 0.0035]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
-      <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={0.5} far={500} />
+      <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={0.5} far={1500} />
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
@@ -1213,7 +1254,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         shadow-normalBias={0.015}
       />
 
-      <GroundSlab />
+      <GroundSlab minutes={minutes} />
       <NaturalHorizon />
       <World grid={grid} />
       <LivingCityParticles grid={grid} />
