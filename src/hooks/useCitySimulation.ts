@@ -94,11 +94,14 @@ interface SimState {
   day: number
   notice: Notice | null
   noticeSeq: number
+  materials: { bricks: number; concrete: number; steel: number }
 }
 
 type Action =
-  | { type: 'PLACE'; x: number; y: number; tool: import('../types/city').ToolId; style?: string; catalogId?: string }
+  | { type: 'PLACE'; x: number; y: number; tool: import('../types/city').ToolId; style?: string; catalogId?: string; orientation?: 0 | 1 | 2 | 3 }
   | { type: 'REMOVE'; x: number; y: number }
+  | { type: 'UPGRADE'; x: number; y: number }
+  | { type: 'MERGE'; x: number; y: number }
   | { type: 'TICK' }
   | { type: 'CHEAT_BUDGET'; amount: number }
   | { type: 'CHEAT_TIME'; ticks: number }
@@ -223,8 +226,9 @@ function recomputeServices(grid: Grid): Grid {
   const buildingTouchesServedRoad = (cell: GridCell, service: (x: number, y: number) => boolean) => {
     if (cell.type === TileType.FOOTPRINT) return false
     const size = cell.catalogId ? BUILDING_BY_ID[cell.catalogId]?.footprint : undefined
-    const width = cell.type === TileType.CITY_HALL ? 2 : size?.[0] ?? 1
-    const height = cell.type === TileType.CITY_HALL ? 2 : size?.[1] ?? 1
+    let width = cell.type === TileType.CITY_HALL ? 2 : size?.[0] ?? 1
+    let height = cell.type === TileType.CITY_HALL ? 2 : size?.[1] ?? 1
+    if ((cell.orientation ?? 0) % 2 === 1) [width, height] = [height, width]
     for (let dx = 0; dx < width; dx += 1) {
       if (service(cell.x + dx, cell.y - 1) || service(cell.x + dx, cell.y + height)) return true
     }
@@ -478,6 +482,7 @@ function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], day: numbe
         : entry.category === 'industrial' ? 'industrial' : undefined
     const taxableIncome = entry.income ?? Math.max(0, entry.tickNet)
     let taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
+    if (cell.type === TileType.RESIDENTIAL && cell.level > 1) taxMultiplier *= 1 + (cell.level - 1) * 0.4
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)) taxMultiplier *= 1.3
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isPollutingBuilding)) taxMultiplier *= 0.8
     if (day <= HARVEST_FAIR_END_DAY && (catalogId === 'com_bakery' || catalogId === 'com_grocery')) taxMultiplier *= 1.2
@@ -539,6 +544,7 @@ function reducer(state: SimState, action: Action): SimState {
       // Determine size
       let w = catalogEntry?.footprint?.[0] ?? 1
       let h = catalogEntry?.footprint?.[1] ?? 1
+      if ((action.orientation ?? 0) % 2 === 1) [w, h] = [h, w]
       if (tool === ToolId.CITY_HALL) {
         if (state.grid.some(row => row.some(c => c.type === TileType.CITY_HALL))) return state;
         w = 2; h = 2;
@@ -584,6 +590,7 @@ function reducer(state: SimState, action: Action): SimState {
                 level: 1,
                 style,
                 catalogId: catalogEntry?.id,
+                orientation: action.orientation ?? 0,
                 smog: false,
                 animate: true,
                 ...(home ? { residentialFloors: home.floors, maxResidents: home.maxResidents, residents: 0 } : {}),
@@ -614,6 +621,7 @@ function reducer(state: SimState, action: Action): SimState {
       // Determine bounds
       let w = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[0] ?? 1 : 1
       let h = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[1] ?? 1 : 1
+      if ((targetCell.orientation ?? 0) % 2 === 1) [w, h] = [h, w]
       if (targetCell.type === TileType.CITY_HALL) { w = 2; h = 2; }
       if (targetCell.type === TileType.PARK && !targetCell.catalogId) {
         if (targetCell.style === 'PARK') { w = 2; h = 2; }
@@ -623,7 +631,7 @@ function reducer(state: SimState, action: Action): SimState {
       let newGrid = state.grid.map((row, r) =>
         row.map((cell, c) => {
           if (r >= targetY && r < targetY + h && c >= targetX && c < targetX + w) {
-            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, hasWater: false, hasPower: false, smog: false, parked: false, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
+            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, orientation: undefined, hasWater: false, hasPower: false, smog: false, parked: false, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
           }
           return cell;
         })
@@ -631,6 +639,38 @@ function reducer(state: SimState, action: Action): SimState {
       
       newGrid = recomputeServices(newGrid)
       return { ...state, grid: newGrid }
+    }
+    case 'UPGRADE': {
+      const { x, y } = action
+      if (!inBounds(x, y)) return state
+      const cell = state.grid[y][x]
+      if (cell.type !== TileType.RESIDENTIAL || cell.level >= 3) return state
+      const cost = cell.level === 1 ? 150 : 300
+      const materialCost = cell.level === 1 ? { bricks: 2, concrete: 1, steel: 0 } : { bricks: 3, concrete: 2, steel: 1 }
+      if (state.budget < cost || state.materials.bricks < materialCost.bricks || state.materials.concrete < materialCost.concrete || state.materials.steel < materialCost.steel) {
+        return { ...state, notice: { id: Date.now(), text: 'Недостаточно денег или строительных материалов для улучшения.' } }
+      }
+      const grid = state.grid.map((row, rowIndex) => row.map((entry, columnIndex) => rowIndex === y && columnIndex === x
+        ? { ...entry, level: entry.level + 1, maxResidents: Math.round((entry.maxResidents ?? 70) * 1.4), residents: Math.min(Math.round((entry.maxResidents ?? 70) * 1.4), Math.round((entry.residents ?? 0) * 1.4)) }
+        : entry))
+      return { ...state, grid, budget: state.budget - cost, materials: { bricks: state.materials.bricks - materialCost.bricks, concrete: state.materials.concrete - materialCost.concrete, steel: state.materials.steel - materialCost.steel } }
+    }
+    case 'MERGE': {
+      const { x, y } = action
+      if (x < 0 || y < 0 || x + 2 > GRID_SIZE || y + 2 > GRID_SIZE) return state
+      const cells = [state.grid[y][x], state.grid[y][x + 1], state.grid[y + 1][x], state.grid[y + 1][x + 1]]
+      if (!cells.every((cell) => cell.type === TileType.RESIDENTIAL && cell.level >= 3) || state.materials.concrete < 10 || state.materials.steel < 5 || state.budget < 1000) {
+        return { ...state, notice: { id: Date.now(), text: 'Для объединения нужны четыре дома 3 уровня, 10 бетона, 5 стали и $1,000.' } }
+      }
+      const grid = state.grid.map((row) => row.map((cell) => ({ ...cell })))
+      for (let dy = 0; dy < 2; dy += 1) for (let dx = 0; dx < 2; dx += 1) {
+        grid[y + dy][x + dx] = { ...grid[y + dy][x + dx], type: TileType.EMPTY, catalogId: undefined, residents: undefined, maxResidents: undefined, residentialFloors: undefined, level: 1 }
+      }
+      grid[y][x] = { ...grid[y][x], type: TileType.RESIDENTIAL, catalogId: 'res_modern_glass_tower', level: 1, residents: 140, maxResidents: 350, residentialFloors: 18, orientation: 0 }
+      for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]] as const) grid[y + dy][x + dx] = { ...grid[y + dy][x + dx], type: TileType.FOOTPRINT, refX: x, refY: y }
+      const recomputed = recomputeServices(grid)
+      const population = recomputed.reduce((total, row) => total + row.reduce((sum, cell) => sum + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+      return { ...state, grid: recomputed, population, budget: state.budget - 1000, materials: { ...state.materials, concrete: state.materials.concrete - 10, steel: state.materials.steel - 5 } }
     }
 case 'TICK': {
       const nextMinutes = state.minutes + MINUTES_PER_TICK
@@ -674,6 +714,12 @@ case 'TICK': {
       const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid, nextDay) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
       const netTickIncome = net - (state.debt > 0 && isMidnight ? DAILY_LOAN_PAYMENT : 0)
+      const materials = { ...state.materials }
+      for (const row of cityGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL) {
+        if (cell.catalogId === 'ind_brickworks') materials.bricks += 1
+        if (cell.catalogId === 'ind_concrete_plant') materials.concrete += 1
+        if (cell.catalogId === 'ind_steel_foundry') materials.steel += 1
+      }
       return {
         ...state,
         grid: cityGrid,
@@ -683,6 +729,7 @@ case 'TICK': {
         happiness: nextDay <= HARVEST_FAIR_END_DAY ? 100 : Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
         minutes: gameMinute,
         day: nextDay,
+        materials,
       }
     }
     default:
@@ -704,6 +751,7 @@ function createFreshState(): SimState {
     day: 1,
     notice: null,
     noticeSeq: 0,
+    materials: { bricks: 0, concrete: 0, steel: 0 },
   }
 }
 
@@ -738,6 +786,7 @@ function createInitialState(): SimState {
           grid,
           population,
           budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
+          materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
         }
       }
     }
@@ -768,11 +817,13 @@ export function useCitySimulation() {
   }, [state])
 
   const placeTile = useCallback(
-    (x: number, y: number, style?: string, catalogId?: string) => dispatch({ type: 'PLACE', x, y, tool: activeTool, style, catalogId }),
+    (x: number, y: number, style?: string, catalogId?: string, orientation: 0 | 1 | 2 | 3 = 0) => dispatch({ type: 'PLACE', x, y, tool: activeTool, style, catalogId, orientation }),
     [activeTool],
   )
 
   const removeTile = useCallback((x: number, y: number) => dispatch({ type: 'REMOVE', x, y }), [])
+  const upgradeTile = useCallback((x: number, y: number) => dispatch({ type: 'UPGRADE', x, y }), [])
+  const mergeNeighborhood = useCallback((x: number, y: number) => dispatch({ type: 'MERGE', x, y }), [])
 
   const togglePause = useCallback(() => setPaused((value) => !value), [])
 
@@ -841,6 +892,9 @@ export function useCitySimulation() {
     setSpeed,
     placeTile,
     removeTile,
+    upgradeTile,
+    mergeNeighborhood,
+    materials: state.materials,
     reset: useCallback(() => dispatch({ type: 'RESET' }), []),
   }
 }

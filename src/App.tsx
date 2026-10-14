@@ -20,6 +20,7 @@ function App() {
   const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
   const [dismissedWelcomeNonce, setDismissedWelcomeNonce] = useState<number | null>(null)
   const [cityHallOpen, setCityHallOpen] = useState(false)
+  const [selectedResidence, setSelectedResidence] = useState<{ x: number; y: number } | null>(null)
   const titleVisible = !started
   const resStyle = "EU"
   const [catalogId, setCatalogId] = useState<string | undefined>(undefined)
@@ -86,6 +87,19 @@ function App() {
   }
 
   const resetProgress = () => sim.reset()
+  const selectCell = (x: number, y: number) => {
+    const cell = sim.grid[y]?.[x]
+    if (!cell || cell.type !== TileType.RESIDENTIAL) { setSelectedResidence(null); return }
+    if (cell.refX !== undefined && cell.refY !== undefined) setSelectedResidence({ x: cell.refX, y: cell.refY })
+    else setSelectedResidence({ x, y })
+  }
+  const mergeOrigin = selectedResidence ? [
+    [selectedResidence.x, selectedResidence.y], [selectedResidence.x - 1, selectedResidence.y],
+    [selectedResidence.x, selectedResidence.y - 1], [selectedResidence.x - 1, selectedResidence.y - 1],
+  ].find(([x, y]) => {
+    const homes = [sim.grid[y]?.[x], sim.grid[y]?.[x + 1], sim.grid[y + 1]?.[x], sim.grid[y + 1]?.[x + 1]]
+    return homes.every((cell) => cell?.type === TileType.RESIDENTIAL && cell.level >= 3)
+  }) : undefined
 
   // Горячие клавиши: 1–7 — инструменты, Пробел — пауза.
   useEffect(() => {
@@ -118,8 +132,9 @@ function App() {
         grid={displayGrid}
         activeTool={sim.activeTool}
         catalogId={catalogId}
-        onPlace={(x,y,id) => sim.placeTile(x, y, resStyle, id)}
+        onPlace={(x,y,id,orientation) => sim.placeTile(x, y, resStyle, id, orientation)}
         onRemove={sim.removeTile}
+        onSelectCell={selectCell}
         minutes={sim.minutes}
         budget={sim.budget}
         placementStyle={resStyle}
@@ -162,6 +177,21 @@ function App() {
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
       </div>
+      <div className="fixed right-3 top-20 z-30 rounded-xl border border-stone-800/25 bg-[#F5F2EB]/90 px-3 py-2 text-[11px] font-semibold text-stone-700 shadow-md backdrop-blur sm:right-5">
+        🧱 {sim.materials.bricks}　▰ {sim.materials.concrete}　🔩 {sim.materials.steel}
+      </div>
+      {selectedResidence && (() => {
+        const home = sim.grid[selectedResidence.y]?.[selectedResidence.x]
+        if (!home || home.type !== TileType.RESIDENTIAL) return null
+        return <aside className="fixed bottom-28 left-3 z-40 w-64 rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-3 text-sm text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur sm:left-6">
+          <button className="absolute right-2 top-1 text-xl" onClick={() => setSelectedResidence(null)} aria-label="Закрыть">×</button>
+          <strong>{home.catalogId ?? 'Жилой дом'}</strong>
+          <div className="mt-1 text-xs">Уровень {home.level} · Жители {home.residents ?? 0}/{home.maxResidents ?? 0}</div>
+          {home.level < 3 && <button onClick={() => sim.upgradeTile(selectedResidence.x, selectedResidence.y)} className="mt-3 w-full rounded-lg border border-stone-700/30 bg-[#e8d7b3] px-2 py-1.5 text-xs font-bold">Улучшить · ${home.level === 1 ? 150 : 300}</button>}
+          {mergeOrigin && <button onClick={() => sim.mergeNeighborhood(mergeOrigin[0], mergeOrigin[1])} className="mt-2 w-full rounded-lg bg-emerald-700 px-2 py-1.5 text-xs font-bold text-white">Объединить 2×2 · $1,000</button>}
+          <p className="mt-2 text-[10px] text-stone-600">Материалы: кирпич {sim.materials.bricks}, бетон {sim.materials.concrete}, сталь {sim.materials.steel}</p>
+        </aside>
+      })()}
       {welcome && <div key={welcome.nonce} className={`fixed bottom-24 left-4 z-40 max-w-[min(360px,calc(100vw-32px))] transition-all duration-500 sm:left-6 ${dismissedWelcomeNonce !== welcome.nonce ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
         <div className="relative rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-4 pl-14 text-sm font-semibold leading-relaxed text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur-md">
           <span aria-hidden="true" className="absolute left-3 top-3 grid size-9 place-items-center rounded-full border border-[#2C241D]/25 bg-[#e6d5b7] text-xl">{welcome.returning ? '🐱' : '🧑‍🎨'}</span>

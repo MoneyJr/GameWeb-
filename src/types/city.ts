@@ -33,6 +33,7 @@ export interface GridCell {
   /** Есть ли электричество (клетка — дорога или примыкает к дороге). */
   hasPower: boolean
   level: number
+  orientation?: 0 | 1 | 2 | 3
   style?: string
   catalogId?: string
   refX?: number

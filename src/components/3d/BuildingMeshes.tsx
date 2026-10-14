@@ -811,6 +811,9 @@ function DisplayCar({ position, color }: { position: Vec3; color: string }) {
 /** Завод: серый цех с пилообразной крышей, кирпичная труба и бак. */
 export function Industrial({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'ind_winery') return <WineryMesh />
+  if (catalogId === 'ind_brickworks') return <BrickworksMesh />
+  if (catalogId === 'ind_concrete_plant') return <ConcretePlantMesh />
+  if (catalogId === 'ind_steel_foundry') return <SteelFoundryMesh />
   return (
     <group>
       <IndustrialBase />
@@ -836,6 +839,53 @@ export function Industrial({ catalogId }: { catalogId?: string }) {
       ))}
     </group>
   )
+}
+
+function BrickworksMesh() {
+  return <group>
+    <Box size={[1.96, 0.07, 0.96]} position={[0, 0.035, 0]} color="#55504a" />
+    <Box size={[1.35, 0.58, 0.72]} position={[-0.22, 0.37, -0.04]} color="#8b3a2b" />
+    <Box size={[1.42, 0.09, 0.8]} position={[-0.22, 0.705, -0.04]} color="#383a3a" />
+    <Box size={[0.52, 0.32, 0.18]} position={[0.28, 0.22, 0.38]} color="#4b4035" />
+    {[-0.18, 0.02, 0.22].map((x, i) => <Box key={`brick-stack-${i}`} size={[0.18, 0.12, 0.12]} position={[x, 0.45 + (i % 2) * 0.12, 0.42]} color={i % 2 ? '#b8583c' : '#9a4933'} />)}
+    <Cylinder radius={0.16} radiusTop={0.11} height={2.2} segments={8} position={[-0.7, 1.8, -0.2]} color="#7c3027" />
+    <Cylinder radius={0.18} height={0.08} segments={8} position={[-0.7, 2.91, -0.2]} color="#d1b8a0" />
+    <Smoke position={[-0.7, 2.95, -0.2]} />
+    {[-0.42, 0.1, 0.56].map((x) => <Box key={`pallet-${x}`} size={[0.24, 0.04, 0.16]} position={[x, 0.1, 0.62]} color="#87613d" />)}
+  </group>
+}
+
+function ConcretePlantMesh() {
+  return <group>
+    <Box size={[1.96, 0.07, 1.96]} position={[0, 0.035, 0]} color="#66645e" />
+    <Box size={[1.72, 0.58, 1.5]} position={[0, 0.36, -0.05]} color="#aaa69c" />
+    {[-0.48, 0.48].map((x) => <group key={`silo-${x}`} position={[x, 0, -0.18]}>
+      <Cylinder radius={0.31} radiusTop={0.31} height={1.2} segments={12} position={[0, 1.02, 0]} color="#b9b9b1" />
+      <Cone radius={0.31} height={0.28} segments={12} position={[0, 1.76, 0]} color="#858d8c" />
+      <Cylinder radius={0.08} height={0.2} segments={8} position={[0, 1.98, 0]} color="#686f71" />
+      {[-0.15, 0, 0.15].map((z) => <Box key={z} size={[0.025, 1.12, 0.025]} position={[0.29, 1.02, z]} color="#666f72" />)}
+    </group>)}
+    <Box size={[0.84, 0.13, 0.16]} position={[0, 1.05, 0.54]} rotation={[0, 0, -0.55]} color="#7a7770" />
+    <Box size={[0.72, 0.1, 0.48]} position={[0.4, 0.13, 0.73]} color="#cb6b3e" />
+    <Cylinder radius={0.13} height={0.17} segments={10} position={[0.4, 0.33, 0.73]} color="#c5c2b9" />
+  </group>
+}
+
+function SteelFoundryMesh() {
+  return <group>
+    <Box size={[1.96, 0.07, 1.96]} position={[0, 0.035, 0]} color="#454747" />
+    <Box size={[1.65, 0.84, 1.48]} position={[0, 0.48, -0.06]} color="#555b5c" />
+    {[-0.58, -0.2, 0.2, 0.58].map((x, i) => <group key={`shed-${x}`}>
+      <Box size={[0.44, 0.14, 1.62]} position={[x, 0.98 + (i % 2) * 0.14, -0.05]} rotation={[0, 0, i % 2 ? -0.24 : 0.24]} color="#4d5355" />
+      {i % 2 === 0 && <Box size={[0.3, 0.025, 1.4]} position={[x + 0.07, 0.98, -0.05]} color="#d77b35" />}
+    </group>)}
+    <Box size={[0.56, 0.52, 0.08]} position={[0, 0.34, 0.72]} color="#2c3031" />
+    <mesh position={[0, 0.34, 0.77]}>
+      <planeGeometry args={[0.42, 0.34]} />
+      <meshBasicMaterial color="#f97316" toneMapped={false} />
+    </mesh>
+    {[-0.7, 0.7].map((x) => <Cylinder key={`foundry-stack-${x}`} radius={0.1} radiusTop={0.075} height={1.35} segments={8} position={[x, 1.15, -0.55]} color="#343a3b" />)}
+  </group>
 }
 
 function WineryMesh() {
@@ -1590,7 +1640,8 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       break
     case TileType.INDUSTRIAL:
       model = <Industrial catalogId={catalogId} />
-      if (catalogId === 'ind_winery') { w = 2; h = 1 }
+      if (catalogId === 'ind_winery' || catalogId === 'ind_brickworks') { w = 2; h = 1 }
+      if (catalogId === 'ind_concrete_plant' || catalogId === 'ind_steel_foundry') { w = 2; h = 2 }
       dust = 12
       needsWater = true
       needsPower = true
