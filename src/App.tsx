@@ -20,7 +20,6 @@ function App() {
   const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
   const [dismissedWelcomeNonce, setDismissedWelcomeNonce] = useState<number | null>(null)
   const [cityHallOpen, setCityHallOpen] = useState(false)
-  const [warehouseOpen, setWarehouseOpen] = useState(false)
   const [selectedResidence, setSelectedResidence] = useState<{ x: number; y: number } | null>(null)
   const titleVisible = !started
   const resStyle = "EU"
@@ -91,7 +90,7 @@ function App() {
   const selectCell = (x: number, y: number) => {
     let cell = sim.grid[y]?.[x]
     if (cell?.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined) cell = sim.grid[cell.refY]?.[cell.refX]
-    if (cell?.catalogId === 'ind_warehouse') { setWarehouseOpen(true); setSelectedResidence(null); return }
+    if (cell?.catalogId === 'ind_warehouse') { window.dispatchEvent(new Event('OPEN_WAREHOUSE')); setSelectedResidence(null); return }
     if (!cell || cell.type !== TileType.RESIDENTIAL) { setSelectedResidence(null); return }
     if (cell.refX !== undefined && cell.refY !== undefined) setSelectedResidence({ x: cell.refX, y: cell.refY })
     else setSelectedResidence({ x, y })
@@ -176,6 +175,10 @@ function App() {
         speed={sim.speed}
         onTogglePause={sim.togglePause}
         onSpeedChange={sim.setSpeed}
+        materials={sim.materials}
+        warehouseCapacity={sim.warehouseCapacity}
+        materialFlow={{ bricks: brickPlants, concrete: concretePlants, steel: steelPlants }}
+        onExpandWarehouse={sim.expandWarehouse}
       />
 
       {notice !== null && visibleNoticeId === notice.id && (
@@ -190,21 +193,6 @@ function App() {
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
       </div>
-      <button onClick={() => setWarehouseOpen(true)} className={`fixed right-3 top-20 z-30 rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-md backdrop-blur sm:right-5 ${sim.materials.concrete < 15 ? 'border-orange-500/60 bg-orange-100/95 text-orange-800' : 'border-stone-800/25 bg-[#F5F2EB]/90 text-stone-700'}`} title="Открыть городской склад">
-        🧱 {sim.materials.bricks}　▰ {sim.materials.concrete}　🔩 {sim.materials.steel}
-      </button>
-      {warehouseOpen && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#171612]/40 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setWarehouseOpen(false) }}>
-        <section role="dialog" aria-modal="true" aria-labelledby="warehouse-title" className="w-full max-w-md rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-5 text-[#342a20] shadow-[8px_8px_0px_#2C241D]">
-          <header className="mb-4 flex items-start justify-between gap-4"><div><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Городской склад и логистика</span><h2 id="warehouse-title" className="mt-1 text-lg font-black">{t('warehouse.title')}</h2></div><button onClick={() => setWarehouseOpen(false)} className="rounded-full px-2 text-2xl leading-7 hover:bg-black/5" aria-label={t('warehouse.close')}>×</button></header>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🧱 {t('warehouse.bricks')}</span><strong>{sim.materials.bricks} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', brickPlants)}</small></strong></div>
-            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🪟 {t('warehouse.concrete')}</span><strong>{sim.materials.concrete} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', concretePlants)}</small></strong></div>
-            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🏗️ {t('warehouse.steel')}</span><strong>{sim.materials.steel} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', steelPlants)}</small></strong></div>
-          </div>
-          <button onClick={sim.expandWarehouse} disabled={sim.budget < 500} className="mt-4 w-full rounded-xl border border-[#2C241D] bg-[#d7b476] px-3 py-2 text-sm font-extrabold disabled:opacity-50">{t('warehouse.expand')}</button>
-          <div className="mt-2 text-center text-[11px] text-stone-500">Каждый завод выпускает 1 ед. материала за игровой такт.</div>
-        </section>
-      </div>}
       {selectedResidence && (() => {
         const home = sim.grid[selectedResidence.y]?.[selectedResidence.x]
         if (!home || home.type !== TileType.RESIDENTIAL) return null
