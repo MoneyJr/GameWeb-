@@ -25,6 +25,7 @@ export interface BuildingCatalogEntry {
   happiness?: number
   /** Placement footprint in simulation tiles (width, depth). */
   footprint?: [number, number]
+  materialCost?: { bricks?: number; concrete?: number; steel?: number }
   model: string
 }
 
@@ -40,7 +41,8 @@ export const BUILDING_CATALOG: readonly BuildingCatalogEntry[] = [
   { id: 'res_townhouse', name: 'Европейский таунхаус', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 180, tickNet: 9, income: 9, population: 45, energy: 2, water: 2, model: 'townhouse' },
   { id: 'res_apartment', name: 'Доходный дом', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 360, tickNet: 22, income: 22, population: 110, energy: 4, water: 3, model: 'apartment' },
   { id: 'res_panel_block', name: 'Панельный жилой блок', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 550, tickNet: 45, income: 45, population: 220, footprint: [2, 2], model: 'panel-block' },
-  { id: 'res_modern_glass_tower', name: 'Стеклянная башня', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 850, tickNet: 75, income: 75, population: 350, happiness: 15, footprint: [2, 2], model: 'modern-glass-tower' },
+  { id: 'res_modern_glass_tower', name: 'Стеклянная башня', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 850, tickNet: 75, income: 75, population: 350, happiness: 15, footprint: [2, 2], materialCost: { concrete: 15 }, model: 'modern-glass-tower' },
+  { id: 'res_megapolis_complex', name: 'Мега-комплекс «Мегаполис»', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 1500, tickNet: 240, income: 240, population: 1050, happiness: 25, footprint: [4, 2], materialCost: { concrete: 30, steel: 15 }, model: 'megapolis-complex' },
   { id: 'res_half_timbered', name: 'Фахверковый дом', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 220, tickNet: 12, income: 12, population: 55, energy: 2, water: 2, model: 'half-timbered' },
   { id: 'res_cozy_estate', name: 'Уютная усадьба с садом', category: 'residential', tool: residential, tile: TileType.RESIDENTIAL, cost: 130, tickNet: 5, income: 5, population: 24, energy: 1, water: 1, model: 'cozy-estate' },
   { id: 'com_bakery', name: 'Пекарня / Кафе', category: 'commercial', tool: commercial, tile: TileType.COMMERCIAL, cost: 120, tickNet: 10, income: 10, energy: 1, water: 1, model: 'bakery' },

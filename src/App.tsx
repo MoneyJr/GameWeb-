@@ -20,6 +20,7 @@ function App() {
   const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
   const [dismissedWelcomeNonce, setDismissedWelcomeNonce] = useState<number | null>(null)
   const [cityHallOpen, setCityHallOpen] = useState(false)
+  const [warehouseOpen, setWarehouseOpen] = useState(false)
   const [selectedResidence, setSelectedResidence] = useState<{ x: number; y: number } | null>(null)
   const titleVisible = !started
   const resStyle = "EU"
@@ -88,7 +89,9 @@ function App() {
 
   const resetProgress = () => sim.reset()
   const selectCell = (x: number, y: number) => {
-    const cell = sim.grid[y]?.[x]
+    let cell = sim.grid[y]?.[x]
+    if (cell?.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined) cell = sim.grid[cell.refY]?.[cell.refX]
+    if (cell?.catalogId === 'ind_warehouse') { setWarehouseOpen(true); setSelectedResidence(null); return }
     if (!cell || cell.type !== TileType.RESIDENTIAL) { setSelectedResidence(null); return }
     if (cell.refX !== undefined && cell.refY !== undefined) setSelectedResidence({ x: cell.refX, y: cell.refY })
     else setSelectedResidence({ x, y })
@@ -100,6 +103,15 @@ function App() {
     const homes = [sim.grid[y]?.[x], sim.grid[y]?.[x + 1], sim.grid[y + 1]?.[x], sim.grid[y + 1]?.[x + 1]]
     return homes.every((cell) => cell?.type === TileType.RESIDENTIAL && cell.level >= 3)
   }) : undefined
+  const selectedHome = selectedResidence ? sim.grid[selectedResidence.y]?.[selectedResidence.x] : undefined
+  const upgradeResources = selectedHome?.level === 1 ? { bricks: 2, concrete: 1, steel: 0 } : { bricks: 3, concrete: 2, steel: 1 }
+  const upgradeDeficit = selectedHome && (sim.materials.bricks < upgradeResources.bricks || sim.materials.concrete < upgradeResources.concrete || sim.materials.steel < upgradeResources.steel)
+  const adjacentTower = selectedHome?.catalogId === 'res_modern_glass_tower'
+    ? [[selectedResidence!.x + 2, selectedResidence!.y], [selectedResidence!.x - 2, selectedResidence!.y], [selectedResidence!.x, selectedResidence!.y + 2], [selectedResidence!.x, selectedResidence!.y - 2]].map(([x, y]) => ({ x, y, cell: sim.grid[y]?.[x] })).find(({ cell }) => cell?.catalogId === 'res_modern_glass_tower')
+    : undefined
+  const brickPlants = sim.grid.flat().filter((cell) => cell.catalogId === 'ind_brickworks').length
+  const concretePlants = sim.grid.flat().filter((cell) => cell.catalogId === 'ind_concrete_plant').length
+  const steelPlants = sim.grid.flat().filter((cell) => cell.catalogId === 'ind_steel_foundry').length
 
   // Горячие клавиши: 1–7 — инструменты, Пробел — пауза.
   useEffect(() => {
@@ -135,6 +147,7 @@ function App() {
         onPlace={(x,y,id,orientation) => sim.placeTile(x, y, resStyle, id, orientation)}
         onRemove={sim.removeTile}
         onSelectCell={selectCell}
+        materials={sim.materials}
         minutes={sim.minutes}
         budget={sim.budget}
         placementStyle={resStyle}
@@ -177,18 +190,33 @@ function App() {
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
       </div>
-      <div className="fixed right-3 top-20 z-30 rounded-xl border border-stone-800/25 bg-[#F5F2EB]/90 px-3 py-2 text-[11px] font-semibold text-stone-700 shadow-md backdrop-blur sm:right-5">
+      <button onClick={() => setWarehouseOpen(true)} className={`fixed right-3 top-20 z-30 rounded-xl border px-3 py-2 text-[11px] font-semibold shadow-md backdrop-blur sm:right-5 ${sim.materials.concrete < 15 ? 'border-orange-500/60 bg-orange-100/95 text-orange-800' : 'border-stone-800/25 bg-[#F5F2EB]/90 text-stone-700'}`} title="Открыть городской склад">
         🧱 {sim.materials.bricks}　▰ {sim.materials.concrete}　🔩 {sim.materials.steel}
-      </div>
+      </button>
+      {warehouseOpen && <div className="fixed inset-0 z-[60] flex items-center justify-center bg-[#171612]/40 p-4 backdrop-blur-sm" onMouseDown={(event) => { if (event.target === event.currentTarget) setWarehouseOpen(false) }}>
+        <section role="dialog" aria-modal="true" aria-labelledby="warehouse-title" className="w-full max-w-md rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-5 text-[#342a20] shadow-[8px_8px_0px_#2C241D]">
+          <header className="mb-4 flex items-start justify-between gap-4"><div><span className="text-[10px] font-bold uppercase tracking-[0.16em] text-stone-500">Городской склад и логистика</span><h2 id="warehouse-title" className="mt-1 text-lg font-black">{t('warehouse.title')}</h2></div><button onClick={() => setWarehouseOpen(false)} className="rounded-full px-2 text-2xl leading-7 hover:bg-black/5" aria-label={t('warehouse.close')}>×</button></header>
+          <div className="space-y-2 text-sm">
+            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🧱 {t('warehouse.bricks')}</span><strong>{sim.materials.bricks} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', brickPlants)}</small></strong></div>
+            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🪟 {t('warehouse.concrete')}</span><strong>{sim.materials.concrete} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', concretePlants)}</small></strong></div>
+            <div className="flex justify-between rounded-xl border border-stone-700/15 bg-white/40 px-3 py-2"><span>🏗️ {t('warehouse.steel')}</span><strong>{sim.materials.steel} / {sim.warehouseCapacity} <small className="text-emerald-700">{t('warehouse.inflow', steelPlants)}</small></strong></div>
+          </div>
+          <button onClick={sim.expandWarehouse} disabled={sim.budget < 500} className="mt-4 w-full rounded-xl border border-[#2C241D] bg-[#d7b476] px-3 py-2 text-sm font-extrabold disabled:opacity-50">{t('warehouse.expand')}</button>
+          <div className="mt-2 text-center text-[11px] text-stone-500">Каждый завод выпускает 1 ед. материала за игровой такт.</div>
+        </section>
+      </div>}
       {selectedResidence && (() => {
         const home = sim.grid[selectedResidence.y]?.[selectedResidence.x]
         if (!home || home.type !== TileType.RESIDENTIAL) return null
         return <aside className="fixed bottom-28 left-3 z-40 w-64 rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-3 text-sm text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur sm:left-6">
           <button className="absolute right-2 top-1 text-xl" onClick={() => setSelectedResidence(null)} aria-label="Закрыть">×</button>
-          <strong>{home.catalogId ?? 'Жилой дом'}</strong>
+          <strong>{home.catalogId === 'res_modern_glass_tower' ? 'Стеклянная башня' : home.catalogId === 'res_megapolis_complex' ? 'Мега-комплекс «Мегаполис»' : home.catalogId ?? 'Жилой дом'}</strong>
           <div className="mt-1 text-xs">Уровень {home.level} · Жители {home.residents ?? 0}/{home.maxResidents ?? 0}</div>
-          {home.level < 3 && <button onClick={() => sim.upgradeTile(selectedResidence.x, selectedResidence.y)} className="mt-3 w-full rounded-lg border border-stone-700/30 bg-[#e8d7b3] px-2 py-1.5 text-xs font-bold">Улучшить · ${home.level === 1 ? 150 : 300}</button>}
+          {home.level < 3 && <button disabled={sim.budget < (home.level === 1 ? 150 : 300) || upgradeDeficit} onClick={() => sim.upgradeTile(selectedResidence.x, selectedResidence.y)} className="mt-3 w-full rounded-lg border border-stone-700/30 bg-[#e8d7b3] px-2 py-1.5 text-xs font-bold disabled:cursor-not-allowed disabled:opacity-45">Улучшить · ${home.level === 1 ? 150 : 300}</button>}
+          {home.level < 3 && upgradeDeficit && <p className="mt-1 text-[10px] font-semibold text-orange-800">Для улучшения: кирпич {upgradeResources.bricks}, бетон {upgradeResources.concrete}, сталь {upgradeResources.steel}. На складе: {sim.materials.bricks}/{sim.materials.concrete}/{sim.materials.steel}.</p>}
           {mergeOrigin && <button onClick={() => sim.mergeNeighborhood(mergeOrigin[0], mergeOrigin[1])} className="mt-2 w-full rounded-lg bg-emerald-700 px-2 py-1.5 text-xs font-bold text-white">Объединить 2×2 · $1,000</button>}
+          {adjacentTower && <button disabled={sim.budget < 1500 || sim.materials.concrete < 30 || sim.materials.steel < 15} onClick={() => sim.mergeTowers(selectedResidence.x, selectedResidence.y)} className="mt-2 w-full rounded-lg bg-sky-800 px-2 py-1.5 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">✨ Объединить в Мега-комплекс · $1,500</button>}
+          {home.catalogId === 'res_modern_glass_tower' && <p className="mt-1 text-[10px] text-stone-600">Требуется: $1,500 · бетон 30 · сталь 15{adjacentTower ? '' : ' · нужна соседняя башня'}</p>}
           <p className="mt-2 text-[10px] text-stone-600">Материалы: кирпич {sim.materials.bricks}, бетон {sim.materials.concrete}, сталь {sim.materials.steel}</p>
         </aside>
       })()}

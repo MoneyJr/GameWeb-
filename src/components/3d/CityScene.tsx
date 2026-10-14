@@ -519,6 +519,7 @@ interface InteractionLayerProps {
   placementStyle?: string
   catalogId?: string
   orientation: 0 | 1 | 2 | 3
+  materials: { bricks: number; concrete: number; steel: number }
 }
 
 interface TouchGhost {
@@ -543,7 +544,17 @@ function placementFootprint(tool: ToolId, catalogId?: string, style?: string, or
   return [1, 1]
 }
 
-function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string, orientation = 0): string | null {
+function materialDeficit(catalogId: string | undefined, materials: { bricks: number; concrete: number; steel: number }) {
+  const cost = catalogId ? BUILDING_BY_ID[catalogId]?.materialCost : undefined
+  if (!cost) return null
+  for (const resource of ['concrete', 'bricks', 'steel'] as const) {
+    const required = cost[resource] ?? 0
+    if (materials[resource] < required) return { resource, have: materials[resource], required }
+  }
+  return null
+}
+
+function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string, orientation = 0, materials = { bricks: 0, concrete: 0, steel: 0 }): string | null {
   const [width, depth] = placementFootprint(tool, catalogId, style, orientation)
   if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'ghost.outOfBounds'
   for (let y = cell.y; y < cell.y + depth; y += 1) {
@@ -551,6 +562,8 @@ function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: str
       if (grid[y][x].type !== TileType.EMPTY) return 'ghost.occupied'
     }
   }
+  const deficit = materialDeficit(catalogId, materials)
+  if (deficit) return `ghost.material.${deficit.resource}`
   if (tool === ToolId.ROAD) return null
   for (let x = cell.x; x < cell.x + width; x += 1) {
     if (cell.y > 0 && grid[cell.y - 1][x].type === TileType.ROAD) return null
@@ -627,7 +640,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks, orien
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, onPlacementTooltip, ghost, placementStyle, catalogId, orientation }: InteractionLayerProps) {
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, onPlacementTooltip, ghost, placementStyle, catalogId, orientation, materials }: InteractionLayerProps) {
   const { gl } = useThree()
   const [hoverState, setHoverState] = useState<{ cell: Cell; tool: ToolId; catalogId?: string } | null>(null)
   const hovered = hoverState?.tool === activeTool && hoverState.catalogId === catalogId ? hoverState.cell : null
@@ -642,12 +655,12 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
       if (activeTool === ToolId.BULLDOZE) {
         if (grid[cell.y]?.[cell.x]?.type !== TileType.EMPTY) onRemove(cell.x, cell.y)
         setHovered(null)
-      } else if (activeTool !== ToolId.CURSOR && validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation) === null) {
+      } else if (activeTool !== ToolId.CURSOR && validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials) === null) {
         onPlace(cell.x, cell.y, catalogId, orientation)
         setHovered(null)
       }
     },
-    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, orientation, setHovered],
+    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, orientation, setHovered, materials],
   )
   const footprint = placementFootprint(activeTool, catalogId, placementStyle, orientation)
 
@@ -714,7 +727,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
       window.removeEventListener('pointercancel', cancel)
       window.removeEventListener('blur', clearOnBlur)
     }
-  }, [act, activeTool, onSelectCell, onTouchPreview, onRoadDragState])
+  }, [act, activeTool, onSelectCell, onTouchPreview, onRoadDragState, materials])
 
   const handleMove = (event: ThreeEvent<PointerEvent>) => {
     const bounds = gl.domElement.getBoundingClientRect()
@@ -735,7 +748,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
     if (event.nativeEvent.pointerType === 'touch' || activeTool === ToolId.CURSOR || activeTool === ToolId.BULLDOZE) {
       onPlacementTooltip(null)
     } else {
-      const reason = validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation)
+      const reason = validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials)
       onPlacementTooltip({ x: clientX, y: clientY, valid: reason === null, reason, tool: activeTool, catalogId })
     }
     const drag = roadDrag.current
@@ -803,7 +816,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
     if (activeTool === ToolId.BULLDOZE) {
       highlightColor = current === TileType.EMPTY ? '#c9c4b5' : '#ff5a4d'
     } else if (activeTool !== ToolId.CURSOR) {
-      highlightColor = validatePlacement(grid, hovered, activeTool, catalogId, placementStyle, orientation) === null ? '#10b981' : '#ef4444'
+      highlightColor = validatePlacement(grid, hovered, activeTool, catalogId, placementStyle, orientation, materials) === null ? '#10b981' : '#ef4444'
     }
   }
 
@@ -851,8 +864,8 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
         const anchor = (isTouchDevice ? ghost?.cells[0] : hovered)!
         const roadCells = activeTool === ToolId.ROAD ? (isTouchDevice ? ghost?.cells ?? [] : [anchor]) : []
         const valid = activeTool === ToolId.ROAD
-          ? roadCells.every((item) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation) === null)
-          : validatePlacement(grid, anchor, activeTool, catalogId, placementStyle, orientation) === null
+          ? roadCells.every((item) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation, materials) === null)
+          : validatePlacement(grid, anchor, activeTool, catalogId, placementStyle, orientation, materials) === null
         const tint = valid ? '#10b981' : '#ef4444'
         const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
         const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
@@ -887,6 +900,7 @@ export interface CitySceneProps {
   budget?: number
   placementStyle?: string
   catalogId?: string
+  materials: { bricks: number; concrete: number; steel: number }
 }
 
 import { applyNightLevel } from './primitives'
@@ -1003,7 +1017,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials }: CitySceneProps) {
   const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
@@ -1083,8 +1097,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
   const ghostCost = unitCost * (activeTool === ToolId.ROAD ? touchGhost?.cells.length ?? 1 : 1)
   const ghostPlacementError = touchGhost
     ? activeTool === ToolId.ROAD
-      ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation)).find(Boolean) ?? null
-      : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation)
+      ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials)).find(Boolean) ?? null
+      : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials)
     : null
   const ghostCanPlace = ghostPlacementError === null && budget >= ghostCost
   return (
@@ -1156,6 +1170,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         placementStyle={placementStyle}
         catalogId={catalogId}
         orientation={orientation}
+        materials={materials}
       />
       <ToonShadingSetup />
       <InkOutlinePassEffect />
@@ -1169,7 +1184,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
           role="status"
         >
           <span className={`block whitespace-nowrap rounded-lg border px-2.5 py-1 shadow-lg backdrop-blur-md ${placementTooltip.valid ? 'border-emerald-300 bg-emerald-100/90 text-emerald-700' : 'border-rose-300 bg-rose-100/90 text-rose-700'}`}>
-            {placementTooltip.valid ? t('ghost.available') : t(placementTooltip.reason ?? 'ghost.occupied')}
+            {placementTooltip.valid ? t('ghost.available') : (() => {
+              const deficit = materialDeficit(placementTooltip.catalogId, materials)
+              return deficit ? t(`ghost.material.${deficit.resource}`, deficit.have, deficit.required) : t(placementTooltip.reason ?? 'ghost.occupied')
+            })()}
           </span>
         </div>
       )}
@@ -1179,7 +1197,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
           style={{ bottom: 'calc(9.5rem + env(safe-area-inset-bottom))' }}
           aria-label={t('ghost.confirm')}
         >
-          {ghostPlacementError && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{t(ghostPlacementError)}</div>}
+          {ghostPlacementError && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{(() => { const deficit = materialDeficit(catalogId, materials); return deficit ? t(`ghost.material.${deficit.resource}`, deficit.have, deficit.required) : t(ghostPlacementError) })()}</div>}
           {!ghostPlacementError && budget < ghostCost && <div role="status" className="rounded-full border border-red-900/20 bg-[#fffaf4]/95 px-3 py-1 text-xs font-bold text-red-700 shadow-md">{t('ghost.noMoney')}</div>}
           <div className="flex justify-center gap-2">
             <button type="button" onClick={rotatePlacement} className="pointer-events-auto flex h-11 items-center justify-center gap-1 rounded-full border border-[#7a4b2e]/30 bg-[#fff7e9] px-3 text-xs font-bold text-[#714a30] shadow-md active:scale-95">↻ {t('ghost.rotate')}</button>

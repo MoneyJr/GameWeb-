@@ -95,6 +95,7 @@ interface SimState {
   notice: Notice | null
   noticeSeq: number
   materials: { bricks: number; concrete: number; steel: number }
+  warehouseCapacity: number
 }
 
 type Action =
@@ -102,6 +103,8 @@ type Action =
   | { type: 'REMOVE'; x: number; y: number }
   | { type: 'UPGRADE'; x: number; y: number }
   | { type: 'MERGE'; x: number; y: number }
+  | { type: 'MERGE_TOWERS'; x: number; y: number }
+  | { type: 'EXPAND_WAREHOUSE' }
   | { type: 'TICK' }
   | { type: 'CHEAT_BUDGET'; amount: number }
   | { type: 'CHEAT_TIME'; ticks: number }
@@ -540,6 +543,15 @@ function reducer(state: SimState, action: Action): SimState {
 
         return { ...state, notice: { id: Date.now(), text: 'Недостаточно средств!' } }
       }
+      const materialCost = catalogEntry?.materialCost ?? {}
+      if (state.materials.bricks < (materialCost.bricks ?? 0) || state.materials.concrete < (materialCost.concrete ?? 0) || state.materials.steel < (materialCost.steel ?? 0)) {
+        const missing = state.materials.concrete < (materialCost.concrete ?? 0)
+          ? `Недостаточно бетона (Имеется: ${state.materials.concrete} / Требуется: ${materialCost.concrete})`
+          : state.materials.bricks < (materialCost.bricks ?? 0)
+            ? `Недостаточно кирпича (Имеется: ${state.materials.bricks} / Требуется: ${materialCost.bricks})`
+            : `Недостаточно стали (Имеется: ${state.materials.steel} / Требуется: ${materialCost.steel})`
+        return { ...state, notice: { id: Date.now(), text: missing } }
+      }
       
       // Determine size
       let w = catalogEntry?.footprint?.[0] ?? 1
@@ -603,7 +615,7 @@ function reducer(state: SimState, action: Action): SimState {
       )
       
       newGrid = recomputeServices(newGrid)
-      return { ...state, grid: newGrid, budget: state.budget - cost }
+      return { ...state, grid: newGrid, budget: state.budget - cost, materials: { bricks: state.materials.bricks - (materialCost.bricks ?? 0), concrete: state.materials.concrete - (materialCost.concrete ?? 0), steel: state.materials.steel - (materialCost.steel ?? 0) } }
     }
     case 'REMOVE': {
       const { x, y } = action
@@ -672,6 +684,33 @@ function reducer(state: SimState, action: Action): SimState {
       const population = recomputed.reduce((total, row) => total + row.reduce((sum, cell) => sum + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
       return { ...state, grid: recomputed, population, budget: state.budget - 1000, materials: { ...state.materials, concrete: state.materials.concrete - 10, steel: state.materials.steel - 5 } }
     }
+    case 'MERGE_TOWERS': {
+      const { x, y } = action
+      if (!inBounds(x, y)) return state
+      const source = state.grid[y][x]
+      if (source.catalogId !== 'res_modern_glass_tower') return state
+      const neighbors = [[x + 2, y], [x - 2, y], [x, y + 2], [x, y - 2]] as const
+      const neighbor = neighbors.map(([nx, ny]) => inBounds(nx, ny) ? state.grid[ny][nx] : undefined).find((cell) => cell?.catalogId === 'res_modern_glass_tower')
+      if (!neighbor || state.budget < 1500 || state.materials.concrete < 30 || state.materials.steel < 15) {
+        return { ...state, notice: { id: Date.now(), text: 'Для мега-комплекса нужны соседняя башня, $1,500, 30 бетона и 15 стали.' } }
+      }
+      const x0 = Math.min(x, neighbor.x), y0 = Math.min(y, neighbor.y)
+      const vertical = x === neighbor.x
+      const width = vertical ? 2 : 4, height = vertical ? 4 : 2
+      const belongsToMergedTowers = (cell: GridCell) => (cell.catalogId === 'res_modern_glass_tower' && ((cell.x === x && cell.y === y) || (cell.x === neighbor.x && cell.y === neighbor.y))) || (cell.type === TileType.FOOTPRINT && ((cell.refX === x && cell.refY === y) || (cell.refX === neighbor.x && cell.refY === neighbor.y)))
+      for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) {
+        if (!inBounds(x0 + dx, y0 + dy) || !belongsToMergedTowers(state.grid[y0 + dy][x0 + dx])) return { ...state, notice: { id: Date.now(), text: 'Участки башен должны непосредственно примыкать и не перекрываться другими зданиями.' } }
+      }
+      const grid = state.grid.map((row) => row.map((cell) => ({ ...cell })))
+      const residents = (state.grid[y][x].residents ?? 0) + (neighbor.residents ?? 0)
+      for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) grid[y0 + dy][x0 + dx] = { ...grid[y0 + dy][x0 + dx], type: TileType.EMPTY, catalogId: undefined, refX: undefined, refY: undefined, residents: undefined, maxResidents: undefined, residentialFloors: undefined, orientation: undefined, level: 1 }
+      grid[y0][x0] = { ...grid[y0][x0], type: TileType.RESIDENTIAL, catalogId: 'res_megapolis_complex', orientation: vertical ? 1 : 0, residents, maxResidents: 1050, residentialFloors: 30, level: 1, animate: true }
+      for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) if (dx || dy) grid[y0 + dy][x0 + dx] = { ...grid[y0 + dy][x0 + dx], type: TileType.FOOTPRINT, refX: x0, refY: y0 }
+      return { ...state, grid: recomputeServices(grid), budget: state.budget - 1500, materials: { ...state.materials, concrete: state.materials.concrete - 30, steel: state.materials.steel - 15 } }
+    }
+    case 'EXPAND_WAREHOUSE':
+      if (state.budget < 500) return { ...state, notice: { id: Date.now(), text: 'Для расширения склада нужно $500.' } }
+      return { ...state, budget: state.budget - 500, warehouseCapacity: state.warehouseCapacity + 50 }
 case 'TICK': {
       const nextMinutes = state.minutes + MINUTES_PER_TICK
       const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
@@ -716,9 +755,9 @@ case 'TICK': {
       const netTickIncome = net - (state.debt > 0 && isMidnight ? DAILY_LOAN_PAYMENT : 0)
       const materials = { ...state.materials }
       for (const row of cityGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL) {
-        if (cell.catalogId === 'ind_brickworks') materials.bricks += 1
-        if (cell.catalogId === 'ind_concrete_plant') materials.concrete += 1
-        if (cell.catalogId === 'ind_steel_foundry') materials.steel += 1
+        if (cell.catalogId === 'ind_brickworks') materials.bricks = Math.min(state.warehouseCapacity, materials.bricks + 1)
+        if (cell.catalogId === 'ind_concrete_plant') materials.concrete = Math.min(state.warehouseCapacity, materials.concrete + 1)
+        if (cell.catalogId === 'ind_steel_foundry') materials.steel = Math.min(state.warehouseCapacity, materials.steel + 1)
       }
       return {
         ...state,
@@ -752,6 +791,7 @@ function createFreshState(): SimState {
     notice: null,
     noticeSeq: 0,
     materials: { bricks: 0, concrete: 0, steel: 0 },
+    warehouseCapacity: 100,
   }
 }
 
@@ -787,6 +827,7 @@ function createInitialState(): SimState {
           population,
           budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
           materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
+          warehouseCapacity: save.warehouseCapacity ?? 100,
         }
       }
     }
@@ -824,6 +865,8 @@ export function useCitySimulation() {
   const removeTile = useCallback((x: number, y: number) => dispatch({ type: 'REMOVE', x, y }), [])
   const upgradeTile = useCallback((x: number, y: number) => dispatch({ type: 'UPGRADE', x, y }), [])
   const mergeNeighborhood = useCallback((x: number, y: number) => dispatch({ type: 'MERGE', x, y }), [])
+  const mergeTowers = useCallback((x: number, y: number) => dispatch({ type: 'MERGE_TOWERS', x, y }), [])
+  const expandWarehouse = useCallback(() => dispatch({ type: 'EXPAND_WAREHOUSE' }), [])
 
   const togglePause = useCallback(() => setPaused((value) => !value), [])
 
@@ -894,7 +937,10 @@ export function useCitySimulation() {
     removeTile,
     upgradeTile,
     mergeNeighborhood,
+    mergeTowers,
+    expandWarehouse,
     materials: state.materials,
+    warehouseCapacity: state.warehouseCapacity,
     reset: useCallback(() => dispatch({ type: 'RESET' }), []),
   }
 }

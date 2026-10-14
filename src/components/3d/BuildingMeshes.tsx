@@ -1142,6 +1142,38 @@ function ModernGlassTowerMesh() {
   </group>
 }
 
+function MegapolisComplexMesh() {
+  const towers = [
+    { x: -1.25, height: 5.1, color: '#3d6e75' },
+    { x: 0, height: 6.4, color: '#527f8a' },
+    { x: 1.25, height: 5.6, color: '#648c99' },
+  ]
+  return <group>
+    <Box size={[3.96, 0.08, 1.96]} position={[0, 0.04, 0]} color="#555a5d" />
+    <Box size={[3.82, 0.035, 1.82]} position={[0, 0.095, 0]} color="#a9aaa2" />
+    {towers.map((tower, index) => <group key={`mega-tower-${index}`} position={[tower.x, 0.12, -0.22]}>
+      <Box size={[0.72, tower.height, 0.82]} position={[0, tower.height / 2, 0]} color={tower.color} />
+      {Array.from({ length: Math.floor(tower.height / 0.42) }, (_, floor) => <Box key={`window-${floor}`} size={[0.53, 0.19, 0.025]} position={[0, 0.35 + floor * 0.42, 0.423]} color={floor % 3 === index % 3 ? '#fef08a' : '#dff4fb'} />)}
+      <Box size={[0.78, 0.08, 0.88]} position={[0, tower.height + 0.04, 0]} color="#d9e7e8" />
+      <Box size={[0.07, 0.16, 0.07]} position={[0.25, tower.height + 0.16, -0.24]} color="#d63b32" />
+    </group>)}
+    {[0, 1].map((index) => <Box key={`skybridge-${index}`} size={[0.64, 0.19, 0.3]} position={[-0.62 + index * 1.25, 2.45 + index * 0.52, -0.22]} color="#b9d9df" />)}
+    {/* Marked parking court, three compact parked cars and lot lights. */}
+    {[-1.45, -0.48, 0.48, 1.45].map((x) => <Box key={`parking-line-${x}`} size={[0.018, 0.012, 0.55]} position={[x, 0.125, 0.62]} color="#f3eee0" />)}
+    {[-1.05, 0, 1.05].map((x, index) => <group key={`parked-car-${x}`} position={[x, 0.2, 0.62]}>
+      <Box size={[0.48, 0.16, 0.58]} position={[0, 0.08, 0]} color={['#b84b38', '#4e7890', '#d49a45'][index]} />
+      <Box size={[0.31, 0.13, 0.27]} position={[0, 0.2, -0.025]} color="#b7d2d6" />
+      {[-1, 1].flatMap((side) => [-1, 1].map((front) => <Cylinder key={`${side}:${front}`} radius={0.055} height={0.04} segments={8} position={[side * 0.22, 0.035, front * 0.19]} rotation={[0, 0, Math.PI / 2]} color="#202326" />))}
+    </group>)}
+    {[-1.82, 1.82].map((x) => <group key={`lot-light-${x}`} position={[x, 0.12, 0.72]}>
+      <Cylinder radius={0.025} height={0.72} segments={6} position={[0, 0.36, 0]} color="#3b3934" />
+      <Box size={[0.18, 0.045, 0.12]} position={[0, 0.73, 0]} color="#ffe08a" />
+    </group>)}
+    <Box size={[0.45, 0.035, 0.34]} position={[0, 0.13, -0.72]} color="#5b9bad" />
+    <Box size={[0.48, 0.035, 0.38]} position={[0, 0.18, -0.72]} color="#d9e7e8" />
+  </group>
+}
+
 function CinemaLetter({ letter, x }: { letter: string; x: number }) {
   const noRaycast: THREE.Object3D['raycast'] = () => undefined
   const bar = (key: string, size: Vec3, position: Vec3, rotation: Vec3 = [0, 0, 0]) => <Box key={key} size={size} position={position} rotation={rotation} color="#e8292e" material={cinemaSignMaterial} raycast={noRaycast} />
@@ -1611,6 +1643,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'res_modern_glass_tower') {
         model = <ModernGlassTowerMesh />
         w = 2; h = 2
+      } else if (catalogId === 'res_megapolis_complex') {
+        model = <MegapolisComplexMesh />
+        w = 4; h = 2
       } else if (catalogId === 'res_half_timbered') {
         model = <HalfTimberedHouseMesh />
       } else if (catalogId === 'res_cozy_estate') {
