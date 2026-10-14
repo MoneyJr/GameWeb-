@@ -247,16 +247,14 @@ export const GroundSlab = memo(function GroundSlab() {
 export const NaturalHorizon = memo(function NaturalHorizon() {
   const scenery = useMemo(() => {
     const root = new THREE.Group()
-    const treeCount = 1200
+    const treeCapacity = 6000
     const trunkGeometry = new THREE.CylinderGeometry(0.075, 0.12, 0.9, 6)
     const crownGeometry = new THREE.IcosahedronGeometry(0.7, 1)
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#493629', roughness: 1 })
     const crownMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' }) as THREE.MeshToonMaterial & { flatShading: boolean }
     crownMaterial.flatShading = true
-    trunkMaterial.fog = false
-    crownMaterial.fog = false
-    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, treeCount)
-    const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, treeCount)
+    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, treeCapacity)
+    const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, treeCapacity)
     trunks.castShadow = true
     crowns.castShadow = true
     trunks.receiveShadow = true
@@ -271,16 +269,14 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     ]
     // Natural tree belts follow the feet of individual hills rather than
     // forming a circular wall around the city.
-    const clusters: [number, number][] = hillSpecs.flatMap(([x, z, sx, , sz]) => [
-      [x - sx * 0.55, z + sz * 0.25], [x + sx * 0.55, z + sz * 0.25], [x, z + sz * 0.62],
-    ])
+    const clusters: [number, number][] = hillSpecs.map(([x, z]) => [x, z])
     const riverCenter = (x: number) => -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
     const riverWidth = 3.35 * 2
     const distanceToRiver = (x: number, z: number) => {
       let minDistanceSquared = Number.POSITIVE_INFINITY
-      // Find the nearest point on the curved river centerline with a small
-      // local sample; this accounts for the channel's changing tangent.
-      for (let sample = -4; sample <= 4; sample += 1) {
+      // Sample the river spline around the point's X coordinate to estimate
+      // the nearest point on its curved centerline.
+      for (let sample = -6; sample <= 6; sample += 1) {
         const riverX = x + sample
         const dx = riverX - x
         const dz = riverCenter(riverX) - z
@@ -288,34 +284,57 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       }
       return Math.sqrt(minDistanceSquared)
     }
-    const insideBuildZone = (x: number, z: number) => Math.abs(x) < GRID_SIZE / 2 + 2 && Math.abs(z) < GRID_SIZE / 2 + 2
-    const foliagePalette = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824']
+    const foliagePalette = ['#eab308', '#eab308', '#eab308', '#eab308', '#eab308', '#d97724', '#d97724', '#d97724', '#991b1b', '#991b1b']
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
       return seed / 4294967296
     }
-    for (let i = 0; i < treeCount; i += 1) {
-      const cluster = clusters[i % clusters.length]
-      let x = 0
-      let z = 0
-      do {
-        x = cluster[0] + (random() + random() + random() - 1.5) * 6
-        z = cluster[1] + (random() + random() + random() - 1.5) * 6
-      } while (insideBuildZone(x, z) || distanceToRiver(x, z) < riverWidth / 2 + 3)
-      const scale = 0.7 + random() * 1.05
+    let treeCount = 0
+    const addTree = (x: number, z: number) => {
+      if (treeCount >= treeCapacity || Math.hypot(x, z) < 18 || distanceToRiver(x, z) < riverWidth / 2 + 2.5) return
+      const scale = 0.85 + random() * 0.4
       const yaw = random() * Math.PI * 2
       transform.position.set(x, 0.45 * scale, z)
       transform.rotation.set(0, yaw, 0)
       transform.scale.set(scale, scale * (0.82 + random() * 0.45), scale)
       transform.updateMatrix()
-      trunks.setMatrixAt(i, transform.matrix)
+      trunks.setMatrixAt(treeCount, transform.matrix)
       transform.position.y = 1.1 * scale
       transform.scale.set(scale * (0.85 + random() * 0.3), scale * (0.9 + random() * 0.4), scale * (0.85 + random() * 0.3))
       transform.updateMatrix()
-      crowns.setMatrixAt(i, transform.matrix)
-      crowns.setColorAt(i, new THREE.Color(foliagePalette[Math.floor(random() * foliagePalette.length)]))
+      crowns.setMatrixAt(treeCount, transform.matrix)
+      crowns.setColorAt(treeCount, new THREE.Color(foliagePalette[Math.floor(random() * foliagePalette.length)]))
+      treeCount += 1
     }
+    // A jittered grid supplies enough candidate points for visible woodland.
+    // Acceptance rises smoothly outwards, and accepted edge points are emitted
+    // as small 2–4 tree groups to preserve an open woodland-to-city transition.
+    const scatterStep = 2.8
+    for (let x = -102; x <= 102 && treeCount < treeCapacity; x += scatterStep) {
+      for (let z = -102; z <= 102 && treeCount < treeCapacity; z += scatterStep) {
+        const px = x + (random() - 0.5) * scatterStep * 0.55
+        const pz = z + (random() - 0.5) * scatterStep * 0.55
+        const distance = Math.hypot(px, pz)
+        if (distance < 18 || distanceToRiver(px, pz) < riverWidth / 2 + 2.5) continue
+        const density = distance < 42
+          ? THREE.MathUtils.lerp(0.1, 0.4, (distance - 18) / 24)
+          : 0.75 + random() * 0.15
+        if (random() >= density) continue
+        if (distance < 42) {
+          const groupSize = 2 + Math.floor(random() * 3)
+          for (let member = 0; member < groupSize; member += 1) {
+            const offsetX = member === 0 ? 0 : (random() + random() - 1) * 1.8
+            const offsetZ = member === 0 ? 0 : (random() + random() - 1) * 1.8
+            addTree(px + offsetX, pz + offsetZ)
+          }
+        } else {
+          addTree(px, pz)
+        }
+      }
+    }
+    trunks.count = treeCount
+    crowns.count = treeCount
     trunks.instanceMatrix.needsUpdate = true
     crowns.instanceMatrix.needsUpdate = true
     if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true
