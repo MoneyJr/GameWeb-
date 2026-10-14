@@ -6,7 +6,7 @@ import { OrbitControls as ThreeOrbitControls } from 'three-stdlib'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
-import { InkOutlinePassEffect, ToonShadingSetup } from '../3d/InkOutlinePass'
+import { ToonShadingSetup } from '../3d/InkOutlinePass'
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 
 type MenuControls = ThreeOrbitControls
@@ -165,7 +165,6 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
       <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
       <ToonShadingSetup />
-      <InkOutlinePassEffect />
     </>
   )
 }

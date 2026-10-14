@@ -15,7 +15,6 @@
     "@types/three": "^0.182.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.52.0",
-    "n8ao": "^2.0.1",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "tailwind-merge": "^3.7.0",
