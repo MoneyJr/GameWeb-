@@ -176,6 +176,7 @@ const BULB_DAY = new THREE.Color('#6b6354')
 const BULB_NIGHT = new THREE.Color('#ffee88')
 export const vehicleHeadlightMaterial = new THREE.MeshBasicMaterial({ color: '#fff4d2', toneMapped: false })
 export const vehicleTaillightMaterial = new THREE.MeshBasicMaterial({ color: '#5b2928', toneMapped: false })
+export const vehicleHeadlightBeamMaterial = new THREE.MeshBasicMaterial({ color: '#ffe8a3', transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, toneMapped: false })
 const HEADLIGHT_DAY = new THREE.Color('#fff4d2')
 const HEADLIGHT_NIGHT = new THREE.Color('#ffee88')
 const TAILLIGHT_DAY = new THREE.Color('#5b2928')
@@ -197,6 +198,7 @@ export function applyNightLevel(level: number): void {
   lampGlowInnerMaterial.opacity = level * 0.3
   vehicleHeadlightMaterial.color.lerpColors(HEADLIGHT_DAY, HEADLIGHT_NIGHT, level)
   vehicleTaillightMaterial.color.lerpColors(TAILLIGHT_DAY, TAILLIGHT_NIGHT, level)
+  vehicleHeadlightBeamMaterial.opacity = level * 0.16
   nightSignMaterial.emissiveIntensity = level * 2.5
   cinemaSignMaterial.emissiveIntensity = level * 3
   townHallClockMaterial.emissiveIntensity = level * 1.8

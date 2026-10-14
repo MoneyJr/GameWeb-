@@ -4,7 +4,7 @@ import * as THREE from 'three'
 import { Edges } from '@react-three/drei'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
-import { vehicleHeadlightMaterial, vehicleTaillightMaterial } from './primitives'
+import { vehicleHeadlightBeamMaterial, vehicleHeadlightMaterial, vehicleTaillightMaterial } from './primitives'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -195,6 +195,7 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
           )))}
           <mesh geometry={lightGeometry} material={vehicleHeadlightMaterial} position={[-0.085, 0.035, 0.235]} />
           <mesh geometry={lightGeometry} material={vehicleHeadlightMaterial} position={[0.085, 0.035, 0.235]} />
+          {[-0.085, 0.085].map((x) => <mesh key={`beam-${x}`} position={[x, 0.018, 0.64]} rotation={[-Math.PI / 2, 0, 0]} material={vehicleHeadlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2}><coneGeometry args={[0.11, 0.72, 5, 1, true]} /></mesh>)}
           <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[-0.085, 0.035, -0.235]} />
           <mesh geometry={lightGeometry} material={vehicleTaillightMaterial} position={[0.085, 0.035, -0.235]} />
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshStandardMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
