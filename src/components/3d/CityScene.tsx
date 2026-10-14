@@ -249,7 +249,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     const trunkGeometry = new THREE.CylinderGeometry(0.075, 0.12, 0.9, 6)
     const crownGeometry = new THREE.IcosahedronGeometry(0.7, 1)
     const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#493629', roughness: 1 })
-    const crownMaterial = new THREE.MeshToonMaterial({ color: '#d97724' }) as THREE.MeshToonMaterial & { flatShading: boolean }
+    const crownMaterial = new THREE.MeshToonMaterial({ color: '#ea580c' }) as THREE.MeshToonMaterial & { flatShading: boolean }
     crownMaterial.flatShading = true
     trunkMaterial.fog = false
     crownMaterial.fog = false
@@ -265,7 +265,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     const transform = new THREE.Object3D()
     // Frame the starter block with near and far forest belts while keeping an open meadow around it.
     const clusters: [number, number][] = [[0, -18], [0, -28], [18, 0], [28, 0], [0, 18], [0, 28], [-18, 0], [-28, 0]]
-    const greens = ['#d97724', '#b43418', '#eab308', '#854d0e', '#c25b2a']
+    const greens = ['#ea580c', '#c02626', '#eab308', '#854d0e', '#c25b2a']
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
@@ -299,7 +299,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     crowns.computeBoundingSphere()
     root.add(trunks, crowns)
 
-    const leafColors = ['#d97724', '#b43418', '#eab308', '#854d0e']
+    const leafColors = ['#ea580c', '#c02626', '#eab308', '#854d0e']
     const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), 420)
     leaves.frustumCulled = false
     for (let i = 0; i < leaves.count; i += 1) {
@@ -345,7 +345,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     })
     // Draw vineyard terraces as two instanced layers so the distant slopes read
     // as cultivated land without adding hundreds of separate draw calls.
-    const vineColors = ['#d97724', '#ca8a04', '#b43418', '#eab308']
+    const vineColors = ['#ea580c', '#ca8a04', '#c02626', '#eab308']
     const rowMesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 0.045, 0.1),
       new THREE.MeshToonMaterial({ color: '#795b36' }),
@@ -876,13 +876,13 @@ export interface CitySceneProps {
 
 import { applyNightLevel } from './primitives'
 
-const DAY_SKY = new THREE.Color('#EAE2D2')
+const DAY_SKY = new THREE.Color('#e7d4b7')
 const DUSK_SKY = new THREE.Color('#b889a2')
 const NIGHT_COLOR = new THREE.Color('#141b2d')
-const SUN_COLOR = new THREE.Color('#fff5e4')
+const SUN_COLOR = new THREE.Color('#fff3db')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
 const MOON_COLOR = new THREE.Color('#7aa2dc')
-const DAY_AMBIENT = new THREE.Color('#ecdcc9')
+const DAY_AMBIENT = new THREE.Color('#e8d5be')
 const DUSK_AMBIENT = new THREE.Color('#d89b91')
 const NIGHT_AMBIENT = new THREE.Color('#243354')
 const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
@@ -934,16 +934,16 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(DAY_SKY)
       ambientColor.copy(DAY_AMBIENT)
       sunColor.copy(SUN_COLOR)
-      ambient && (ambient.intensity = 0.65)
-      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.4)
+      ambient && (ambient.intensity = 0.5)
+      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.7)
     } else if (time >= 1080 && time < 1260) {
       background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
       ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
       sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.65, 0.38, dusk))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.5, 0.38, dusk))
       if (sun) {
         sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
-        sun.intensity = THREE.MathUtils.lerp(1.4, 0.05, dusk)
+        sun.intensity = THREE.MathUtils.lerp(1.7, 0.05, dusk)
       }
       if (dusk > 0.72) {
         const nightBlend = (dusk - 0.72) / 0.28
@@ -960,10 +960,10 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
       ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
       sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.65, dawn))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn))
       if (sun) {
         sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
-        sun.intensity = THREE.MathUtils.lerp(0.55, 1.4, dawn)
+        sun.intensity = THREE.MathUtils.lerp(0.55, 1.7, dawn)
       }
     } else {
       background.copy(NIGHT_COLOR)
@@ -980,7 +980,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = 0.006
+      scene.fog.density = 0.0015
     }
     scene.background = background
     applyNightLevel(level)
@@ -1072,9 +1072,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true
         gl.shadowMap.type = THREE.BasicShadowMap
+        gl.toneMapping = THREE.ACESFilmicToneMapping
+        gl.toneMappingExposure = 1.15
       }}
       onContextMenu={(e) => e.preventDefault()}
-      flat
       dpr={[1, maxDpr]}
       gl={{ antialias: true }}
       className="absolute inset-0 touch-none select-none"
@@ -1082,7 +1083,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
+      <fogExp2 attach="fog" args={['#d5c7b2', 0.0015]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
       {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
@@ -1090,12 +1091,12 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, minutes, budget
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight ref={ambientRef} intensity={0.65} color="#ecdcc9" />
+      <ambientLight ref={ambientRef} intensity={0.5} color="#e8d5be" />
       <directionalLight
         ref={sunRef}
         position={[35, 50, 25]}
-        intensity={1.4}
-        color="#fff7ea"
+        intensity={1.7}
+        color="#fff3db"
         castShadow
         shadow-mapSize={shadowMapSize}
         shadow-camera-left={-22}

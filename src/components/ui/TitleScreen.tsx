@@ -134,9 +134,9 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
   return (
     <>
       <color attach="background" args={['#EAE2D2']} />
-      <fogExp2 attach="fog" args={['#EAE2D2', 0.006]} />
-      <ambientLight intensity={0.65} color="#ecdcc9" />
-      <directionalLight position={[35, 50, 25]} intensity={1.4} color="#fff7ea" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
+      <fogExp2 attach="fog" args={['#d5c7b2', 0.0015]} />
+      <ambientLight intensity={0.5} color="#e8d5be" />
+      <directionalLight position={[35, 50, 25]} intensity={1.7} color="#fff3db" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls ref={controlsRef} autoRotate={!transitioning} autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
       <MenuCameraFlight active={transitioning} controlsRef={controlsRef} onComplete={onFlightComplete} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
@@ -180,7 +180,7 @@ function ShowcaseSceneReady({ onReady }: { onReady: () => void }) {
   return null
 }
 
-const forestLeafMaterials = ['#d97724', '#b43418', '#eab308', '#ca8a04'].map((color) => {
+const forestLeafMaterials = ['#ea580c', '#c02626', '#eab308', '#ca8a04'].map((color) => {
   const material = new THREE.MeshToonMaterial({ color })
   ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
   return material
@@ -208,7 +208,7 @@ function ShowcaseTree({ x, z, scale, pine, seed }: { x: number; z: number; scale
 }
 
 function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, number] }) {
-  const foliage = ['#d97724', '#b43418', '#eab308', '#ca8a04']
+  const foliage = ['#ea580c', '#c02626', '#eab308', '#ca8a04']
   const leafMaterials = useMemo(() => foliage.map(color => {
     const material = new THREE.MeshToonMaterial({ color })
     ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
@@ -239,7 +239,7 @@ function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, nu
 }
 
 function GardenCell({ position, variant }: { position: [number, number, number]; variant: number }) {
-  const autumn = ['#d97724', '#b43418', '#eab308', '#ca8a04']
+  const autumn = ['#ea580c', '#c02626', '#eab308', '#ca8a04']
   const leaf = autumn[variant % autumn.length]
   return <group position={position}>
     <mesh position={[0, 0.014, 0]} receiveShadow><boxGeometry args={[0.96, 0.028, 0.96]} /><meshToonMaterial color={variant % 5 === 0 ? '#72894b' : '#839450'} /></mesh>
@@ -262,7 +262,7 @@ function ShowcaseRoundabout({ position, variant }: { position: [number, number, 
     <mesh position={[0, 0.079, 0]} receiveShadow><cylinderGeometry args={[0.42, 0.42, 0.025, 10]} /><meshToonMaterial color="#76864a" /></mesh>
     <group position={[0, 0.09, 0]}>
       <mesh position={[0, 0.24, 0]} castShadow><cylinderGeometry args={[0.035, 0.05, 0.45, 5]} /><meshToonMaterial color="#493421" /></mesh>
-      <mesh position={[0, 0.54, 0]} castShadow><icosahedronGeometry args={[0.28, 1]} /><meshToonMaterial color={['#d97724', '#b43418', '#eab308', '#ca8a04'][variant]} /></mesh>
+      <mesh position={[0, 0.54, 0]} castShadow><icosahedronGeometry args={[0.28, 1]} /><meshToonMaterial color={['#ea580c', '#c02626', '#eab308', '#ca8a04'][variant]} /></mesh>
     </group>
   </group>
 }
@@ -326,7 +326,7 @@ function ShowcaseCar({ lane, fixed, phase, color }: { lane: 'x' | 'z'; fixed: nu
 }
 
 const facadePalettes = [
-  { name: 'half-timber', wall: '#f4ede2', roof: '#a03b26', trim: '#3d2817' },
+  { name: 'half-timber', wall: '#f4ede2', roof: '#b44a28', trim: '#3d2817' },
   { name: 'brownstone', wall: '#8c3a27', roof: '#363f4a', trim: '#e2b787' },
   { name: 'renaissance', wall: '#e2ba6e', roof: '#4a5260', trim: '#f5ead6' },
   { name: 'modern', wall: '#d6c7aa', roof: '#828894', trim: '#46525a' },
@@ -440,9 +440,9 @@ function ShowcasePiazza() {
     <group position={[1.03, 0.06, -0.93]}>
       {[-0.19, 0.19].map((x) => <mesh key={`market-post-${x}`} position={[x, 0.25, 0]} castShadow><boxGeometry args={[0.035, 0.5, 0.035]} /><meshToonMaterial color="#76513a" /><Edges color="#261c14" threshold={28} /></mesh>)}
       <mesh position={[0, 0.51, 0]} castShadow><boxGeometry args={[0.47, 0.07, 0.3]} /><meshToonMaterial color="#f4ead8" /><Edges color="#261c14" threshold={28} /></mesh>
-      {[-0.15, -0.05, 0.05, 0.15].map((x, i) => <mesh key={`market-stripe-${i}`} position={[x, 0.55, 0.015]}><boxGeometry args={[0.06, 0.018, 0.27]} /><meshToonMaterial color={i % 2 ? '#b43418' : '#d97724'} /></mesh>)}
+      {[-0.15, -0.05, 0.05, 0.15].map((x, i) => <mesh key={`market-stripe-${i}`} position={[x, 0.55, 0.015]}><boxGeometry args={[0.06, 0.018, 0.27]} /><meshToonMaterial color={i % 2 ? '#c02626' : '#ea580c'} /></mesh>)}
       {[-0.27, 0.27].map((x) => <mesh key={`barrel-${x}`} position={[x, 0.11, 0.15]}><cylinderGeometry args={[0.075, 0.07, 0.18, 8]} /><meshToonMaterial color="#8b5b34" /><Edges color="#261c14" threshold={28} /></mesh>)}
-      {Array.from({ length: 5 }, (_, i) => <mesh key={`bunting-${i}`} position={[-0.35 + i * 0.17, 0.71 - (i % 2) * 0.035, -0.09]} rotation={[0, 0, Math.PI]}><coneGeometry args={[0.055, 0.12, 3]} /><meshToonMaterial color={['#b43418', '#eab308', '#2e6c64'][i % 3]} /></mesh>)}
+      {Array.from({ length: 5 }, (_, i) => <mesh key={`bunting-${i}`} position={[-0.35 + i * 0.17, 0.71 - (i % 2) * 0.035, -0.09]} rotation={[0, 0, Math.PI]}><coneGeometry args={[0.055, 0.12, 3]} /><meshToonMaterial color={['#c02626', '#eab308', '#2e6c64'][i % 3]} /></mesh>)}
     </group>
   </group>
 }
@@ -587,7 +587,10 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   const actionIndex = (key: string) => actionKeys.indexOf(key)
   return (
     <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-300 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
-      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [28, 42, 38], fov: 24 }} gl={{ antialias: true }}>
+      <Canvas shadows dpr={[1, 1.5]} camera={{ position: [28, 42, 38], fov: 24 }} gl={{ antialias: true }} onCreated={({ gl }) => {
+        gl.toneMapping = THREE.ACESFilmicToneMapping
+        gl.toneMappingExposure = 1.15
+      }}>
         <ShowcaseCity transitioning={transitioning} onFlightComplete={finishFlight} />
         <ShowcaseSceneReady onReady={markAssetsReady} />
       </Canvas>

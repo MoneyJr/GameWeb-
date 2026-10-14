@@ -243,7 +243,7 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
   return (
     <group>
       {/* Asphalt */}
-      <Box size={[1, 0.04, 1]} position={[0, 0.02, 0]} color="#3a3d45" />
+      <Box size={[1, 0.04, 1]} position={[0, 0.02, 0]} color="#292524" />
 
       {/* Sidewalks (тротуары с бордюрами) */}
       {isStraightX && !isIntersection && (
@@ -321,7 +321,7 @@ function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotat
 }
 
 function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) {
-  const foliage = ['#854d0e', '#d97724', '#b43418']
+  const foliage = ['#854d0e', '#ea580c', '#c02626']
   return (
     <group position={position} scale={[scale, scale, scale]}>
       <Cylinder radius={0.1} radiusTop={0.06} height={0.75} segments={6} position={[0, 0.375, 0]} color="#3a281c" />
@@ -578,7 +578,7 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
 
   // Wall-to-wall European townhouse: one full tile with a deep, warm facade.
   const walls = ['#dfd7c5', '#d99f66', '#c4694b', '#e0ba72']
-  const roofs = ['#a03b26', '#b84630', '#8e382b']
+  const roofs = ['#b44a28', '#c2512e', '#8e382b']
   const wallColor = catalogId === 'res_townhouse' ? '#eedec5' : walls[variant % walls.length]
   const roofColor = catalogId === 'res_apartment' ? '#3d4450' : roofs[variant % roofs.length]
   const roofType = variant % 3
@@ -703,7 +703,7 @@ function CozyEstateMesh() {
     <Box size={[0.82, 0.025, 0.025]} position={[0.01, 0.15, 0.42]} color="#76513a" />
     {[-0.28, -0.08, 0.12].map((x) => <mesh key={`estate-pumpkin-${x}`} position={[x, 0.11, 0.29]} scale={[0.08, 0.06, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea721c" /></mesh>)}
     <Cylinder radius={0.045} height={0.48} segments={6} position={[0.31, 0.25, -0.28]} color="#65462e" />
-    {[[0.31, 0.56, -0.28], [0.43, 0.52, -0.22], [0.22, 0.49, -0.35]].map((position, index) => <mesh key={`estate-maple-${index}`} position={position as Vec3} castShadow receiveShadow><icosahedronGeometry args={[index ? 0.19 : 0.24, 1]} /><meshToonMaterial color={index % 2 ? '#b43418' : '#eab308'} /></mesh>)}
+    {[[0.31, 0.56, -0.28], [0.43, 0.52, -0.22], [0.22, 0.49, -0.35]].map((position, index) => <mesh key={`estate-maple-${index}`} position={position as Vec3} castShadow receiveShadow><icosahedronGeometry args={[index ? 0.19 : 0.24, 1]} /><meshToonMaterial color={index % 2 ? '#c02626' : '#eab308'} /></mesh>)}
   </group>
 }
 function WineTavernMesh() {
@@ -867,8 +867,8 @@ function MarketHallMesh() {
     </group>)}
     {[-0.62, 0, 0.62].map((x, i) => <group key={`stall-${x}`} position={[x, 0.09, 0.08]}>
       <Box size={[0.46, 0.13, 0.28]} position={[0, 0.16, 0]} color="#9b4934" />
-      <Box size={[0.5, 0.035, 0.32]} position={[0, 0.27, 0]} color={i % 2 ? '#e8dfca' : '#b43418'} />
-      {[-0.12, 0, 0.12].map((x2, j) => <mesh key={x2} position={[x2, 0.24, 0.02]} castShadow><sphereGeometry args={[0.055, 7, 5]} /><meshToonMaterial color={j % 2 ? '#eab308' : '#b43418'} /></mesh>)}
+      <Box size={[0.5, 0.035, 0.32]} position={[0, 0.27, 0]} color={i % 2 ? '#e8dfca' : '#c02626'} />
+      {[-0.12, 0, 0.12].map((x2, j) => <mesh key={x2} position={[x2, 0.24, 0.02]} castShadow><sphereGeometry args={[0.055, 7, 5]} /><meshToonMaterial color={j % 2 ? '#eab308' : '#c02626'} /></mesh>)}
     </group>)}
     <Box size={[1.76, 0.04, 0.025]} position={[0, 0.48, 0.36]} color="#52796f" />
   </group>
@@ -1780,7 +1780,7 @@ function RoseGardenMesh() {
     <Box size={[0.76, 0.018, 0.13]} position={[0, 0.09, 0]} color="#c8b99d" />
     <Box size={[0.13, 0.018, 0.76]} position={[0, 0.09, 0]} color="#c8b99d" />
     {[-0.32, 0.32].flatMap(x => [-0.32, 0.32].map(z => <Box key={`${x}:${z}`} size={[0.22, 0.19, 0.22]} position={[x, 0.17, z]} color="#526b37" />))}
-    {[-0.34, 0.34].flatMap(x => [-0.34, 0.34].map(z => <mesh key={`rose-${x}:${z}`} position={[x, 0.29, z]}><icosahedronGeometry args={[0.09, 0]} /><meshToonMaterial color={x * z > 0 ? '#b43418' : '#d97724'} /></mesh>))}
+    {[-0.34, 0.34].flatMap(x => [-0.34, 0.34].map(z => <mesh key={`rose-${x}:${z}`} position={[x, 0.29, z]}><icosahedronGeometry args={[0.09, 0]} /><meshToonMaterial color={x * z > 0 ? '#c02626' : '#ea580c'} /></mesh>))}
     {/* White iron gazebo in the garden center. */}
     <Cylinder radius={0.23} height={0.035} segments={12} position={[0, 0.12, 0]} color="#eee9dc" />
     {[0, 1, 2, 3].map(i => <Cylinder key={i} radius={0.018} height={0.5} segments={6} position={[Math.cos(i * Math.PI / 2) * 0.18, 0.38, Math.sin(i * Math.PI / 2) * 0.18]} color="#f5f1e8" />)}
