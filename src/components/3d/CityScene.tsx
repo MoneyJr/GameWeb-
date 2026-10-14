@@ -1007,16 +1007,16 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(DAY_SKY)
       ambientColor.copy(DAY_AMBIENT)
       sunColor.copy(SUN_COLOR)
-      ambient && (ambient.intensity = 0.5)
-      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.7)
+      ambient && (ambient.intensity = 0.4)
+      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.8)
     } else if (time >= 1080 && time < 1260) {
       background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
       ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
       sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.5, 0.38, dusk))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.4, 0.38, dusk))
       if (sun) {
         sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
-        sun.intensity = THREE.MathUtils.lerp(1.7, 0.05, dusk)
+        sun.intensity = THREE.MathUtils.lerp(1.8, 0.05, dusk)
       }
       if (dusk > 0.72) {
         const nightBlend = (dusk - 0.72) / 0.28
@@ -1033,10 +1033,10 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
       ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
       sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.4, dawn))
       if (sun) {
         sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
-        sun.intensity = THREE.MathUtils.lerp(0.55, 1.7, dawn)
+        sun.intensity = THREE.MathUtils.lerp(0.55, 1.8, dawn)
       }
     } else {
       background.copy(NIGHT_COLOR)
@@ -1153,10 +1153,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Canvas
-      shadows={{ type: THREE.BasicShadowMap }}
+      shadows={{ type: THREE.PCFSoftShadowMap }}
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true
-        gl.shadowMap.type = THREE.BasicShadowMap
+        gl.shadowMap.type = THREE.PCFSoftShadowMap
         gl.toneMapping = THREE.ACESFilmicToneMapping
         gl.toneMappingExposure = 1.15
       }}
@@ -1176,11 +1176,11 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight ref={ambientRef} intensity={0.5} color="#e8d5be" />
+      <ambientLight ref={ambientRef} intensity={0.4} color="#e8d5be" />
       <directionalLight
         ref={sunRef}
         position={[35, 50, 25]}
-        intensity={1.7}
+        intensity={1.8}
         color="#fff3db"
         castShadow
         shadow-mapSize={shadowMapSize}
