@@ -198,7 +198,7 @@ export function applyNightLevel(level: number): void {
   lampGlowInnerMaterial.opacity = level * 0.3
   vehicleHeadlightMaterial.color.lerpColors(HEADLIGHT_DAY, HEADLIGHT_NIGHT, level)
   vehicleTaillightMaterial.color.lerpColors(TAILLIGHT_DAY, TAILLIGHT_NIGHT, level)
-  vehicleHeadlightBeamMaterial.opacity = level * 0.16
+  vehicleHeadlightBeamMaterial.opacity = level * 0.3
   nightSignMaterial.emissiveIntensity = level * 2.5
   cinemaSignMaterial.emissiveIntensity = level * 3
   townHallClockMaterial.emissiveIntensity = level * 1.8
