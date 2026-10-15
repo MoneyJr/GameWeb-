@@ -2,7 +2,7 @@ import { TrafficSystem } from './TrafficSystem'
 import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Edges, OrthographicCamera } from '@react-three/drei'
+import { Edges, OrthographicCamera, useGLTF } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
@@ -11,6 +11,7 @@ import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from './InkOutlinePass'
+import { prepareModel, toonMaterial } from './ModelAsset'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -280,23 +281,37 @@ export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: numbe
 })
 
 export const NaturalHorizon = memo(function NaturalHorizon() {
+  const treeScene = useGLTF('/models/city-pack-tree.glb').scene
+  const normalizedTree = useMemo(() => prepareModel(treeScene, [1.4, 2.2, 1.4]), [treeScene])
+  const treeParts = useMemo(() => {
+    normalizedTree.updateMatrixWorld(true)
+    const parts: { geometry: THREE.BufferGeometry; material: THREE.MeshToonMaterial | THREE.MeshToonMaterial[]; foliage: boolean }[] = []
+    normalizedTree.traverse((object) => {
+      const mesh = object as THREE.Mesh
+      if (!mesh.isMesh) return
+      const sources = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      const geometry = mesh.geometry.clone()
+      geometry.applyMatrix4(mesh.matrixWorld)
+      const materials = sources.map((source) => source instanceof THREE.MeshToonMaterial ? source.clone() : toonMaterial(source))
+      const foliage = /leaf|leaves|foliage|crown|canopy/.test(`${mesh.name} ${materials.map((material) => material.name).join(' ')}`.toLowerCase())
+        || materials.some((material) => material.color.g > material.color.r * 0.82)
+      if (foliage) materials.forEach((material) => material.color.set('#ffffff'))
+      parts.push({ geometry, material: Array.isArray(mesh.material) ? materials : materials[0], foliage })
+    })
+    return parts
+  }, [normalizedTree])
   const scenery = useMemo(() => {
     const root = new THREE.Group()
     const treeCapacity = 6000
-    const trunkGeometry = new THREE.CylinderGeometry(0.075, 0.12, 0.9, 6)
-    const crownGeometry = new THREE.IcosahedronGeometry(0.7, 1)
-    const trunkMaterial = new THREE.MeshStandardMaterial({ color: '#493629', roughness: 1 })
-    const crownMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' }) as THREE.MeshToonMaterial & { flatShading: boolean }
-    crownMaterial.flatShading = true
-    const trunks = new THREE.InstancedMesh(trunkGeometry, trunkMaterial, treeCapacity)
-    const crowns = new THREE.InstancedMesh(crownGeometry, crownMaterial, treeCapacity)
-    trunks.castShadow = true
-    crowns.castShadow = true
-    trunks.receiveShadow = true
-    crowns.receiveShadow = true
-    // This forest spans multiple distant clusters; let Three draw the clusters independently of a local frustum bound.
-    trunks.frustumCulled = false
-    crowns.frustumCulled = false
+    const treeInstances = treeParts.map((part) => {
+      const material = Array.isArray(part.material) ? part.material.map((item) => item.clone()) : part.material.clone()
+      const mesh = new THREE.InstancedMesh(part.geometry, material, treeCapacity)
+      mesh.castShadow = true
+      mesh.receiveShadow = true
+      // The forest spans many distant clusters beyond the default local bounds.
+      mesh.frustumCulled = false
+      return mesh
+    })
     const transform = new THREE.Object3D()
     const hillSpecs: [number, number, number, number, number][] = [
       [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
@@ -331,16 +346,20 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       const scale = 0.85 + random() * 0.4
       const yaw = random() * Math.PI * 2
       const groundY = terrainHeightAt(x, z)
-      transform.position.set(x, groundY + 0.45 * scale, z)
+      transform.position.set(x, groundY, z)
       transform.rotation.set(0, yaw, 0)
       transform.scale.set(scale, scale * (0.82 + random() * 0.45), scale)
       transform.updateMatrix()
-      trunks.setMatrixAt(treeCount, transform.matrix)
-      transform.position.y = groundY + 1.1 * scale
-      transform.scale.set(scale * (0.85 + random() * 0.3), scale * (0.9 + random() * 0.4), scale * (0.85 + random() * 0.3))
-      transform.updateMatrix()
-      crowns.setMatrixAt(treeCount, transform.matrix)
-      crowns.setColorAt(treeCount, new THREE.Color(foliagePalette[Math.floor(random() * foliagePalette.length)]))
+      const treeMatrix = transform.matrix.clone()
+      for (let partIndex = 0; partIndex < treeInstances.length; partIndex += 1) {
+        const instance = treeInstances[partIndex]
+        instance.setMatrixAt(treeCount, treeMatrix)
+        if (treeParts[partIndex].foliage) {
+          instance.setColorAt(treeCount, new THREE.Color(foliagePalette[Math.floor(random() * foliagePalette.length)]))
+        } else {
+          instance.setColorAt(treeCount, new THREE.Color('#ffffff'))
+        }
+      }
       treeCount += 1
     }
     // A jittered grid supplies enough candidate points for visible woodland.
@@ -370,14 +389,13 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
         addTree(px, pz)
       }
     }
-    trunks.count = treeCount
-    crowns.count = treeCount
-    trunks.instanceMatrix.needsUpdate = true
-    crowns.instanceMatrix.needsUpdate = true
-    if (crowns.instanceColor) crowns.instanceColor.needsUpdate = true
-    trunks.computeBoundingSphere()
-    crowns.computeBoundingSphere()
-    root.add(trunks, crowns)
+    treeInstances.forEach((instance) => {
+      instance.count = treeCount
+      instance.instanceMatrix.needsUpdate = true
+      if (instance.instanceColor) instance.instanceColor.needsUpdate = true
+      instance.computeBoundingSphere()
+      root.add(instance)
+    })
 
     const leafColors = foliagePalette
     const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), 420)
@@ -533,7 +551,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     stones.castShadow = true
     root.add(stones, reeds)
     return root
-  }, [])
+  }, [treeParts])
 
   return <primitive object={scenery} />
 })

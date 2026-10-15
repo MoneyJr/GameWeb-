@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
+import { LoadedCityModel } from './ModelAsset'
 
 /* -------------------------------------------------------------------------- */
 /*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
@@ -665,47 +666,6 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   )
 }
 
-function HalfTimberedHouseMesh() {
-  return <group>
-    <ResidentialBase />
-    <Box size={[0.84, 0.68, 0.78]} position={[0, 0.39, -0.015]} color="#f1e4cd" />
-    <Box size={[0.86, 0.055, 0.82]} position={[0, 0.75, -0.015]} color="#cbb99a" />
-    <Box size={[0.55, 0.67, 0.76]} position={[0, 1.08, -0.015]} color="#f4ead8" />
-    <Window position={[-0.2, 0.39, 0.38]} width={0.14} height={0.22} glass="#3d5960" frame="#f8f1e3" />
-    <Window position={[0.2, 0.39, 0.38]} width={0.14} height={0.22} glass="#3d5960" frame="#f8f1e3" />
-    <Window position={[-0.13, 0.91, 0.37]} width={0.13} height={0.2} glass="#3d5960" frame="#f8f1e3" />
-    <Window position={[0.13, 0.91, 0.37]} width={0.13} height={0.2} glass="#3d5960" frame="#f8f1e3" />
-    {/* Exposed timber frame and steep terracotta roof. */}
-    {[-0.39, 0, 0.39].map((x) => <Box key={`timber-post-${x}`} size={[0.035, 0.7, 0.045]} position={[x, 0.39, 0.415]} color="#39291f" />)}
-    {[0.17, 0.55, 0.76].map((y) => <Box key={`timber-beam-${y}`} size={[0.82, 0.035, 0.045]} position={[0, y, 0.42]} color="#39291f" />)}
-    {[-1, 1].map((side) => <Box key={`timber-brace-${side}`} size={[0.04, 0.47, 0.05]} position={[side * 0.25, 0.37, 0.45]} rotation={[0, 0, side * -0.62]} color="#39291f" />)}
-    <Box size={[0.57, 0.1, 0.92]} position={[-0.19, 1.49, 0]} rotation={[0, 0, -0.57]} color="#b84a28" />
-    <Box size={[0.57, 0.1, 0.92]} position={[0.19, 1.49, 0]} rotation={[0, 0, 0.57]} color="#b84a28" />
-    <Box size={[0.13, 0.35, 0.13]} position={[-0.27, 1.05, -0.2]} color="#8d3f2d" />
-    {[-0.36, 0.36].map((x) => <group key={`entry-lamp-${x}`} position={[x, 0.33, 0.47]}>
-      <Box size={[0.025, 0.18, 0.025]} position={[0, 0.06, 0]} color="#34312a" />
-      <Box size={[0.095, 0.08, 0.07]} position={[0, 0.17, 0]} color="#ffdf88" material={lampBulbMaterial} />
-    </group>)}
-  </group>
-}
-
-function CozyEstateMesh() {
-  return <group>
-    <ResidentialBase />
-    <Box size={[0.66, 0.36, 0.58]} position={[-0.1, 0.34, -0.08]} color="#d4c7ae" />
-    <Box size={[0.72, 0.07, 0.64]} position={[-0.1, 0.56, -0.08]} color="#a84b31" />
-    <Box size={[0.46, 0.42, 0.64]} position={[-0.1, 0.78, -0.08]} rotation={[0, 0, Math.PI / 4]} color="#b84a28" />
-    <Window position={[-0.25, 0.34, 0.22]} width={0.13} height={0.14} glass="#49636a" frame="#f4ead8" />
-    <Window position={[0.03, 0.34, 0.22]} width={0.13} height={0.14} glass="#49636a" frame="#f4ead8" />
-    <Box size={[0.32, 0.025, 0.5]} position={[0.28, 0.025, 0.16]} color="#c9b99a" />
-    {/* Low garden fencing and a pumpkin patch. */}
-    {[-0.38, -0.12, 0.14, 0.4].map((x) => <Box key={`estate-fence-${x}`} size={[0.025, 0.12, 0.025]} position={[x, 0.1, 0.42]} color="#76513a" />)}
-    <Box size={[0.82, 0.025, 0.025]} position={[0.01, 0.15, 0.42]} color="#76513a" />
-    {[-0.28, -0.08, 0.12].map((x) => <mesh key={`estate-pumpkin-${x}`} position={[x, 0.11, 0.29]} scale={[0.08, 0.06, 0.07]}><sphereGeometry args={[1, 8, 6]} /><meshToonMaterial color="#ea721c" /></mesh>)}
-    <Cylinder radius={0.045} height={0.48} segments={6} position={[0.31, 0.25, -0.28]} color="#65462e" />
-    {[[0.31, 0.56, -0.28], [0.43, 0.52, -0.22], [0.22, 0.49, -0.35]].map((position, index) => <mesh key={`estate-maple-${index}`} position={position as Vec3} castShadow receiveShadow><icosahedronGeometry args={[index ? 0.19 : 0.24, 1]} /><meshToonMaterial color={index % 2 ? '#c02626' : '#eab308'} /></mesh>)}
-  </group>
-}
 function WineTavernMesh() {
   return <group>
     <CommercialBase />
@@ -1056,46 +1016,6 @@ function FireStationMesh() {
       <Cylinder radius={0.07} radiusTop={0.07} height={0.14} segments={8} position={[0.36, PAD_HEIGHT + 1.3, -0.17]} color="#d33a32" />
     </group>
   )
-}
-
-function PanelBlockMesh() {
-  const balconyRows = Array.from({ length: 5 }, (_, floor) => floor)
-  const balconyColumns = [-0.58, 0, 0.58]
-  return <group>
-    {/* Asphalt courtyard, curbs, and paved entrance strip. */}
-    <Box size={[1.98, 0.055, 1.98]} position={[0, 0.027, 0]} color="#45494b" />
-    <Box size={[1.98, 0.07, 0.08]} position={[0, 0.045, 0.95]} color="#d2c8b5" />
-    <Box size={[1.98, 0.07, 0.08]} position={[0, 0.045, -0.95]} color="#d2c8b5" />
-    <Box size={[0.08, 0.07, 1.9]} position={[-0.95, 0.045, 0]} color="#d2c8b5" />
-    <Box size={[0.08, 0.07, 1.9]} position={[0.95, 0.045, 0]} color="#d2c8b5" />
-    <Box size={[0.7, 0.035, 0.35]} position={[0, 0.08, 0.74]} color="#cfc7b8" />
-    <Box size={[1.8, 3.08, 1.4]} position={[0, 1.68, -0.02]} color="#c8c5bc" />
-    {/* Concrete panel seams and five stacked storeys. */}
-    {[-1.23, -0.61, 0.01, 0.63, 1.25].map((y) => <Box key={`seam-${y}`} size={[1.81, 0.025, 1.42]} position={[0, y + 0.1, -0.02]} color="#b4b2ac" />)}
-    {balconyRows.flatMap((floor) => balconyColumns.map((x, column) => {
-      const y = 0.42 + floor * 0.61
-      const glazed = ((floor * 7 + column * 11 + 3) % 5) < 2
-      return <group key={`balcony-${floor}-${column}`} position={[x, y, 0.72]}>
-        <Box size={[0.5, 0.35, 0.2]} position={[0, 0, 0.1]} color="#c1beb6" />
-        <Window position={[0, 0.02, 0.015]} width={0.28} height={0.34} glass={glazed ? '#55727b' : '#313b45'} frame="#e4e0d6" cross={false} sill={false} />
-        <Box size={[0.5, 0.035, 0.035]} position={[0, -0.12, 0.21]} color="#3b4144" />
-        {[-0.22, 0, 0.22].map((railX) => <Box key={railX} size={[0.018, 0.13, 0.018]} position={[railX, -0.055, 0.21]} color="#3b4144" />)}
-      </group>
-    }))}
-    {[-0.62, -0.2, 0.22, 0.64].map((x, i) => <Window key={`side-${i}`} position={[x, 1.35, -0.727]} facing="-z" width={0.23} height={0.32} glass="#35434c" frame="#e1ded5" sill={false} />)}
-    {/* Bitumen roof, elevator overruns, vents, and aerials. */}
-    <Box size={[1.9, 0.16, 1.5]} position={[0, 3.32, -0.02]} color="#33383d" />
-    <Box size={[1.9, 0.16, 0.07]} position={[0, 3.43, 0.7]} color="#42464b" />
-    <Box size={[0.38, 0.36, 0.34]} position={[-0.48, 3.57, -0.22]} color="#aaa9a2" />
-    <Box size={[0.38, 0.36, 0.34]} position={[0.42, 3.57, -0.22]} color="#aaa9a2" />
-    {[-0.7, 0.7].map((x) => <Cylinder key={`vent-${x}`} radius={0.055} radiusTop={0.045} height={0.28} segments={8} position={[x, 3.54, 0.42]} color="#747b7d" />)}
-    <Cylinder radius={0.018} height={0.62} segments={6} position={[0.7, 3.69, -0.47]} color="#5e6569" />
-    <Cylinder radius={0.014} height={0.45} segments={6} position={[0.61, 3.79, -0.47]} rotation={[0, 0, Math.PI / 2]} color="#5e6569" />
-    {/* Bench and refuse bins in the yard. */}
-    <Box size={[0.42, 0.045, 0.11]} position={[-0.58, 0.15, 0.61]} color="#79583a" />
-    <Box size={[0.42, 0.14, 0.025]} position={[-0.58, 0.23, 0.56]} color="#79583a" />
-    {[-0.25, -0.08].map((x, i) => <Box key={`bin-${i}`} size={[0.12, 0.2, 0.12]} position={[x, 0.16, -0.72]} color={i ? '#566d67' : '#67757a'} />)}
-  </group>
 }
 
 function ModernGlassTowerMesh() {
@@ -1637,20 +1557,21 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       model = <CropField plowed />
       break
     case TileType.RESIDENTIAL:
-      if (catalogId === 'res_panel_block') {
-        model = <PanelBlockMesh />
-        w = 2; h = 2
-      } else if (catalogId === 'res_modern_glass_tower') {
+      if (catalogId === 'res_modern_glass_tower') {
         model = <ModernGlassTowerMesh />
         w = 2; h = 2
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
-      } else if (catalogId === 'res_half_timbered') {
-        model = <HalfTimberedHouseMesh />
-      } else if (catalogId === 'res_cozy_estate') {
-        model = <CozyEstateMesh />
-      } else model = <Residential variant={variant} style={style as any} catalogId={catalogId} />
+      } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
+        model = <LoadedCityModel kind="apartment" target={[1.76, catalogId === 'res_panel_block' ? 3.2 : 2.8, 1.72]} />
+        if (catalogId === 'res_panel_block') { w = 2; h = 2 }
+      } else if (catalogId === 'res_townhouse' || catalogId === 'res_half_timbered') {
+        model = <LoadedCityModel kind="townhouse" target={[1.72, 2.35, 1.72]} />
+      } else {
+        const targetHeight = catalogId === 'res_cottage' || catalogId === 'res_cozy_estate' ? 1.1 : 2.2
+        model = <LoadedCityModel kind="cottage" target={[1.72, targetHeight, 1.72]} />
+      }
       dust = 10
       needsWater = true
       needsPower = true
@@ -1664,8 +1585,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
         model = <MarketHallMesh />
         w = 2; h = 1
       } else {
-        model = catalogId === 'com_mall' ? <group scale={[1.8, 1, 1]}><Commercial catalogId={catalogId} /></group> : <Commercial catalogId={catalogId} />
-        if (catalogId === 'com_mall') w = 2
+        const isWide = catalogId === 'com_mall'
+        model = <LoadedCityModel kind="store" target={isWide ? [3.65, 2.2, 1.72] : [1.72, 2.3, 1.72]} />
+        if (isWide) w = 2
       }
       dust = 10
       needsWater = true

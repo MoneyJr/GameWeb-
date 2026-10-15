@@ -2,10 +2,11 @@ import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Edges } from '@react-three/drei'
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js'
+import { useGLTF } from '@react-three/drei'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
-import { vehicleHeadlightBeamMaterial, vehicleHeadlightMaterial, vehicleTaillightMaterial } from './primitives'
+import { vehicleHeadlightBeamMaterial, vehicleTaillightMaterial } from './primitives'
+import { prepareModel } from './ModelAsset'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -23,7 +24,6 @@ interface CarState {
 const CAR_COUNT = 12
 const CAR_SPEED = 1.15
 const CAR_COLORS = ['#991b1b', '#1e40af', '#d97706', '#334155', '#496b59']
-const GLASS_COLORS = ['#1e293b', '#263b50', '#263744', '#344454', '#23333b']
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
 function cellToWorld(x: number, y: number): [number, number, number] {
@@ -108,32 +108,23 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
 
 export function TrafficSystem({ grid }: { grid: Grid }) {
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
+  const carScene = useGLTF('/models/city-pack-car.glb').scene
+  const pickupScene = useGLTF('/models/city-pack-pickup.glb').scene
+  const busScene = useGLTF('/models/city-pack-bus.glb').scene
+  const carModels = useMemo(() => CAR_COLORS.map((color) => prepareModel(carScene, [0.9, 0.34, 0.42], true, color)), [carScene])
+  const pickupModel = useMemo(() => prepareModel(pickupScene, [1.02, 0.42, 0.48], true), [pickupScene])
+  const busModel = useMemo(() => prepareModel(busScene, [1.12, 0.46, 0.48], true), [busScene])
   const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, (_, index) => ({
     routeIndex: 0, segment: 0, reverse: false, progress: 0, colorIndex: 0, active: false, delivery: false,
     vehicleType: index < 2 ? 'truck' as const : index < 4 ? 'bus' as const : 'car' as const,
   })))
+  const vehicleModels = useMemo(() => carsRef.current.map((car, index) => {
+    const source = car.vehicleType === 'truck' ? pickupModel : car.vehicleType === 'bus' ? busModel : carModels[index % carModels.length]
+    return source.clone(true)
+  }), [busModel, carModels, pickupModel])
   const groupRef = useRef<THREE.Group>(null)
-  // Local +Z is the vehicle's forward axis. The rounded silhouette keeps the
-  // cars readable at city scale without reducing them to a single cuboid.
-  const bodyGeometry = useMemo(() => new RoundedBoxGeometry(0.42, 0.14, 0.88, 3, 0.035), [])
-  const cabinGeometry = useMemo(() => new RoundedBoxGeometry(0.36, 0.13, 0.46, 3, 0.04), [])
-  const roofGeometry = useMemo(() => new RoundedBoxGeometry(0.35, 0.02, 0.37, 2, 0.01), [])
-  const sideWindowGeometry = useMemo(() => new THREE.PlaneGeometry(0.15, 0.075), [])
-  const windowHighlightGeometry = useMemo(() => new THREE.PlaneGeometry(0.012, 0.055), [])
-  const slopedGlassGeometry = useMemo(() => {
-    const shape = new THREE.Shape()
-    shape.moveTo(-0.145, 0)
-    shape.lineTo(0.145, 0)
-    shape.lineTo(0.12, 0.075)
-    shape.lineTo(-0.12, 0.075)
-    shape.closePath()
-    return new THREE.ShapeGeometry(shape)
-  }, [])
   const wheelGeometry = useMemo(() => new THREE.CylinderGeometry(0.065, 0.065, 0.04, 8), [])
-  const hubGeometry = useMemo(() => new THREE.CylinderGeometry(0.034, 0.034, 0.043, 8), [])
-  const headlightGeometry = useMemo(() => new RoundedBoxGeometry(0.075, 0.028, 0.02, 2, 0.009), [])
-  const lightBarGeometry = useMemo(() => new RoundedBoxGeometry(0.3, 0.025, 0.02, 2, 0.008), [])
-  const bumperGeometry = useMemo(() => new RoundedBoxGeometry(0.39, 0.035, 0.035, 2, 0.012), [])
+  const lightBarGeometry = useMemo(() => new THREE.BoxGeometry(0.3, 0.025, 0.02), [])
   const beamGeometry = useMemo(() => {
     const shape = new THREE.Shape()
     shape.moveTo(-0.045, 0)
@@ -144,15 +135,11 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
     return new THREE.ShapeGeometry(shape)
   }, [])
   const shadowGeometry = useMemo(() => new THREE.PlaneGeometry(0.9, 0.45), [])
-  const bodyMaterials = useMemo(() => CAR_COLORS.map((color) => new THREE.MeshToonMaterial({ color })), [])
-  const cabinMaterials = useMemo(() => GLASS_COLORS.map((color) => new THREE.MeshToonMaterial({ color, emissive: '#fef08a', emissiveIntensity: 0.035 })), [])
-  const trimMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#202329' }), [])
-  const windowHighlightMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#91b9c5', transparent: true, opacity: 0.7, toneMapped: false }), [])
+  const headlightGeometry = useMemo(() => new THREE.SphereGeometry(0.035, 8, 6), [])
   const tireMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#18181b' }), [])
-  const hubMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#cbd5e1' }), [])
-  const truckMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#9a9a91' }), [])
-  const busMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#e0ae28' }), [])
   const shadowMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0f172a', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }), [])
+  const frontLampMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fef08a', toneMapped: false }), [])
+  const rearLampMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ef4444', toneMapped: false }), [])
   const headlightBeamMaterial = vehicleHeadlightBeamMaterial
 
   useFrame((_, delta) => {
@@ -175,14 +162,6 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
         car.segment = car.reverse ? routes[car.routeIndex].path.length - 1 : 0
         car.progress = 0
         car.colorIndex = Math.floor(Math.random() * CAR_COLORS.length)
-        const body = mesh.getObjectByName('vehicle-body') as THREE.Mesh
-        const cabin = mesh.getObjectByName('vehicle-cabin') as THREE.Mesh
-        body.material = car.vehicleType === 'truck' ? truckMaterial : car.vehicleType === 'bus' ? busMaterial : bodyMaterials[car.colorIndex]
-        cabin.material = cabinMaterials[car.colorIndex]
-        body.scale.set(1, 1, 1)
-        cabin.scale.set(1, 1, 1)
-        const roof = mesh.getObjectByName('vehicle-roof') as THREE.Mesh | undefined
-        if (roof) roof.material = car.vehicleType === 'truck' ? truckMaterial : car.vehicleType === 'bus' ? busMaterial : bodyMaterials[car.colorIndex]
         const trailer = mesh.getObjectByName('vehicle-trailer')
         if (trailer) trailer.visible = car.vehicleType === 'truck'
         car.active = true
@@ -224,32 +203,16 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
     <group ref={groupRef}>
       {carsRef.current.map((_, i) => (
         <group key={i} visible={false}>
-          {/* Contact shadow and low chassis */}
+          <primitive object={vehicleModels[i]} />
+          {/* Lightweight contact shadow and non-lighting headlamp accents. */}
           <mesh geometry={shadowGeometry} material={shadowMaterial} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} userData={{ noInkOutline: true }} />
-          <mesh name="vehicle-body" geometry={bodyGeometry} position={[0, 0.12, 0]} castShadow receiveShadow><primitive object={bodyMaterials[0]} attach="material" /><Edges color="#211e1a" /></mesh>
-          <mesh name="vehicle-cabin" geometry={cabinGeometry} position={[0, 0.225, -0.06]} castShadow receiveShadow><primitive object={cabinMaterials[0]} attach="material" /><Edges color="#211e1a" /></mesh>
-          {/* Sloped front and fastback glazing, plus four side panes */}
-          <mesh geometry={slopedGlassGeometry} material={cabinMaterials[0]} position={[0, 0.225, 0.16]} rotation={[-0.62, 0, 0]} />
-          <mesh geometry={slopedGlassGeometry} material={cabinMaterials[0]} position={[0, 0.225, -0.28]} rotation={[0.62, Math.PI, 0]} />
-          {[-1, 1].flatMap((side) => [-1, 1].map((half) => (
-            <group key={`side-window-${side}-${half}`} position={[side * 0.181, 0.23, -0.06 + half * 0.11]} rotation={[0, side * Math.PI / 2, 0]}>
-              <mesh geometry={sideWindowGeometry} material={cabinMaterials[0]} />
-              <mesh geometry={windowHighlightGeometry} material={windowHighlightMaterial} position={[-0.052, 0, 0.002]} />
-            </group>
-          )))}
-          <mesh name="vehicle-roof" geometry={roofGeometry} position={[0, 0.295, -0.07]} castShadow><primitive object={bodyMaterials[0]} attach="material" /><Edges color="#211e1a" /></mesh>
-          {/* Wheel wells are indicated by shadow-dark faceted arches and proper wheels. */}
-          {[-1, 1].flatMap((side) => [-1, 1].map((axle) => (
-            <group key={`wheel-${side}-${axle}`} position={[side * 0.205, 0.065, axle * 0.26]} rotation={[0, 0, Math.PI / 2]}>
-              <mesh geometry={wheelGeometry} material={tireMaterial} castShadow receiveShadow />
-              <mesh geometry={hubGeometry} material={hubMaterial} position={[0, side * 0.022, 0]} />
-            </group>
-          )))}
-          <mesh geometry={bumperGeometry} material={trimMaterial} position={[0, 0.095, 0.45]} />
-          <mesh geometry={bumperGeometry} material={trimMaterial} position={[0, 0.095, -0.45]} />
-          <mesh geometry={headlightGeometry} material={vehicleHeadlightMaterial} position={[-0.12, 0.13, 0.45]} />
-          <mesh geometry={headlightGeometry} material={vehicleHeadlightMaterial} position={[0.12, 0.13, 0.45]} />
           <mesh geometry={lightBarGeometry} material={vehicleTaillightMaterial} position={[0, 0.13, -0.45]} />
+          {[-1, 1].map((side) => (
+            <group key={`lamps-${side}`}>
+              <mesh geometry={headlightGeometry} material={frontLampMaterial} position={[side * 0.13, 0.14, 0.43]} />
+              <mesh geometry={headlightGeometry} material={rearLampMaterial} position={[side * 0.13, 0.14, -0.43]} />
+            </group>
+          ))}
           {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} geometry={beamGeometry} position={[x, 0.026, 0.48]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
           {/* Small city vans/trucks reuse the silhouette with a separate trailer. */}
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshToonMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
