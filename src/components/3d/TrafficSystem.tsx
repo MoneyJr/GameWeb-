@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Edges } from '@react-three/drei'
@@ -106,7 +106,8 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
   return routes
 }
 
-export function TrafficSystem({ grid }: { grid: Grid }) {
+export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }) {
+  const isDark = minutes < 360 || minutes >= 1200
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
   const carScene = useGLTF('/models/city-pack-car.glb').scene
   const pickupScene = useGLTF('/models/city-pack-pickup.glb').scene
@@ -138,9 +139,17 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
   const headlightGeometry = useMemo(() => new THREE.SphereGeometry(0.035, 8, 6), [])
   const tireMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#18181b' }), [])
   const shadowMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0f172a', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }), [])
-  const frontLampMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#fef08a', toneMapped: false }), [])
-  const rearLampMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#ef4444', toneMapped: false }), [])
+  const frontLampMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#cbd5e1', emissive: '#000000', emissiveIntensity: 0 }), [])
+  const rearLampMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#ef4444', emissive: '#000000', emissiveIntensity: 0 }), [])
   const headlightBeamMaterial = vehicleHeadlightBeamMaterial
+
+  useEffect(() => {
+    frontLampMaterial.color.set(isDark ? '#fef08a' : '#cbd5e1')
+    frontLampMaterial.emissive.set(isDark ? '#fef08a' : '#000000')
+    frontLampMaterial.emissiveIntensity = isDark ? 1 : 0
+    rearLampMaterial.emissive.set(isDark ? '#ef4444' : '#000000')
+    rearLampMaterial.emissiveIntensity = isDark ? 0.8 : 0
+  }, [frontLampMaterial, isDark, rearLampMaterial])
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -213,7 +222,7 @@ export function TrafficSystem({ grid }: { grid: Grid }) {
               <mesh geometry={headlightGeometry} material={rearLampMaterial} position={[side * 0.13, 0.14, -0.43]} />
             </group>
           ))}
-          {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} geometry={beamGeometry} position={[x, 0.026, 0.48]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
+          {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} visible={isDark} geometry={beamGeometry} position={[x, 0.026, 0.48]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
           {/* Small city vans/trucks reuse the silhouette with a separate trailer. */}
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshToonMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
           <group name="vehicle-trailer" visible={false} position={[0, 0.2, -1.02]}>

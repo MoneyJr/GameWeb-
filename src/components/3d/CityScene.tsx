@@ -1276,7 +1276,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <NaturalHorizon />
       <World grid={grid} />
       <LivingCityParticles grid={grid} />
-      <TrafficSystem grid={grid} />
+      <TrafficSystem grid={grid} minutes={minutes} />
       <InteractionLayer
         grid={grid}
         activeTool={activeTool}
