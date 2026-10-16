@@ -6,7 +6,7 @@ import { OrbitControls as ThreeOrbitControls } from 'three-stdlib'
 import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
-import { InkPostProcessing, ToonShadingSetup } from '../3d/InkOutlinePass'
+import { ToonShadingSetup } from '../3d/InkOutlinePass'
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 
 type MenuControls = ThreeOrbitControls
@@ -136,10 +136,10 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
   }, [])
   return (
     <>
-      <color attach="background" args={['#EAE2D2']} />
-      <fogExp2 attach="fog" args={['#d5c7b2', 0.0015]} />
-      <ambientLight intensity={0.5} color="#e8d5be" />
-      <directionalLight position={[35, 50, 25]} intensity={1.7} color="#fff3db" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
+      <color attach="background" args={['#D8C7A5']} />
+      <fogExp2 attach="fog" args={['#D8C7A5', 0.002]} />
+      <ambientLight intensity={0.6} color="#ede0d4" />
+      <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff0dd" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls ref={controlsRef} autoRotate={!transitioning} autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
       <MenuCameraFlight active={transitioning} controlsRef={controlsRef} onComplete={onFlightComplete} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
@@ -168,7 +168,6 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
       <Crosswalk position={[6, 0.045, 0.6]} rotation={Math.PI / 2} />
       <ParkLights />
       <ToonShadingSetup />
-      <InkPostProcessing />
     </>
   )
 }
@@ -591,8 +590,9 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   return (
     <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-300 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [28, 42, 38], fov: 24 }} gl={{ antialias: true }} onCreated={({ gl }) => {
-        gl.toneMapping = THREE.ACESFilmicToneMapping
-        gl.toneMappingExposure = 1.15
+        gl.autoClear = true
+        gl.setClearColor(new THREE.Color('#D8C7A5'), 1)
+        gl.toneMapping = THREE.NoToneMapping
       }}>
         <ShowcaseCity transitioning={transitioning} onFlightComplete={finishFlight} />
         <ShowcaseSceneReady onReady={markAssetsReady} />

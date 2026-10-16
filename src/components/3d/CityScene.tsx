@@ -10,7 +10,7 @@ import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
-import { InkPostProcessing, ToonShadingSetup } from './InkOutlinePass'
+import { ToonShadingSetup } from './InkOutlinePass'
 import { getToonMaterial } from './primitives'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
@@ -1032,10 +1032,10 @@ import { applyNightLevel } from './primitives'
 const DAY_SKY = new THREE.Color('#d8c7a5')
 const DUSK_SKY = new THREE.Color('#b889a2')
 const NIGHT_COLOR = new THREE.Color('#1b2432')
-const SUN_COLOR = new THREE.Color('#fff3db')
+const SUN_COLOR = new THREE.Color('#fff0dd')
 const DUSK_SUN_COLOR = new THREE.Color('#ff8c42')
 const MOON_COLOR = new THREE.Color('#7aa2dc')
-const DAY_AMBIENT = new THREE.Color('#e8d5be')
+const DAY_AMBIENT = new THREE.Color('#ede0d4')
 const DUSK_AMBIENT = new THREE.Color('#d89b91')
 const NIGHT_AMBIENT = new THREE.Color('#243354')
 const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
@@ -1087,16 +1087,16 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(DAY_SKY)
       ambientColor.copy(DAY_AMBIENT)
       sunColor.copy(SUN_COLOR)
-      ambient && (ambient.intensity = 0.5)
-      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.6)
+      ambient && (ambient.intensity = 0.6)
+      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.8)
     } else if (time >= 1080 && time < 1260) {
       background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
       ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
       sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.5, 0.38, dusk))
+      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.6, 0.38, dusk))
       if (sun) {
         sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
-        sun.intensity = THREE.MathUtils.lerp(1.6, 0.05, dusk)
+        sun.intensity = THREE.MathUtils.lerp(1.8, 0.05, dusk)
       }
       if (dusk > 0.72) {
         const nightBlend = (dusk - 0.72) / 0.28
@@ -1133,7 +1133,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
     if (sun) sun.color.copy(sunColor)
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(background)
-      scene.fog.density = THREE.MathUtils.lerp(0.0035, 0.004, level)
+      scene.fog.density = 0.002
     }
     scene.background = background
     applyNightLevel(level)
@@ -1237,8 +1237,9 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       onCreated={({ gl }) => {
         gl.shadowMap.enabled = true
         gl.shadowMap.type = THREE.PCFSoftShadowMap
-        gl.toneMapping = THREE.ACESFilmicToneMapping
-        gl.toneMappingExposure = 1.15
+        gl.autoClear = true
+        gl.setClearColor(new THREE.Color('#D8C7A5'), 1)
+        gl.toneMapping = THREE.NoToneMapping
       }}
       onContextMenu={(e) => e.preventDefault()}
       dpr={[1, maxDpr]}
@@ -1248,20 +1249,20 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <fogExp2 attach="fog" args={['#d8c7a5', 0.0035]} />
+      <color attach="background" args={['#D8C7A5']} />
+      <fogExp2 attach="fog" args={['#D8C7A5', 0.002]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
-      {/* Remove <color attach="background" ... /> as it's managed by NightManager */}
 
       <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={0.5} far={1500} />
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight ref={ambientRef} intensity={0.5} color="#e8d5be" />
+      <ambientLight ref={ambientRef} intensity={0.6} color="#ede0d4" />
       <directionalLight
         ref={sunRef}
         position={[35, 50, 25]}
-        intensity={1.6}
-        color="#fff3db"
+        intensity={1.8}
+        color="#fff0dd"
         castShadow
         shadow-mapSize={shadowMapSize}
         shadow-camera-left={-22}
@@ -1297,7 +1298,6 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         materials={materials}
       />
       <ToonShadingSetup />
-      <InkPostProcessing />
       </Suspense>
     </Canvas>
       </div>
