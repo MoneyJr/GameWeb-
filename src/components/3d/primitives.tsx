@@ -9,6 +9,14 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 
 export type Vec3 = [number, number, number]
 
+// City grid cells are 1 world unit wide. Leave a narrow 0.05 unit curb strip
+// on either side while keeping the full drivable asphalt beneath both lanes.
+export const ROAD_TILE_LENGTH = 1
+export const ROAD_ASPHALT_WIDTH = 0.9
+export const ROAD_LANE_OFFSET = ROAD_ASPHALT_WIDTH / 4
+export const ROAD_CURB_WIDTH = (ROAD_TILE_LENGTH - ROAD_ASPHALT_WIDTH) / 2
+export const ROAD_CURB_OFFSET = ROAD_TILE_LENGTH / 2 - ROAD_CURB_WIDTH / 2
+
 type Shape =
   | { kind: 'box'; size: Vec3 }
   | { kind: 'cylinder'; radiusTop: number; radiusBottom: number; height: number; segments: number }

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
-import { getGradientMap, getToonMaterial, vehicleHeadlightBeamMaterial } from './primitives'
+import { getGradientMap, getToonMaterial, vehicleHeadlightBeamMaterial, ROAD_LANE_OFFSET } from './primitives'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -23,7 +23,6 @@ const CAR_COUNT = 12
 const CAR_SPEED = 1.15
 const SAFE_DISTANCE = 1.2
 const STOP_DISTANCE = 0.8
-const LANE_OFFSET = 0.25
 const CAR_COLORS = ['#991b1b', '#1e40af', '#d97706', '#334155', '#496b59']
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
@@ -236,9 +235,9 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         const spawnDx = spawnB[0] - spawnA[0]
         const spawnDz = spawnB[2] - spawnA[2]
         const spawnPosition = new THREE.Vector3(
-          spawnA[0] - spawnDz * LANE_OFFSET,
+          spawnA[0] - spawnDz * ROAD_LANE_OFFSET,
           0.055,
-          spawnA[2] + spawnDx * LANE_OFFSET,
+          spawnA[2] + spawnDx * ROAD_LANE_OFFSET,
         )
         if (group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
           Math.hypot(other.position.x - spawnPosition.x, other.position.z - spawnPosition.z) < SAFE_DISTANCE)) continue
@@ -316,8 +315,8 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const dx = to[0] - from[0]
       const dz = to[2] - from[2]
       // Right-hand traffic: +X shifts toward +Z; +Z shifts toward -X.
-      const laneX = -dz * LANE_OFFSET
-      const laneZ = dx * LANE_OFFSET
+      const laneX = -dz * ROAD_LANE_OFFSET
+      const laneZ = dx * ROAD_LANE_OFFSET
       const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, 0.055, from[2] + dz * car.progress + laneZ)
       const isBlocked = group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
         Math.hypot(other.position.x - nextPosition.x, other.position.z - nextPosition.z) < 0.48)

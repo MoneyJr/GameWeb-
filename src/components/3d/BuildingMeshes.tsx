@@ -243,27 +243,32 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
   return (
     <group>
       {/* Asphalt */}
-      <Box size={[1, 0.04, 1]} position={[0, 0.02, 0]} color="#292524" />
+      {isIntersection ? <group>
+        <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#292524" />
+        <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.021, 0]} color="#292524" />
+      </group> : isStraightX ?
+        <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#292524" /> :
+        <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#292524" />}
 
       {/* Sidewalks (тротуары с бордюрами) */}
       {isStraightX && !isIntersection && (
         <group>
-          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_TILE_LENGTH, 0.02, ROAD_CURB_WIDTH]} position={[0, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_TILE_LENGTH, 0.02, ROAD_CURB_WIDTH]} position={[0, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
       {isStraightZ && !isIntersection && (
         <group>
-          <Box size={[0.2, 0.02, 1]} position={[-0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.2, 0.02, 1]} position={[0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_TILE_LENGTH]} position={[-ROAD_CURB_OFFSET, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_TILE_LENGTH]} position={[ROAD_CURB_OFFSET, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
       {isIntersection && (
         <group>
-          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.05, 0.02, 0.05]} position={[-0.475, 0.05, -0.475]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.05, 0.02, 0.05]} position={[0.475, 0.05, -0.475]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.05, 0.02, 0.05]} position={[-0.475, 0.05, 0.475]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.05, 0.02, 0.05]} position={[0.475, 0.05, 0.475]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
 
@@ -356,7 +361,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
