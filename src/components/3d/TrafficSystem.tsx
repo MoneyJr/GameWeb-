@@ -16,10 +16,14 @@ interface CarState {
   active: boolean
   delivery: boolean
   vehicleType: 'car' | 'truck' | 'bus'
+  currentSpeed: number
 }
 
 const CAR_COUNT = 12
 const CAR_SPEED = 1.15
+const SAFE_DISTANCE = 1.2
+const STOP_DISTANCE = 0.8
+const LANE_OFFSET = 0.25
 const CAR_COLORS = ['#991b1b', '#1e40af', '#d97706', '#334155', '#496b59']
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
@@ -170,7 +174,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
   const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, (_, index) => ({
     routeIndex: 0, segment: 0, reverse: false, progress: 0, colorIndex: 0, active: false, delivery: false,
-    vehicleType: index < 2 ? 'truck' as const : 'car' as const,
+    vehicleType: index < 2 ? 'truck' as const : 'car' as const, currentSpeed: 0,
   })))
   const vehicleModels = useMemo(() => carsRef.current.map((_, index) => {
     const sedan = createSedanMesh(CAR_COLORS[index % CAR_COLORS.length])
@@ -212,6 +216,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const mesh = group.children[i] as THREE.Group
       if (routes.length === 0 || car.routeIndex >= routes.length) {
         car.active = false
+        car.currentSpeed = 0
         mesh.visible = false
         continue
       }
@@ -223,12 +228,28 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         car.segment = car.reverse ? routes[car.routeIndex].path.length - 1 : 0
         car.progress = 0
         car.colorIndex = Math.floor(Math.random() * CAR_COLORS.length)
+        const spawnPath = routes[car.routeIndex].path
+        const spawnFrom = car.reverse ? spawnPath[spawnPath.length - 1] : spawnPath[0]
+        const spawnTo = car.reverse ? spawnPath[spawnPath.length - 2] : spawnPath[1]
+        const spawnA = cellToWorld(spawnFrom.x, spawnFrom.y)
+        const spawnB = cellToWorld(spawnTo.x, spawnTo.y)
+        const spawnDx = spawnB[0] - spawnA[0]
+        const spawnDz = spawnB[2] - spawnA[2]
+        const spawnPosition = new THREE.Vector3(
+          spawnA[0] - spawnDz * LANE_OFFSET,
+          0.055,
+          spawnA[2] + spawnDx * LANE_OFFSET,
+        )
+        if (group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
+          Math.hypot(other.position.x - spawnPosition.x, other.position.z - spawnPosition.z) < SAFE_DISTANCE)) continue
         const trailer = mesh.getObjectByName('vehicle-trailer')
         if (trailer) trailer.visible = car.vehicleType === 'truck'
         const body = mesh.getObjectByName('vehicle-body') as THREE.Mesh | undefined
         if (body) body.material = getToonMaterial(CAR_COLORS[car.colorIndex])
         car.active = true
         mesh.visible = true
+        mesh.position.copy(spawnPosition)
+        mesh.rotation.y = Math.atan2(spawnDx, spawnDz)
       }
 
       const oldSegment = car.segment
@@ -236,10 +257,44 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const oldReverse = car.reverse
       const oldPosition = mesh.position.clone()
       const path = routes[car.routeIndex].path
-      const nextRoad = path[Math.min(car.segment + 1, path.length - 1)]
+      const currentFromIndex = car.segment
+      const currentToIndex = car.reverse ? car.segment - 1 : car.segment + 1
+      const currentFromCell = path[currentFromIndex]
+      const currentToCell = path[currentToIndex]
+      if (!currentFromCell || !currentToCell) { car.active = false; mesh.visible = false; continue }
+      const currentFrom = cellToWorld(currentFromCell.x, currentFromCell.y)
+      const currentTo = cellToWorld(currentToCell.x, currentToCell.y)
+      const currentDx = currentTo[0] - currentFrom[0]
+      const currentDz = currentTo[2] - currentFrom[2]
+      const directionLength = Math.hypot(currentDx, currentDz) || 1
+      const directionX = currentDx / directionLength
+      const directionZ = currentDz / directionLength
+      let carAhead: { state: CarState; gap: number } | null = null
+      for (let otherIndex = 0; otherIndex < CAR_COUNT; otherIndex += 1) {
+        if (otherIndex === i) continue
+        const otherMesh = group.children[otherIndex]
+        const otherState = carsRef.current[otherIndex]
+        if (!otherMesh?.visible || !otherState.active) continue
+        const otherDirectionX = Math.sin(otherMesh.rotation.y)
+        const otherDirectionZ = Math.cos(otherMesh.rotation.y)
+        if (directionX * otherDirectionX + directionZ * otherDirectionZ < 0.85) continue
+        const relativeX = otherMesh.position.x - mesh.position.x
+        const relativeZ = otherMesh.position.z - mesh.position.z
+        const gap = relativeX * directionX + relativeZ * directionZ
+        const lateral = Math.abs(relativeX * directionZ - relativeZ * directionX)
+        if (gap <= 0 || lateral > 0.38 || gap >= SAFE_DISTANCE) continue
+        if (!carAhead || gap < carAhead.gap) carAhead = { state: otherState, gap }
+      }
+      const nextRoad = path[car.reverse ? Math.max(car.segment - 1, 0) : Math.min(car.segment + 1, path.length - 1)]
       const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type === TileType.ROAD ? 1 : 0), 0) : 0
       const braking = nextDegree >= 3 && car.progress > 0.45 ? 0.34 : 1
-      car.progress += dt * CAR_SPEED * braking
+      let speed = CAR_SPEED * braking
+      if (carAhead) {
+        speed = Math.min(speed, carAhead.state.currentSpeed)
+        if (carAhead.gap < STOP_DISTANCE) speed = 0
+      }
+      car.currentSpeed = speed
+      car.progress += dt * speed
       while (car.progress >= 1) {
         car.progress -= 1
         if (!car.reverse) {
@@ -260,14 +315,17 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const to = cellToWorld(toCell.x, toCell.y)
       const dx = to[0] - from[0]
       const dz = to[2] - from[2]
-      const lane = car.colorIndex % 2 === 0 ? 0.1 : -0.1
-      const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + dz * lane, 0.055, from[2] + dz * car.progress - dx * lane)
+      // Right-hand traffic: +X shifts toward +Z; +Z shifts toward -X.
+      const laneX = -dz * LANE_OFFSET
+      const laneZ = dx * LANE_OFFSET
+      const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, 0.055, from[2] + dz * car.progress + laneZ)
       const isBlocked = group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
-        Math.hypot(other.position.x - nextPosition.x, other.position.z - nextPosition.z) < 0.72)
+        Math.hypot(other.position.x - nextPosition.x, other.position.z - nextPosition.z) < 0.48)
       if (isBlocked) {
         car.segment = oldSegment
         car.progress = oldProgress
         car.reverse = oldReverse
+        car.currentSpeed = 0
         mesh.position.copy(oldPosition)
         continue
       }
