@@ -24,5 +24,6 @@ The City Pack page identifies the collection as a mix of CC BY and CC0 models. T
 | `large-building.glb` | Large Building | Kenney | CC0 |
 | `skyscraper.glb` | Skyscraper | Kenney | CC0 |
 | `solar-panel.glb` | Solar Panel | Quaternius | CC0 |
+| `hospital.glb` | Hospital | Poly by Google | CC BY |
 
-Source pages: [Road Bits](https://poly.pizza/m/5BPCPOycxC), [Building](https://poly.pizza/m/otRsYa6pan), [Large Building](https://poly.pizza/m/ppwtREejXg), [Skyscraper](https://poly.pizza/m/XST1j6kYsL), [Solar Panel](https://poly.pizza/m/ah89Y79JdT).
+Source pages: [Road Bits](https://poly.pizza/m/5BPCPOycxC), [Building](https://poly.pizza/m/otRsYa6pan), [Large Building](https://poly.pizza/m/ppwtREejXg), [Skyscraper](https://poly.pizza/m/XST1j6kYsL), [Solar Panel](https://poly.pizza/m/ah89Y79JdT), [Hospital](https://poly.pizza/m/GHzPfvoyzX).

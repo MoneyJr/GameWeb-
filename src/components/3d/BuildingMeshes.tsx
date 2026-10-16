@@ -1065,14 +1065,7 @@ function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
     <Box size={[0.28, 0.18, 0.03]} position={[0, PAD_HEIGHT + 0.13, 0.31]} color="#487a9b" />
     {[-1, 1].map((side) => <group key={`hoop-${side}`} position={[side * 0.2, 0.04, 0.68]}><Box size={[0.1, 0.01, 0.012]} position={[0, 0.13, 0]} color="#f5f0df" /><Box size={[0.012, 0.14, 0.012]} position={[0, 0.07, 0]} color="#f5f0df" /></group>)}
   </group>
-  if (catalogId === 'civ_hospital') return <group><Pad />
-    <Box size={[0.72, 0.7, 0.64]} position={[0, PAD_HEIGHT + 0.35, 0]} color="#e5e1d7" />
-    <Box size={[0.78, 0.07, 0.7]} position={[0, PAD_HEIGHT + 0.72, 0]} color="#7895a0" />
-    <Box size={[0.24, 0.23, 0.035]} position={[0, PAD_HEIGHT + 0.18, 0.34]} color="#f8f5eb" />
-    <Box size={[0.045, 0.18, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
-    <Box size={[0.18, 0.045, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
-    {[-0.23, 0.23].map((x) => <Window key={x} position={[x, 0.57, 0.33]} width={0.13} height={0.16} glass="#7399ab" />)}
-  </group>
+  if (catalogId === 'civ_hospital') return <LoadedCityModel kind="hospital" target={[1.72, 1.8, 1.72]} />
   return <FireStationMesh />
 }
 

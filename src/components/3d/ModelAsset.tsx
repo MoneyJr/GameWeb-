@@ -2,7 +2,7 @@ import { useGLTF } from '@react-three/drei'
 import { useMemo } from 'react'
 import * as THREE from 'three'
 
-export type ModelAssetKind = 'cottage' | 'townhouse' | 'apartment' | 'store' | 'kayApartment' | 'largeBuilding' | 'skyscraper' | 'solarPanel'
+export type ModelAssetKind = 'cottage' | 'townhouse' | 'apartment' | 'store' | 'kayApartment' | 'largeBuilding' | 'skyscraper' | 'solarPanel' | 'hospital'
 
 export const MODEL_ASSETS: Record<ModelAssetKind, string> = {
   cottage: '/models/city-pack-cottage.glb',
@@ -13,6 +13,7 @@ export const MODEL_ASSETS: Record<ModelAssetKind, string> = {
   largeBuilding: '/models/large-building.glb',
   skyscraper: '/models/skyscraper.glb',
   solarPanel: '/models/solar-panel.glb',
+  hospital: '/models/hospital.glb',
 }
 const DEFAULT_TARGET: [number, number, number] = [1.72, 2.8, 1.72]
 
