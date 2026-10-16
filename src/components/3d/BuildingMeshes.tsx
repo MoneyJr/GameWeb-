@@ -219,8 +219,23 @@ function IndustrialBase() {
 /* -------------------------------------------------------------------------- */
 
 /** Road meshes are selected from the Road Bits GLB according to the grid graph. */
-export function Road({ model = 'road_straight', rotation = 0 }: { model?: RoadModuleName; rotation?: number }) {
-  return <LoadedRoadModule name={model} rotation={rotation} />
+function RoadLamp({ position, nightLevel }: { position: Vec3; nightLevel: number }) {
+  return <group position={position}>
+    <Cylinder radius={0.018} height={0.48} segments={6} position={[0, 0.24, 0]} color="#302d29" />
+    <Box size={[0.13, 0.018, 0.035]} position={[0.05, 0.47, 0]} color="#302d29" />
+    <mesh position={[0.1, 0.445, 0]}>
+      <sphereGeometry args={[0.035, 8, 6]} />
+      <meshBasicMaterial color="#ffedd5" toneMapped={false} />
+    </mesh>
+    <pointLight visible={nightLevel > 0.02} color="#ffedd5" intensity={0.5 * nightLevel} distance={4} decay={2} position={[0.1, 0.42, 0]} />
+  </group>
+}
+
+export function Road({ model = 'road_straight', rotation = 0, nightLevel = 0, showStreetlight = false }: { model?: RoadModuleName; rotation?: number; nightLevel?: number; showStreetlight?: boolean }) {
+  return <group>
+    <LoadedRoadModule name={model} rotation={rotation} />
+    {showStreetlight && <RoadLamp position={[0.43, 0.04, 0]} nightLevel={nightLevel} />}
+  </group>
 }
 
 function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) {
@@ -1054,7 +1069,7 @@ function CropField({ plowed = false }: { plowed?: boolean }) {
   </group>
 }
 
-function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
+function CatalogCivicMesh({ catalogId, nightLevel = 0 }: { catalogId?: string; nightLevel?: number }) {
   if (catalogId === 'civ_school') return <group><Pad />
     <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
     <Box size={[0.28, 0.38, 0.4]} position={[-0.3, PAD_HEIGHT + 0.19, -0.08]} color="#d2c4a6" />
@@ -1065,7 +1080,7 @@ function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
     <Box size={[0.28, 0.18, 0.03]} position={[0, PAD_HEIGHT + 0.13, 0.31]} color="#487a9b" />
     {[-1, 1].map((side) => <group key={`hoop-${side}`} position={[side * 0.2, 0.04, 0.68]}><Box size={[0.1, 0.01, 0.012]} position={[0, 0.13, 0]} color="#f5f0df" /><Box size={[0.012, 0.14, 0.012]} position={[0, 0.07, 0]} color="#f5f0df" /></group>)}
   </group>
-  if (catalogId === 'civ_hospital') return <LoadedCityModel kind="hospital" target={[1.72, 1.8, 1.72]} />
+  if (catalogId === 'civ_hospital') return <LoadedCityModel kind="hospital" target={[1.72, 1.8, 1.72]} nightLevel={nightLevel} />
   return <FireStationMesh />
 }
 
@@ -1361,6 +1376,8 @@ interface TileModelProps {
   type: TileType
   roadModel?: RoadModuleName
   roadRotation?: number
+  nightLevel?: number
+  showStreetlight?: boolean
   catalogId?: string
   /** Подключено ли здание к воде. Здания без воды получают парящий маркер. */
   hasWater?: boolean
@@ -1373,7 +1390,7 @@ interface TileModelProps {
 }
 
 
-function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true }: TileModelProps) {
+function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLevel = 0, showStreetlight = false, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true }: TileModelProps) {
   let model: ReactNode = null
   let dust = 0
   let needsWater = false
@@ -1384,7 +1401,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater 
 
   switch (type) {
     case TileType.ROAD:
-      model = <Road model={roadModel} rotation={roadRotation} />
+      model = <Road model={roadModel} rotation={roadRotation} nightLevel={nightLevel} showStreetlight={showStreetlight} />
       dust = 4
       break
     case TileType.FIELD_WHEAT:
@@ -1395,19 +1412,19 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater 
       break
     case TileType.RESIDENTIAL:
       if (catalogId === 'res_modern_glass_tower') {
-        model = <LoadedCityModel kind="skyscraper" target={[1.85, 7.2, 1.85]} />
+        model = <LoadedCityModel kind="skyscraper" target={[1.85, 7.2, 1.85]} nightLevel={nightLevel} />
         w = 2; h = 2
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
       } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
-        model = <LoadedCityModel kind={catalogId === 'res_panel_block' ? 'largeBuilding' : 'kayApartment'} target={[1.76, catalogId === 'res_panel_block' ? 3.2 : 2.8, 1.72]} />
+        model = <LoadedCityModel kind={catalogId === 'res_panel_block' ? 'largeBuilding' : 'kayApartment'} target={[1.76, catalogId === 'res_panel_block' ? 3.2 : 2.8, 1.72]} nightLevel={nightLevel} />
         if (catalogId === 'res_panel_block') { w = 2; h = 2 }
       } else if (catalogId === 'res_townhouse' || catalogId === 'res_half_timbered') {
-        model = <LoadedCityModel kind="townhouse" target={[1.72, 2.35, 1.72]} />
+        model = <LoadedCityModel kind="townhouse" target={[1.72, 2.35, 1.72]} nightLevel={nightLevel} />
       } else {
         const targetHeight = catalogId === 'res_cottage' || catalogId === 'res_cozy_estate' ? 1.1 : 2.2
-        model = <LoadedCityModel kind="cottage" target={[1.72, targetHeight, 1.72]} />
+        model = <LoadedCityModel kind="cottage" target={[1.72, targetHeight, 1.72]} nightLevel={nightLevel} />
       }
       dust = 10
       needsWater = true
@@ -1423,7 +1440,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater 
         w = 2; h = 1
       } else {
         const isWide = catalogId === 'com_mall'
-        model = <LoadedCityModel kind="store" target={isWide ? [3.65, 2.2, 1.72] : [1.72, 2.3, 1.72]} />
+        model = <LoadedCityModel kind="store" target={isWide ? [3.65, 2.2, 1.72] : [1.72, 2.3, 1.72]} nightLevel={nightLevel} />
         if (isWide) w = 2
       }
       dust = 10
@@ -1468,7 +1485,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater 
       dust = 5
       break
     case TileType.SOLAR_PANEL:
-      model = <LoadedCityModel kind="solarPanel" target={[0.92, 0.72, 0.92]} />
+      model = <LoadedCityModel kind="solarPanel" target={[0.92, 0.72, 0.92]} nightLevel={nightLevel} />
       dust = 5
       break
     case TileType.COAL:
@@ -1483,7 +1500,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, hasWater 
       if (catalogId === 'civ_stadium') {
         model = <StadiumMesh />
         w = 3; h = 3
-      } else model = <CatalogCivicMesh catalogId={catalogId} />
+      } else model = <CatalogCivicMesh catalogId={catalogId} nightLevel={nightLevel} />
       dust = 8
       break
     default:

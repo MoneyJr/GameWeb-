@@ -1,5 +1,5 @@
 import { useGLTF } from '@react-three/drei'
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 
 export type ModelAssetKind = 'cottage' | 'townhouse' | 'apartment' | 'store' | 'kayApartment' | 'largeBuilding' | 'skyscraper' | 'solarPanel' | 'hospital'
@@ -21,12 +21,16 @@ export function toonMaterial(source: THREE.Material): THREE.MeshToonMaterial {
   const sourceWithMaps = source as THREE.Material & {
     color?: THREE.Color
     map?: THREE.Texture | null
+    emissive?: THREE.Color
+    emissiveIntensity?: number
     alphaMap?: THREE.Texture | null
     alphaTest?: number
   }
   return new THREE.MeshToonMaterial({
     color: sourceWithMaps.color?.clone() ?? new THREE.Color('#ffffff'),
     map: sourceWithMaps.map ?? null,
+    emissive: sourceWithMaps.emissive?.clone(),
+    emissiveIntensity: sourceWithMaps.emissiveIntensity ?? 1,
     alphaMap: sourceWithMaps.alphaMap ?? null,
     transparent: source.transparent,
     opacity: source.opacity,
@@ -64,6 +68,12 @@ export function prepareModel(scene: THREE.Group, target: [number, number, number
     const sources = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
     const materials = sources.map((source) => {
       const converted = toonMaterial(source)
+      const sourceName = `${mesh.name} ${source.name}`.toLowerCase()
+      if (sourceName.includes('window') || sourceName.includes('glass') || sourceName.includes('light')) {
+        converted.emissive.set('#fef08a')
+        converted.emissiveIntensity = 0
+        converted.userData.inkvilleNightWindow = true
+      }
       const lightness = converted.color.r * 0.2126 + converted.color.g * 0.7152 + converted.color.b * 0.0722
       const isGlassOrTrim = /glass|window|tire|wheel|rubber|chrome/i.test(source.name)
       if (tint && !isGlassOrTrim && lightness > 0.18) converted.color.copy(new THREE.Color(tint))
@@ -80,13 +90,28 @@ export function LoadedCityModel({
   kind,
   target = DEFAULT_TARGET,
   orientLengthAlongZ = false,
+  nightLevel = 0,
 }: {
   kind: ModelAssetKind
   target?: [number, number, number]
   orientLengthAlongZ?: boolean
+  nightLevel?: number
 }) {
   const { scene } = useGLTF(MODEL_ASSETS[kind])
-  const model = useMemo(() => prepareModel(scene, target, orientLengthAlongZ), [scene, target, orientLengthAlongZ])
+  const model = useMemo(() => prepareModel(scene, target, orientLengthAlongZ), [scene, target[0], target[1], target[2], orientLengthAlongZ])
+  useEffect(() => {
+    model.traverse((object) => {
+      const mesh = object as THREE.Mesh
+      if (!mesh.isMesh) return
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      for (const material of materials) {
+        if (!material.userData.inkvilleNightWindow) continue
+        const toon = material as THREE.MeshToonMaterial
+        toon.emissive.set('#fef08a')
+        toon.emissiveIntensity = THREE.MathUtils.clamp(nightLevel, 0, 1)
+      }
+    })
+  }, [model, nightLevel])
   return <primitive object={model} />
 }
 

@@ -214,7 +214,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         <group key={i} visible={false}>
           <primitive object={vehicleModels[i]} />
           {/* Lightweight contact shadow and non-lighting headlamp accents. */}
-          <mesh geometry={shadowGeometry} material={shadowMaterial} position={[0, 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]} userData={{ noInkOutline: true }} />
+          <mesh geometry={shadowGeometry} material={shadowMaterial} position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} userData={{ noInkOutline: true }} />
           <mesh geometry={lightBarGeometry} material={vehicleTaillightMaterial} position={[0, 0.13, -0.45]} />
           {[-1, 1].map((side) => (
             <group key={`lamps-${side}`}>
@@ -222,7 +222,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
               <mesh geometry={headlightGeometry} material={rearLampMaterial} position={[side * 0.13, 0.14, -0.43]} />
             </group>
           ))}
-          {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} visible={isDark} geometry={beamGeometry} position={[x, 0.026, 0.48]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
+          {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} visible={isDark} geometry={beamGeometry} position={[x, 0.02, 0.5]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
           {/* Small city vans/trucks reuse the silhouette with a separate trailer. */}
           <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshToonMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
           <group name="vehicle-trailer" visible={false} position={[0, 0.2, -1.02]}>

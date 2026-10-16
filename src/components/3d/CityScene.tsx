@@ -556,7 +556,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
   return <primitive object={scenery} />
 })
 
-const World = memo(function World({ grid }: { grid: Grid }) {
+const World = memo(function World({ grid, nightLevel }: { grid: Grid; nightLevel: number }) {
   return (
     <group>
       {grid[0].map((cell) => {
@@ -571,6 +571,13 @@ const World = memo(function World({ grid }: { grid: Grid }) {
         const orientation = cell.orientation ?? 0
         const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId, orientation)
         const roadTile = cell.type === TileType.ROAD ? getRoadTile(cell.x, cell.y, grid) : null
+        const roadDegree = roadTile ? [
+          grid[cell.y - 1]?.[cell.x]?.type === TileType.ROAD,
+          grid[cell.y + 1]?.[cell.x]?.type === TileType.ROAD,
+          grid[cell.y]?.[cell.x + 1]?.type === TileType.ROAD,
+          grid[cell.y]?.[cell.x - 1]?.type === TileType.ROAD,
+        ].filter(Boolean).length : 0
+        const showStreetlight = Boolean(roadTile && (roadDegree >= 3 || (cell.x * 7 + cell.y * 11) % 7 === 0))
         // Keep five homes in the CityRT visual reference strip.
         return (
           <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} rotation={[0, orientation * Math.PI / 2, 0]}>
@@ -580,6 +587,8 @@ const World = memo(function World({ grid }: { grid: Grid }) {
               catalogId={cell.catalogId}
               roadModel={roadTile?.model}
               roadRotation={roadTile?.rotation}
+              nightLevel={nightLevel}
+              showStreetlight={showStreetlight}
               hasWater={cell.hasWater}
               hasPower={cell.hasPower}
               hasSupplies={cell.hasSupplies}
@@ -1282,7 +1291,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
 
       <GroundSlab minutes={minutes} />
       <NaturalHorizon />
-      <World grid={grid} />
+      <World grid={grid} nightLevel={calcNightLevel(minutes)} />
       <LivingCityParticles grid={grid} />
       <TrafficSystem grid={grid} minutes={minutes} />
       <InteractionLayer
