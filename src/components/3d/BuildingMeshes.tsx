@@ -4,7 +4,6 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
-import { LoadedCityModel, LoadedRoadModule, type RoadModuleName } from './ModelAsset'
 
 /* -------------------------------------------------------------------------- */
 /*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
@@ -63,6 +62,15 @@ function getToonMaterial(color: string): THREE.MeshToonMaterial {
   }
   return material
 }
+
+const roadCurbMaterial = new THREE.MeshToonMaterial({
+  color: '#dcd4c5', gradientMap: getGradientMap(),
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+})
+const roadMarkingMaterial = new THREE.MeshToonMaterial({
+  color: '#ffffff', gradientMap: getGradientMap(),
+  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+})
 
 const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0.92 })
 const bushGeometry = new THREE.IcosahedronGeometry(1, 0)
@@ -218,24 +226,98 @@ function IndustrialBase() {
 /*  Модели зданий                                                               */
 /* -------------------------------------------------------------------------- */
 
-/** Road meshes are selected from the Road Bits GLB according to the grid graph. */
-function RoadLamp({ position, nightLevel }: { position: Vec3; nightLevel: number }) {
-  return <group position={position}>
-    <Cylinder radius={0.018} height={0.48} segments={6} position={[0, 0.24, 0]} color="#302d29" />
-    <Box size={[0.13, 0.018, 0.035]} position={[0.05, 0.47, 0]} color="#302d29" />
-    <mesh position={[0.1, 0.445, 0]}>
-      <sphereGeometry args={[0.035, 8, 6]} />
-      <meshBasicMaterial color="#ffedd5" toneMapped={false} />
-    </mesh>
-    <pointLight visible={nightLevel > 0.02} color="#ffedd5" intensity={0.5 * nightLevel} distance={4} decay={2} position={[0.1, 0.42, 0]} />
-  </group>
+export interface RoadLinks {
+  north: boolean
+  south: boolean
+  east: boolean
+  west: boolean
 }
 
-export function Road({ model = 'road_straight', rotation = 0, nightLevel = 0, showStreetlight = false }: { model?: RoadModuleName; rotation?: number; nightLevel?: number; showStreetlight?: boolean }) {
-  return <group>
-    <LoadedRoadModule name={model} rotation={rotation} />
-    {showStreetlight && <RoadLamp position={[0.43, 0.04, 0]} nightLevel={nightLevel} />}
-  </group>
+
+/** Дорога: серый плоский тайл с пунктирной разметкой вдоль соседних дорог. */
+export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { variant?: number }) {
+  const isIntersection = (north || south) && (east || west)
+  const isStraightX = east || west || (!north && !south)
+  const isStraightZ = north || south
+
+  return (
+    <group>
+      {/* Asphalt */}
+      <Box size={[1, 0.04, 1]} position={[0, 0.02, 0]} color="#292524" />
+
+      {/* Sidewalks (тротуары с бордюрами) */}
+      {isStraightX && !isIntersection && (
+        <group>
+          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[1, 0.02, 0.2]} position={[0, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+        </group>
+      )}
+      {isStraightZ && !isIntersection && (
+        <group>
+          <Box size={[0.2, 0.02, 1]} position={[-0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 1]} position={[0.4, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
+        </group>
+      )}
+      {isIntersection && (
+        <group>
+          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, -0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[-0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[0.2, 0.02, 0.2]} position={[0.4, 0.05, 0.4]} color="#dcd4c5" material={roadCurbMaterial} />
+        </group>
+      )}
+
+      {/* Road Markings */}
+      {!isIntersection && isStraightX && (
+        <Box size={[0.4, 0.01, 0.02]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
+      )}
+      {!isIntersection && isStraightZ && (
+        <Box size={[0.02, 0.01, 0.4]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
+      )}
+
+      {/* Zebra Crossings at Intersections */}
+      {isIntersection && (
+        <group position={[0, 0.05, 0]}>
+          {[-0.25, 0.25].map(x => (
+            <group key={`zebra-x-${x}`} position={[x, 0, 0]}>
+              {[-0.1, 0, 0.1].map(z => <Box key={z} size={[0.1, 0.01, 0.04]} position={[0, 0, z]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
+            </group>
+          ))}
+          {[-0.25, 0.25].map(z => (
+            <group key={`zebra-z-${z}`} position={[0, 0, z]}>
+              {[-0.1, 0, 0.1].map(x => <Box key={x} size={[0.04, 0.01, 0.1]} position={[x, 0, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
+            </group>
+          ))}
+        </group>
+      )}
+
+      {/* Streetlights and Trees */}
+      {isStraightX && !isIntersection && variant === 0 && (
+        <group>
+          <Streetlight position={[0, 0, -0.35]} />
+          <Streetlight position={[0, 0, 0.35]} rotation={[0, Math.PI, 0]} />
+        </group>
+      )}
+      {isStraightZ && !isIntersection && variant === 0 && (
+        <group>
+          <Streetlight position={[-0.35, 0, 0]} rotation={[0, Math.PI/2, 0]} />
+          <Streetlight position={[0.35, 0, 0]} rotation={[0, -Math.PI/2, 0]} />
+        </group>
+      )}
+    </group>
+  )
+}
+
+function Streetlight({ position, rotation = [0, 0, 0] }: { position: Vec3, rotation?: Vec3 }) {
+  return (
+    <group position={position} rotation={rotation}>
+      <Cylinder radius={0.01} height={0.4} segments={6} position={[0, 0.2, 0]} color="#333" />
+      <Box size={[0.12, 0.02, 0.02]} position={[0, 0.4, 0.05]} color="#333" />
+      <Box size={[0.04, 0.02, 0.04]} position={[0, 0.39, 0.08]} color="#6b6354" material={lampBulbMaterial} outline={false} castShadow={false} />
+      <mesh position={[0, 0.006, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowOuterMaterial} renderOrder={2}><circleGeometry args={[0.18, 16]} /></mesh>
+      <mesh position={[0, 0.008, 0.08]} rotation={[-Math.PI / 2, 0, 0]} material={lampGlowInnerMaterial} renderOrder={3}><circleGeometry args={[0.09, 16]} /></mesh>
+    </group>
+  )
 }
 
 function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) {
@@ -274,7 +356,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial } from './primitives'
+import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -349,9 +431,9 @@ function Dome({ radius, color, position }: { radius: number; color: string; posi
  * слуховое окно, труба с оголовком, окна с рамами и переплётами, дверь с крыльцом.
  */
 export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?: number, style?: string, catalogId?: string }) {
-  const floors = catalogId === 'res_cottage' ? 1 : catalogId === 'res_townhouse' ? 2 : catalogId === 'res_apartment' ? 4 : 2 + (variant % 3)
+  const floors = catalogId === 'res_cottage' || catalogId === 'res_cozy_estate' ? 1 : catalogId === 'res_townhouse' || catalogId === 'res_half_timbered' ? 2 : catalogId === 'res_apartment' ? 4 : 2 + (variant % 3)
 
-  if (catalogId === 'res_cottage') {
+  if (catalogId === 'res_cottage' || catalogId === 'res_cozy_estate') {
     return <group><ResidentialBase />
       <Box size={[0.78, 0.32, 0.74]} position={[0, PAD_HEIGHT + 0.16, 0]} color="#e2cda9" />
       <Box size={[0.88, 0.06, 0.84]} position={[0, PAD_HEIGHT + 0.34, 0]} color="#9b4934" />
@@ -873,6 +955,20 @@ export function WindTurbine() {
   )
 }
 
+function SolarPanelMesh() {
+  return (
+    <group>
+      <Pad />
+      <Box size={[0.62, 0.045, 0.42]} position={[0, PAD_HEIGHT + 0.35, 0]} rotation={[-0.28, 0, 0]} color="#2f5065" />
+      <Box size={[0.64, 0.035, 0.44]} position={[0, PAD_HEIGHT + 0.39, 0]} rotation={[-0.28, 0, 0]} color="#7899a5" />
+      {[-0.14, 0, 0.14].map((x) => <Box key={`solar-v-${x}`} size={[0.012, 0.008, 0.4]} position={[x, PAD_HEIGHT + 0.414, 0]} rotation={[-0.28, 0, 0]} color="#c7d5d5" outline={false} />)}
+      <Box size={[0.012, 0.008, 0.6]} position={[0, PAD_HEIGHT + 0.414, 0]} rotation={[-0.28, 0, 0]} color="#c7d5d5" outline={false} />
+      <Box size={[0.045, 0.32, 0.045]} position={[-0.22, PAD_HEIGHT + 0.16, -0.14]} color="#5b5b55" />
+      <Box size={[0.045, 0.32, 0.045]} position={[0.22, PAD_HEIGHT + 0.16, 0.14]} color="#5b5b55" />
+    </group>
+  )
+}
+
 export function CoalPlant() {
   return (
     <group>
@@ -919,6 +1015,50 @@ function FireStationMesh() {
       <Cylinder radius={0.07} radiusTop={0.07} height={0.14} segments={8} position={[0.36, PAD_HEIGHT + 1.3, -0.17]} color="#d33a32" />
     </group>
   )
+}
+
+function ModernGlassTowerMesh() {
+  const floors = Array.from({ length: 11 }, (_, index) => 0.52 + index * 0.61)
+  const glassWindow = (row: number, column: number) => ((row + column) % 3 === 0 ? '#fef08a' : '#e0f2fe')
+  return <group>
+    {/* Shared 2x2 landscaped plaza footprint. */}
+    <Box size={[1.98, 0.08, 1.98]} position={[0, 0.04, 0]} color="#707779" />
+    <Box size={[1.84, 0.035, 1.84]} position={[0, 0.095, 0]} color="#a9aaa2" />
+    <Box size={[1.18, 0.06, 1.18]} position={[0, 0.14, 0]} color="#52796f" />
+    {/* Three setbacks form a stepped business tower with a 7.2-unit roofline. */}
+    <Box size={[1.2, 2.08, 1.2]} position={[0, 1.19, 0]} color="#3d6e75" />
+    <Box size={[1.05, 2.72, 1.05]} position={[0, 3.59, 0]} color="#527f8a" />
+    <Box size={[0.9, 2.34, 0.9]} position={[0, 6.12, 0]} color="#648c99" />
+    {floors.map((y, row) => <group key={`tower-windows-${y}`}>
+      {[-0.3, 0.3].map((x, column) => <Window key={`front-${x}`} position={[x, y, 0.606]} width={0.22} height={0.43} glass="#3d6e75" nightLight={glassWindow(row, column)} frame="#f0f6f8" cross={false} sill={false} />)}
+      {[-0.3, 0.3].map((z, column) => <Window key={`side-${z}`} position={[0.531, y, z]} facing="x" width={0.22} height={0.43} glass="#648c99" nightLight={glassWindow(row, column + 2)} frame="#f0f6f8" cross={false} sill={false} />)}
+    </group>)}
+    {[-0.43, -0.14, 0.14, 0.43].map((x) => <Box key={`front-lamella-${x}`} size={[0.025, 6.75, 0.035]} position={[x, 3.7, 0.615]} color="#f0f6f8" />)}
+    {[-0.43, -0.14, 0.14, 0.43].map((z) => <Box key={`side-lamella-${z}`} size={[0.035, 6.75, 0.025]} position={[0.615, 3.7, z]} color="#f0f6f8" />)}
+    {/* Rooftop terrace and illuminated helipad crown. */}
+    <Box size={[0.96, 0.1, 0.96]} position={[0, 7.27, 0]} color="#6d8c46" />
+    <Cylinder radius={0.34} height={0.018} segments={32} position={[0, 7.33, 0]} color="#dceef2" />
+    <Box size={[0.08, 0.02, 0.42]} position={[0, 7.35, 0]} color="#fef08a" />
+    <Box size={[0.32, 0.02, 0.08]} position={[0, 7.35, 0]} color="#fef08a" />
+    <Box size={[0.5, 0.2, 0.48]} position={[0, 7.38, -0.52]} color="#84b7c1" />
+    <Box size={[0.56, 0.025, 0.54]} position={[0, 7.49, -0.52]} color="#f0f6f8" />
+    {/* Cypress trees around the tower and small square fountain in the garden. */}
+    {[-0.79, 0.79].flatMap((x) => [-0.79, 0.79].map((z) => <group key={`cypress-${x}-${z}`} position={[x, 0.13, z]}>
+      <Cylinder radius={0.035} radiusTop={0.025} height={0.3} segments={6} position={[0, 0.15, 0]} color="#684b35" />
+      <Cone radius={0.14} height={0.42} segments={6} position={[0, 0.42, 0]} color="#355e48" />
+      <Cone radius={0.1} height={0.38} segments={6} position={[0, 0.68, 0]} color="#4f795c" />
+    </group>))}
+    <Cylinder radius={0.2} height={0.09} segments={12} position={[0, 0.18, -0.77]} color="#d5d0c4" />
+    <Cylinder radius={0.15} height={0.025} segments={12} position={[0, 0.235, -0.77]} color="#5b9bad" />
+    {[-1, 1].map((side) => <group key={`tower-bench-${side}`} position={[side * 0.76, 0.14, 0.22]} rotation={[0, Math.PI / 2, 0]}>
+      <Box size={[0.34, 0.035, 0.085]} position={[0, 0.12, 0]} color="#79583a" />
+      <Box size={[0.34, 0.12, 0.025]} position={[0, 0.2, -0.03]} color="#79583a" />
+    </group>)}
+    {/* Glass entry canopy on the street-facing edge. */}
+    <Box size={[0.62, 0.035, 0.24]} position={[0, 0.42, 0.77]} color="#dce8e2" />
+    <Box size={[0.06, 0.28, 0.06]} position={[-0.26, 0.27, 0.83]} color="#a9c8c0" />
+    <Box size={[0.06, 0.28, 0.06]} position={[0.26, 0.27, 0.83]} color="#a9c8c0" />
+  </group>
 }
 
 function MegapolisComplexMesh() {
@@ -1069,7 +1209,7 @@ function CropField({ plowed = false }: { plowed?: boolean }) {
   </group>
 }
 
-function CatalogCivicMesh({ catalogId, nightLevel = 0 }: { catalogId?: string; nightLevel?: number }) {
+function CatalogCivicMesh({ catalogId }: { catalogId?: string }) {
   if (catalogId === 'civ_school') return <group><Pad />
     <Box size={[0.68, 0.48, 0.6]} position={[0, PAD_HEIGHT + 0.24, 0]} color="#dfd2b7" />
     <Box size={[0.28, 0.38, 0.4]} position={[-0.3, PAD_HEIGHT + 0.19, -0.08]} color="#d2c4a6" />
@@ -1080,7 +1220,14 @@ function CatalogCivicMesh({ catalogId, nightLevel = 0 }: { catalogId?: string; n
     <Box size={[0.28, 0.18, 0.03]} position={[0, PAD_HEIGHT + 0.13, 0.31]} color="#487a9b" />
     {[-1, 1].map((side) => <group key={`hoop-${side}`} position={[side * 0.2, 0.04, 0.68]}><Box size={[0.1, 0.01, 0.012]} position={[0, 0.13, 0]} color="#f5f0df" /><Box size={[0.012, 0.14, 0.012]} position={[0, 0.07, 0]} color="#f5f0df" /></group>)}
   </group>
-  if (catalogId === 'civ_hospital') return <LoadedCityModel kind="hospital" target={[1.72, 1.8, 1.72]} nightLevel={nightLevel} />
+  if (catalogId === 'civ_hospital') return <group><Pad />
+    <Box size={[0.72, 0.7, 0.64]} position={[0, PAD_HEIGHT + 0.35, 0]} color="#e5e1d7" />
+    <Box size={[0.78, 0.07, 0.7]} position={[0, PAD_HEIGHT + 0.72, 0]} color="#7895a0" />
+    <Box size={[0.24, 0.23, 0.035]} position={[0, PAD_HEIGHT + 0.18, 0.34]} color="#f8f5eb" />
+    <Box size={[0.045, 0.18, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
+    <Box size={[0.18, 0.045, 0.04]} position={[0, PAD_HEIGHT + 0.18, 0.365]} color="#bd493f" />
+    {[-0.23, 0.23].map((x) => <Window key={x} position={[x, 0.57, 0.33]} width={0.13} height={0.16} glass="#7399ab" />)}
+  </group>
   return <FireStationMesh />
 }
 
@@ -1372,13 +1519,11 @@ function DustBurst({ count = 10 }: { count?: number }) {
 /*  Универсальный компонент тайла                                               */
 /* -------------------------------------------------------------------------- */
 
-interface TileModelProps {
+interface TileModelProps extends RoadLinks {
   type: TileType
-  roadModel?: RoadModuleName
-  roadRotation?: number
-  nightLevel?: number
-  showStreetlight?: boolean
   catalogId?: string
+  /** Вариант раскраски (цвет стен и крыши). */
+  variant?: number
   /** Подключено ли здание к воде. Здания без воды получают парящий маркер. */
   hasWater?: boolean
   hasPower?: boolean
@@ -1390,7 +1535,7 @@ interface TileModelProps {
 }
 
 
-function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLevel = 0, showStreetlight = false, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true }: TileModelProps) {
+function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
   let model: ReactNode = null
   let dust = 0
   let needsWater = false
@@ -1401,7 +1546,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLeve
 
   switch (type) {
     case TileType.ROAD:
-      model = <Road model={roadModel} rotation={roadRotation} nightLevel={nightLevel} showStreetlight={showStreetlight} />
+      model = <Road north={north} south={south} east={east} west={west} variant={variant} />
       dust = 4
       break
     case TileType.FIELD_WHEAT:
@@ -1412,19 +1557,18 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLeve
       break
     case TileType.RESIDENTIAL:
       if (catalogId === 'res_modern_glass_tower') {
-        model = <LoadedCityModel kind="skyscraper" target={[1.85, 7.2, 1.85]} nightLevel={nightLevel} />
+        model = <ModernGlassTowerMesh />
         w = 2; h = 2
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
       } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
-        model = <LoadedCityModel kind={catalogId === 'res_panel_block' ? 'largeBuilding' : 'kayApartment'} target={[1.76, catalogId === 'res_panel_block' ? 3.2 : 2.8, 1.72]} nightLevel={nightLevel} />
+        model = <Residential variant={variant} catalogId="res_apartment" />
         if (catalogId === 'res_panel_block') { w = 2; h = 2 }
       } else if (catalogId === 'res_townhouse' || catalogId === 'res_half_timbered') {
-        model = <LoadedCityModel kind="townhouse" target={[1.72, 2.35, 1.72]} nightLevel={nightLevel} />
+        model = <Residential variant={variant} catalogId="res_townhouse" />
       } else {
-        const targetHeight = catalogId === 'res_cottage' || catalogId === 'res_cozy_estate' ? 1.1 : 2.2
-        model = <LoadedCityModel kind="cottage" target={[1.72, targetHeight, 1.72]} nightLevel={nightLevel} />
+        model = <Residential variant={variant} catalogId={catalogId} />
       }
       dust = 10
       needsWater = true
@@ -1440,7 +1584,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLeve
         w = 2; h = 1
       } else {
         const isWide = catalogId === 'com_mall'
-        model = <LoadedCityModel kind="store" target={isWide ? [3.65, 2.2, 1.72] : [1.72, 2.3, 1.72]} nightLevel={nightLevel} />
+        model = <Commercial catalogId={catalogId} />
         if (isWide) w = 2
       }
       dust = 10
@@ -1485,7 +1629,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLeve
       dust = 5
       break
     case TileType.SOLAR_PANEL:
-      model = <LoadedCityModel kind="solarPanel" target={[0.92, 0.72, 0.92]} nightLevel={nightLevel} />
+      model = <SolarPanelMesh />
       dust = 5
       break
     case TileType.COAL:
@@ -1500,7 +1644,7 @@ function TileModelBase({ type, catalogId, roadModel, roadRotation = 0, nightLeve
       if (catalogId === 'civ_stadium') {
         model = <StadiumMesh />
         w = 3; h = 3
-      } else model = <CatalogCivicMesh catalogId={catalogId} nightLevel={nightLevel} />
+      } else model = <CatalogCivicMesh catalogId={catalogId} />
       dust = 8
       break
     default:

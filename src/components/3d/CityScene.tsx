@@ -2,7 +2,7 @@ import { TrafficSystem } from './TrafficSystem'
 import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { Edges, OrthographicCamera, useGLTF } from '@react-three/drei'
+import { Edges, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
@@ -10,8 +10,8 @@ import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
-import { ToonShadingSetup } from './InkOutlinePass'
-import { getRoadTileFromNeighbors, prepareModel, toonMaterial, type RoadTileSelection } from './ModelAsset'
+import { InkPostProcessing, ToonShadingSetup } from './InkOutlinePass'
+import { getToonMaterial } from './primitives'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -281,25 +281,26 @@ export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: numbe
 })
 
 export const NaturalHorizon = memo(function NaturalHorizon() {
-  const treeScene = useGLTF('/models/city-pack-tree.glb').scene
-  const normalizedTree = useMemo(() => prepareModel(treeScene, [1.4, 2.2, 1.4]), [treeScene])
   const treeParts = useMemo(() => {
-    normalizedTree.updateMatrixWorld(true)
-    const parts: { geometry: THREE.BufferGeometry; material: THREE.MeshToonMaterial | THREE.MeshToonMaterial[]; foliage: boolean }[] = []
-    normalizedTree.traverse((object) => {
-      const mesh = object as THREE.Mesh
-      if (!mesh.isMesh) return
-      const sources = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      const geometry = mesh.geometry.clone()
-      geometry.applyMatrix4(mesh.matrixWorld)
-      const materials = sources.map((source) => source instanceof THREE.MeshToonMaterial ? source.clone() : toonMaterial(source))
-      const foliage = /leaf|leaves|foliage|crown|canopy/.test(`${mesh.name} ${materials.map((material) => material.name).join(' ')}`.toLowerCase())
-        || materials.some((material) => material.color.g > material.color.r * 0.82)
-      if (foliage) materials.forEach((material) => material.color.set('#ffffff'))
-      parts.push({ geometry, material: Array.isArray(mesh.material) ? materials : materials[0], foliage })
+    const trunkGeometry = new THREE.CylinderGeometry(0.09, 0.15, 0.9, 6)
+    trunkGeometry.translate(0, 0.45, 0)
+    const crowns = [
+      { geometry: new THREE.IcosahedronGeometry(0.66, 1), offset: [0, 1.18, 0] as const, scale: [1, 1, 1] as const },
+      { geometry: new THREE.IcosahedronGeometry(0.48, 1), offset: [0.33, 1.48, -0.08] as const, scale: [1, 0.92, 1] as const },
+      { geometry: new THREE.IcosahedronGeometry(0.43, 1), offset: [-0.3, 1.45, 0.12] as const, scale: [1, 1.08, 1] as const },
+    ]
+    const parts: { geometry: THREE.BufferGeometry; material: THREE.MeshToonMaterial; foliage: boolean }[] = [
+      { geometry: trunkGeometry, material: getToonMaterial('#493421'), foliage: false },
+    ]
+    crowns.forEach(({ geometry, offset, scale }, index) => {
+      geometry.scale(scale[0], scale[1], scale[2])
+      geometry.translate(offset[0], offset[1], offset[2])
+      const material = getToonMaterial(['#eab308', '#d97724', '#991b1b'][index])
+      ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
+      parts.push({ geometry, material, foliage: true })
     })
     return parts
-  }, [normalizedTree])
+  }, [])
   const scenery = useMemo(() => {
     const root = new THREE.Group()
     const treeCapacity = 6000
@@ -556,7 +557,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
   return <primitive object={scenery} />
 })
 
-const World = memo(function World({ grid, nightLevel }: { grid: Grid; nightLevel: number }) {
+const World = memo(function World({ grid }: { grid: Grid }) {
   return (
     <group>
       {grid[0].map((cell) => {
@@ -570,14 +571,10 @@ const World = memo(function World({ grid, nightLevel }: { grid: Grid; nightLevel
         if (cell.type === TileType.EMPTY) return null
         const orientation = cell.orientation ?? 0
         const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId, orientation)
-        const roadTile = cell.type === TileType.ROAD ? getRoadTile(cell.x, cell.y, grid) : null
-        const roadDegree = roadTile ? [
-          grid[cell.y - 1]?.[cell.x]?.type === TileType.ROAD,
-          grid[cell.y + 1]?.[cell.x]?.type === TileType.ROAD,
-          grid[cell.y]?.[cell.x + 1]?.type === TileType.ROAD,
-          grid[cell.y]?.[cell.x - 1]?.type === TileType.ROAD,
-        ].filter(Boolean).length : 0
-        const showStreetlight = Boolean(roadTile && (roadDegree >= 3 || (cell.x * 7 + cell.y * 11) % 7 === 0))
+        const north = grid[cell.y - 1]?.[cell.x]?.type === TileType.ROAD
+        const south = grid[cell.y + 1]?.[cell.x]?.type === TileType.ROAD
+        const east = grid[cell.y]?.[cell.x + 1]?.type === TileType.ROAD
+        const west = grid[cell.y]?.[cell.x - 1]?.type === TileType.ROAD
         // Keep five homes in the CityRT visual reference strip.
         return (
           <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} rotation={[0, orientation * Math.PI / 2, 0]}>
@@ -585,10 +582,10 @@ const World = memo(function World({ grid, nightLevel }: { grid: Grid; nightLevel
               key={cell.type}
               type={cell.type}
               catalogId={cell.catalogId}
-              roadModel={roadTile?.model}
-              roadRotation={roadTile?.rotation}
-              nightLevel={nightLevel}
-              showStreetlight={showStreetlight}
+              north={north}
+              south={south}
+              east={east}
+              west={west}
               hasWater={cell.hasWater}
               hasPower={cell.hasPower}
               hasSupplies={cell.hasSupplies}
@@ -603,18 +600,6 @@ const World = memo(function World({ grid, nightLevel }: { grid: Grid; nightLevel
     </group>
   )
 })
-
-export type { RoadTileSelection } from './ModelAsset'
-
-/** Resolve the road mesh and yaw from the four orthogonal grid neighbors. */
-export function getRoadTile(x: number, z: number, grid: Grid): RoadTileSelection {
-  return getRoadTileFromNeighbors(
-    grid[z - 1]?.[x]?.type === TileType.ROAD,
-    grid[z + 1]?.[x]?.type === TileType.ROAD,
-    grid[z]?.[x + 1]?.type === TileType.ROAD,
-    grid[z]?.[x - 1]?.type === TileType.ROAD,
-  )
-}
 
 function StoneArchBridge({ x, riverZ }: { x: number; riverZ: number }) {
   const boundaryZ = -(GRID_SIZE - 1) / 2 - 0.5
@@ -1291,7 +1276,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
 
       <GroundSlab minutes={minutes} />
       <NaturalHorizon />
-      <World grid={grid} nightLevel={calcNightLevel(minutes)} />
+      <World grid={grid} />
       <LivingCityParticles grid={grid} />
       <TrafficSystem grid={grid} minutes={minutes} />
       <InteractionLayer
@@ -1312,6 +1297,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         materials={materials}
       />
       <ToonShadingSetup />
+      <InkPostProcessing />
       </Suspense>
     </Canvas>
       </div>

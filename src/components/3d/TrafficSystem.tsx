@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import { Edges } from '@react-three/drei'
-import { useGLTF } from '@react-three/drei'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
-import { vehicleHeadlightBeamMaterial, vehicleTaillightMaterial } from './primitives'
-import { prepareModel } from './ModelAsset'
+import { getGradientMap, getToonMaterial, vehicleHeadlightBeamMaterial } from './primitives'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -25,6 +22,68 @@ const CAR_COUNT = 12
 const CAR_SPEED = 1.15
 const CAR_COLORS = ['#991b1b', '#1e40af', '#d97706', '#334155', '#496b59']
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
+
+const inkLineMaterial = new THREE.LineBasicMaterial({ color: '#2b1e17', transparent: true, opacity: 0.9 })
+
+function outlinedPart(geometry: THREE.BufferGeometry, material: THREE.Material, name: string) {
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.name = name
+  mesh.castShadow = true
+  mesh.receiveShadow = true
+  mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, 32), inkLineMaterial))
+  return mesh
+}
+
+/** Compact procedural sedan, with its nose pointing along local +Z. */
+export function createSedanMesh(colorHex: string): THREE.Group {
+  const car = new THREE.Group()
+  const bodyMat = getToonMaterial(colorHex)
+  const glassMat = getToonMaterial('#1e293b')
+  const wheelMat = getToonMaterial('#18181b')
+  const hubMat = getToonMaterial('#cbd5e1')
+  const lampMat = new THREE.MeshToonMaterial({ color: '#cbd5e1', emissive: '#fef08a', emissiveIntensity: 0, gradientMap: getGradientMap() })
+  const shadow = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.45), new THREE.MeshBasicMaterial({ color: '#111827', transparent: true, opacity: 0.45, depthWrite: false, toneMapped: false }))
+  shadow.rotation.x = -Math.PI / 2
+  shadow.position.y = 0.01
+  shadow.userData.noInkOutline = true
+  car.add(shadow)
+
+  const chassis = outlinedPart(new THREE.BoxGeometry(0.42, 0.14, 0.85), bodyMat, 'vehicle-body')
+  chassis.position.y = 0.12
+  car.add(chassis)
+  const cabin = outlinedPart(new THREE.BoxGeometry(0.36, 0.14, 0.46), glassMat, 'vehicle-glasshouse')
+  cabin.position.set(0, 0.24, -0.055)
+  car.add(cabin)
+  const roof = outlinedPart(new THREE.BoxGeometry(0.37, 0.02, 0.38), bodyMat, 'vehicle-roof')
+  roof.position.set(0, 0.315, -0.055)
+  car.add(roof)
+
+  const wheelGeometry = new THREE.CylinderGeometry(0.065, 0.065, 0.04, 8)
+  const hubGeometry = new THREE.CylinderGeometry(0.032, 0.032, 0.042, 8)
+  for (const x of [-0.21, 0.21]) for (const z of [-0.26, 0.26]) {
+    const wheel = outlinedPart(wheelGeometry, wheelMat, 'vehicle-wheel')
+    wheel.rotation.z = Math.PI / 2
+    wheel.position.set(x, 0.065, z)
+    car.add(wheel)
+    const hub = new THREE.Mesh(hubGeometry, hubMat)
+    hub.rotation.z = Math.PI / 2
+    hub.position.set(x + (x < 0 ? -0.022 : 0.022), 0.065, z)
+    car.add(hub)
+  }
+
+  for (const x of [-0.13, 0.13]) {
+    const front = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.02), lampMat)
+    front.name = 'vehicle-headlight'
+    front.position.set(x, 0.14, 0.43)
+    front.userData.noInkOutline = true
+    car.add(front)
+  }
+  const tail = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.03, 0.02), getToonMaterial('#ef4444'))
+  tail.position.set(0, 0.13, -0.43)
+  tail.userData.noInkOutline = true
+  car.add(tail)
+  return car
+}
 
 function cellToWorld(x: number, y: number): [number, number, number] {
   const offset = (gridSize - 1) / 2
@@ -109,47 +168,40 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
 export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }) {
   const isDark = minutes < 360 || minutes >= 1200
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
-  const carScene = useGLTF('/models/city-pack-car.glb').scene
-  const pickupScene = useGLTF('/models/city-pack-pickup.glb').scene
-  const busScene = useGLTF('/models/city-pack-bus.glb').scene
-  const carModels = useMemo(() => CAR_COLORS.map((color) => prepareModel(carScene, [0.9, 0.34, 0.42], true, color)), [carScene])
-  const pickupModel = useMemo(() => prepareModel(pickupScene, [1.02, 0.42, 0.48], true), [pickupScene])
-  const busModel = useMemo(() => prepareModel(busScene, [1.12, 0.46, 0.48], true), [busScene])
   const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, (_, index) => ({
     routeIndex: 0, segment: 0, reverse: false, progress: 0, colorIndex: 0, active: false, delivery: false,
-    vehicleType: index < 2 ? 'truck' as const : index < 4 ? 'bus' as const : 'car' as const,
+    vehicleType: index < 2 ? 'truck' as const : 'car' as const,
   })))
-  const vehicleModels = useMemo(() => carsRef.current.map((car, index) => {
-    const source = car.vehicleType === 'truck' ? pickupModel : car.vehicleType === 'bus' ? busModel : carModels[index % carModels.length]
-    return source.clone(true)
-  }), [busModel, carModels, pickupModel])
+  const vehicleModels = useMemo(() => carsRef.current.map((_, index) => {
+    const sedan = createSedanMesh(CAR_COLORS[index % CAR_COLORS.length])
+    const trailer = new THREE.Group()
+    trailer.name = 'vehicle-trailer'
+    trailer.visible = index < 2
+    trailer.position.set(0, 0, -0.58)
+    const trailerBody = outlinedPart(new THREE.BoxGeometry(0.4, 0.25, 0.55), getToonMaterial('#aeb1a9'), 'trailer-body')
+    trailerBody.position.y = 0.22
+    trailer.add(trailerBody)
+    const trailerWheels = new THREE.CylinderGeometry(0.055, 0.055, 0.035, 8)
+    for (const x of [-0.21, 0.21]) {
+      const wheel = outlinedPart(trailerWheels, getToonMaterial('#18181b'), 'trailer-wheel')
+      wheel.rotation.z = Math.PI / 2
+      wheel.position.set(x, 0.075, 0)
+      trailer.add(wheel)
+    }
+    sedan.add(trailer)
+    return sedan
+  }), [])
   const groupRef = useRef<THREE.Group>(null)
-  const wheelGeometry = useMemo(() => new THREE.CylinderGeometry(0.065, 0.065, 0.04, 8), [])
-  const lightBarGeometry = useMemo(() => new THREE.BoxGeometry(0.3, 0.025, 0.02), [])
   const beamGeometry = useMemo(() => {
     const shape = new THREE.Shape()
     shape.moveTo(-0.045, 0)
     shape.lineTo(0.045, 0)
-    shape.lineTo(0.17, -2)
-    shape.lineTo(-0.17, -2)
+    shape.lineTo(0.17, 1.6)
+    shape.lineTo(-0.17, 1.6)
     shape.closePath()
     return new THREE.ShapeGeometry(shape)
   }, [])
-  const shadowGeometry = useMemo(() => new THREE.PlaneGeometry(0.9, 0.45), [])
-  const headlightGeometry = useMemo(() => new THREE.SphereGeometry(0.035, 8, 6), [])
-  const tireMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#18181b' }), [])
-  const shadowMaterial = useMemo(() => new THREE.MeshBasicMaterial({ color: '#0f172a', transparent: true, opacity: 0.5, depthWrite: false, toneMapped: false }), [])
-  const frontLampMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#cbd5e1', emissive: '#000000', emissiveIntensity: 0 }), [])
-  const rearLampMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#ef4444', emissive: '#000000', emissiveIntensity: 0 }), [])
-  const headlightBeamMaterial = vehicleHeadlightBeamMaterial
-
-  useEffect(() => {
-    frontLampMaterial.color.set(isDark ? '#fef08a' : '#cbd5e1')
-    frontLampMaterial.emissive.set(isDark ? '#fef08a' : '#000000')
-    frontLampMaterial.emissiveIntensity = isDark ? 1 : 0
-    rearLampMaterial.emissive.set(isDark ? '#ef4444' : '#000000')
-    rearLampMaterial.emissiveIntensity = isDark ? 0.8 : 0
-  }, [frontLampMaterial, isDark, rearLampMaterial])
+  const beamMaterial = vehicleHeadlightBeamMaterial
 
   useFrame((_, delta) => {
     const group = groupRef.current
@@ -173,10 +225,16 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         car.colorIndex = Math.floor(Math.random() * CAR_COLORS.length)
         const trailer = mesh.getObjectByName('vehicle-trailer')
         if (trailer) trailer.visible = car.vehicleType === 'truck'
+        const body = mesh.getObjectByName('vehicle-body') as THREE.Mesh | undefined
+        if (body) body.material = getToonMaterial(CAR_COLORS[car.colorIndex])
         car.active = true
         mesh.visible = true
       }
 
+      const oldSegment = car.segment
+      const oldProgress = car.progress
+      const oldReverse = car.reverse
+      const oldPosition = mesh.position.clone()
       const path = routes[car.routeIndex].path
       const nextRoad = path[Math.min(car.segment + 1, path.length - 1)]
       const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type === TileType.ROAD ? 1 : 0), 0) : 0
@@ -203,8 +261,27 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const dx = to[0] - from[0]
       const dz = to[2] - from[2]
       const lane = car.colorIndex % 2 === 0 ? 0.1 : -0.1
-      mesh.position.set(from[0] + dx * car.progress + dz * lane, 0.055, from[2] + dz * car.progress - dx * lane)
+      const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + dz * lane, 0.055, from[2] + dz * car.progress - dx * lane)
+      const isBlocked = group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
+        Math.hypot(other.position.x - nextPosition.x, other.position.z - nextPosition.z) < 0.72)
+      if (isBlocked) {
+        car.segment = oldSegment
+        car.progress = oldProgress
+        car.reverse = oldReverse
+        mesh.position.copy(oldPosition)
+        continue
+      }
+      mesh.position.copy(nextPosition)
       mesh.rotation.y = Math.atan2(dx, dz)
+      const headlights = mesh.getObjectByName('vehicle-headlight-beams')
+      if (headlights) headlights.visible = isDark
+      mesh.traverse((part) => {
+        if (!part.name.includes('vehicle-headlight') || !(part instanceof THREE.Mesh)) return
+        const material = part.material as THREE.MeshToonMaterial
+        material.color.set(isDark ? '#fef08a' : '#cbd5e1')
+        material.emissive.set(isDark ? '#fef08a' : '#000000')
+        material.emissiveIntensity = isDark ? 1 : 0
+      })
     }
   })
 
@@ -213,21 +290,8 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       {carsRef.current.map((_, i) => (
         <group key={i} visible={false}>
           <primitive object={vehicleModels[i]} />
-          {/* Lightweight contact shadow and non-lighting headlamp accents. */}
-          <mesh geometry={shadowGeometry} material={shadowMaterial} position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} userData={{ noInkOutline: true }} />
-          <mesh geometry={lightBarGeometry} material={vehicleTaillightMaterial} position={[0, 0.13, -0.45]} />
-          {[-1, 1].map((side) => (
-            <group key={`lamps-${side}`}>
-              <mesh geometry={headlightGeometry} material={frontLampMaterial} position={[side * 0.13, 0.14, 0.43]} />
-              <mesh geometry={headlightGeometry} material={rearLampMaterial} position={[side * 0.13, 0.14, -0.43]} />
-            </group>
-          ))}
-          {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} visible={isDark} geometry={beamGeometry} position={[x, 0.02, 0.5]} rotation={[-Math.PI / 2, 0, 0]} material={headlightBeamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
-          {/* Small city vans/trucks reuse the silhouette with a separate trailer. */}
-          <mesh visible={false} position={[0, 0.16, -0.01]}><boxGeometry args={[0.2, 0.1, 0.16]} /><meshToonMaterial color="#e3dbca" /><Edges color="#211e1a" /></mesh>
-          <group name="vehicle-trailer" visible={false} position={[0, 0.2, -1.02]}>
-            <mesh><boxGeometry args={[0.62, 0.32, 0.8]} /><meshToonMaterial color="#aeb1a9" /><Edges color="#211e1a" /></mesh>
-            {[-1, 1].map((side) => <mesh key={side} geometry={wheelGeometry} material={tireMaterial} position={[side * 0.31, -0.12, -0.12]} rotation={[0, 0, Math.PI / 2]} />)}
+          <group name="vehicle-headlight-beams" visible={isDark}>
+            {[-0.1, 0.1].map((x) => <mesh key={`beam-${x}`} geometry={beamGeometry} position={[x, 0.02, 0.48]} rotation={[Math.PI / 2, 0, 0]} material={beamMaterial} userData={{ noInkOutline: true }} renderOrder={2} />)}
           </group>
         </group>
       ))}
