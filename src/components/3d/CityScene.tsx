@@ -11,7 +11,7 @@ import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from './InkOutlinePass'
-import { prepareModel, toonMaterial } from './ModelAsset'
+import { getRoadTileFromNeighbors, prepareModel, toonMaterial, type RoadTileSelection } from './ModelAsset'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -557,8 +557,6 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
 })
 
 const World = memo(function World({ grid }: { grid: Grid }) {
-  const isRoad = (x: number, y: number): boolean =>
-    x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE && grid[y][x].type === TileType.ROAD
   return (
     <group>
       {grid[0].map((cell) => {
@@ -572,6 +570,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
         if (cell.type === TileType.EMPTY) return null
         const orientation = cell.orientation ?? 0
         const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId, orientation)
+        const roadTile = cell.type === TileType.ROAD ? getRoadTile(cell.x, cell.y, grid) : null
         // Keep five homes in the CityRT visual reference strip.
         return (
           <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} rotation={[0, orientation * Math.PI / 2, 0]}>
@@ -579,7 +578,8 @@ const World = memo(function World({ grid }: { grid: Grid }) {
               key={cell.type}
               type={cell.type}
               catalogId={cell.catalogId}
-              variant={(cell.x * 7 + cell.y * 13) % 4}
+              roadModel={roadTile?.model}
+              roadRotation={roadTile?.rotation}
               hasWater={cell.hasWater}
               hasPower={cell.hasPower}
               hasSupplies={cell.hasSupplies}
@@ -587,10 +587,6 @@ const World = memo(function World({ grid }: { grid: Grid }) {
               smog={cell.smog}
               animate={cell.animate ?? true}
               style={cell.style}
-              north={isRoad(cell.x, cell.y - 1)}
-              south={isRoad(cell.x, cell.y + 1)}
-              east={isRoad(cell.x + 1, cell.y)}
-              west={isRoad(cell.x - 1, cell.y)}
             />
           </group>
         )
@@ -598,6 +594,18 @@ const World = memo(function World({ grid }: { grid: Grid }) {
     </group>
   )
 })
+
+export type { RoadTileSelection } from './ModelAsset'
+
+/** Resolve the road mesh and yaw from the four orthogonal grid neighbors. */
+export function getRoadTile(x: number, z: number, grid: Grid): RoadTileSelection {
+  return getRoadTileFromNeighbors(
+    grid[z - 1]?.[x]?.type === TileType.ROAD,
+    grid[z + 1]?.[x]?.type === TileType.ROAD,
+    grid[z]?.[x + 1]?.type === TileType.ROAD,
+    grid[z]?.[x - 1]?.type === TileType.ROAD,
+  )
+}
 
 function StoneArchBridge({ x, riverZ }: { x: number; riverZ: number }) {
   const boundaryZ = -(GRID_SIZE - 1) / 2 - 0.5

@@ -4,6 +4,7 @@ import { Edges, OrbitControls } from '@react-three/drei'
 import * as THREE from 'three'
 import { OrbitControls as ThreeOrbitControls } from 'three-stdlib'
 import { TileModel } from '../3d/BuildingMeshes'
+import { getRoadTileFromNeighbors } from '../3d/ModelAsset'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from '../3d/InkOutlinePass'
@@ -126,10 +127,14 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
       gardenCells.push({ x, z, variant: Math.floor(seed * 100) })
     }
     const roundabouts: [number, number][] = [[-12, -13], [12, -13], [-12, 11], [12, 11]]
-    return { parks: parkOrigins, trees, hills, infill, gardenCells, roundabouts, city: cells.map((cell, i) => ({ ...cell, i,
-      north: roadKeys.has(`${cell.x},${cell.z - 1}`), south: roadKeys.has(`${cell.x},${cell.z + 1}`),
-      east: roadKeys.has(`${cell.x + 1},${cell.z}`), west: roadKeys.has(`${cell.x - 1},${cell.z}`),
-    })) }
+    return { parks: parkOrigins, trees, hills, infill, gardenCells, roundabouts, city: cells.map((cell, i) => {
+      const north = roadKeys.has(`${cell.x},${cell.z - 1}`)
+      const south = roadKeys.has(`${cell.x},${cell.z + 1}`)
+      const east = roadKeys.has(`${cell.x + 1},${cell.z}`)
+      const west = roadKeys.has(`${cell.x - 1},${cell.z}`)
+      const roadTile = cell.type === TileType.ROAD ? getRoadTileFromNeighbors(north, south, east, west) : undefined
+      return { ...cell, i, roadModel: roadTile?.model, roadRotation: roadTile?.rotation }
+    }) }
   }, [])
   return (
     <>
@@ -147,11 +152,11 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
         <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
       </mesh>)}
       {trees.map((tree, i) => <ShowcaseTree key={`forest-${i}`} {...tree} />)}
-      {city.map(({ x, z, type, i, north, south, east, west }) => (
+      {city.map(({ x, z, type, i, roadModel, roadRotation }) => (
         <group key={`${x},${z}`} position={[x, 0, z]}>
           {type === TileType.RESIDENTIAL || type === TileType.COMMERCIAL
             ? <ShowcaseBuilding styleIndex={type === TileType.COMMERCIAL ? 3 : Math.abs(x * 7 + z * 11) % 4} commercial={type === TileType.COMMERCIAL} variant={i % 3} smoke={type === TileType.RESIDENTIAL && i % 5 === 0} />
-            : <TileModel type={type} variant={i % 4} hasPower hasWater hasSupplies animate={false} north={north} south={south} east={east} west={west} />}
+            : <TileModel type={type} roadModel={roadModel} roadRotation={roadRotation} hasPower hasWater hasSupplies animate={false} />}
         </group>
       ))}
       {parks.map(([x, z], i) => <ShowcasePark key={`park-${i}`} position={[x, 0, z]} />)}
