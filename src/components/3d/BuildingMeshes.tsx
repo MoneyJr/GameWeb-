@@ -231,22 +231,21 @@ export interface RoadLinks {
   south: boolean
   east: boolean
   west: boolean
+  /** True only for a real junction; prevents parallel roads becoming false intersections. */
+  junction?: boolean
 }
 
 
 /** Дорога: серый плоский тайл с пунктирной разметкой вдоль соседних дорог. */
-export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { variant?: number }) {
-  const isIntersection = (north || south) && (east || west)
+export function Road({ north, south, east, west, junction, variant = 0 }: RoadLinks & { variant?: number }) {
+  const isIntersection = junction ?? ((north || south) && (east || west))
   const isStraightX = east || west || (!north && !south)
   const isStraightZ = north || south
 
   return (
     <group>
       {/* Asphalt */}
-      {isIntersection ? <group>
-        <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#292524" />
-        <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.021, 0]} color="#292524" />
-      </group> : isStraightX ?
+      {isIntersection ? <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#292524" /> : isStraightX ?
         <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#292524" /> :
         <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#292524" />}
 
@@ -265,10 +264,10 @@ export function Road({ north, south, east, west, variant = 0 }: RoadLinks & { va
       )}
       {isIntersection && (
         <group>
-          <Box size={[0.05, 0.02, 0.05]} position={[-0.475, 0.05, -0.475]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.05, 0.02, 0.05]} position={[0.475, 0.05, -0.475]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.05, 0.02, 0.05]} position={[-0.475, 0.05, 0.475]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[0.05, 0.02, 0.05]} position={[0.475, 0.05, 0.475]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[-ROAD_CURB_OFFSET, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[ROAD_CURB_OFFSET, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[-ROAD_CURB_OFFSET, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
+          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[ROAD_CURB_OFFSET, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
         </group>
       )}
 
@@ -1540,7 +1539,7 @@ interface TileModelProps extends RoadLinks {
 }
 
 
-function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true, north, south, east, west }: TileModelProps) {
+function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower = true, hasSupplies = true, smog = false, level = 1, style, animate = true, north, south, east, west, junction }: TileModelProps) {
   let model: ReactNode = null
   let dust = 0
   let needsWater = false
@@ -1551,7 +1550,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
 
   switch (type) {
     case TileType.ROAD:
-      model = <Road north={north} south={south} east={east} west={west} variant={variant} />
+      model = <Road north={north} south={south} east={east} west={west} junction={junction} variant={variant} />
       dust = 4
       break
     case TileType.FIELD_WHEAT:

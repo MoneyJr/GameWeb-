@@ -131,7 +131,15 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
       const south = roadKeys.has(`${cell.x},${cell.z + 1}`)
       const east = roadKeys.has(`${cell.x + 1},${cell.z}`)
       const west = roadKeys.has(`${cell.x - 1},${cell.z}`)
-      return { ...cell, i, north, south, east, west }
+      const rawIntersection = (north || south) && (east || west)
+      const fourWay = [north, south, east, west].filter(Boolean).length === 4
+      const continuesAcrossNorth = north && (roadKeys.has(`${cell.x - 1},${cell.z - 1}`) || roadKeys.has(`${cell.x + 1},${cell.z - 1}`))
+      const continuesAcrossSouth = south && (roadKeys.has(`${cell.x - 1},${cell.z + 1}`) || roadKeys.has(`${cell.x + 1},${cell.z + 1}`))
+      const continuesAcrossEast = east && (roadKeys.has(`${cell.x + 1},${cell.z - 1}`) || roadKeys.has(`${cell.x + 1},${cell.z + 1}`))
+      const continuesAcrossWest = west && (roadKeys.has(`${cell.x - 1},${cell.z - 1}`) || roadKeys.has(`${cell.x - 1},${cell.z + 1}`))
+      const parallelLane = ((east || west) && (continuesAcrossNorth || continuesAcrossSouth)) ||
+        ((north || south) && (continuesAcrossEast || continuesAcrossWest))
+      return { ...cell, i, north, south, east, west, junction: rawIntersection && (fourWay || !parallelLane) }
     }) }
   }, [])
   return (
@@ -150,11 +158,11 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
         <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
       </mesh>)}
       {trees.map((tree, i) => <ShowcaseTree key={`forest-${i}`} {...tree} />)}
-      {city.map(({ x, z, type, i, north, south, east, west }) => (
+      {city.map(({ x, z, type, i, north, south, east, west, junction }) => (
         <group key={`${x},${z}`} position={[x, 0, z]}>
           {type === TileType.RESIDENTIAL || type === TileType.COMMERCIAL
             ? <ShowcaseBuilding styleIndex={type === TileType.COMMERCIAL ? 3 : Math.abs(x * 7 + z * 11) % 4} commercial={type === TileType.COMMERCIAL} variant={i % 3} smoke={type === TileType.RESIDENTIAL && i % 5 === 0} />
-            : <TileModel type={type} variant={i % 4} north={north} south={south} east={east} west={west} hasPower hasWater hasSupplies animate={false} />}
+            : <TileModel type={type} variant={i % 4} north={north} south={south} east={east} west={west} junction={junction} hasPower hasWater hasSupplies animate={false} />}
         </group>
       ))}
       {parks.map(([x, z], i) => <ShowcasePark key={`park-${i}`} position={[x, 0, z]} />)}

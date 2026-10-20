@@ -557,6 +557,20 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
   return <primitive object={scenery} />
 })
 
+function isRoadJunctionAt(grid: Grid, x: number, y: number, north: boolean, south: boolean, east: boolean, west: boolean) {
+  if (!((north || south) && (east || west))) return false
+  if ([north, south, east, west].filter(Boolean).length === 4) return true
+  // A road on the side is often simply the neighboring lane of a 2-wide avenue.
+  // Treat it as a junction only when that side road does not continue alongside us.
+  const continuesAcrossNorth = north && (grid[y - 1]?.[x - 1]?.type === TileType.ROAD || grid[y - 1]?.[x + 1]?.type === TileType.ROAD)
+  const continuesAcrossSouth = south && (grid[y + 1]?.[x - 1]?.type === TileType.ROAD || grid[y + 1]?.[x + 1]?.type === TileType.ROAD)
+  const continuesAcrossEast = east && (grid[y - 1]?.[x + 1]?.type === TileType.ROAD || grid[y + 1]?.[x + 1]?.type === TileType.ROAD)
+  const continuesAcrossWest = west && (grid[y - 1]?.[x - 1]?.type === TileType.ROAD || grid[y + 1]?.[x - 1]?.type === TileType.ROAD)
+  const parallelLane = ((east || west) && (continuesAcrossNorth || continuesAcrossSouth)) ||
+    ((north || south) && (continuesAcrossEast || continuesAcrossWest))
+  return !parallelLane
+}
+
 const World = memo(function World({ grid }: { grid: Grid }) {
   return (
     <group>
@@ -575,6 +589,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
         const south = grid[cell.y + 1]?.[cell.x]?.type === TileType.ROAD
         const east = grid[cell.y]?.[cell.x + 1]?.type === TileType.ROAD
         const west = grid[cell.y]?.[cell.x - 1]?.type === TileType.ROAD
+        const junction = cell.type === TileType.ROAD && isRoadJunctionAt(grid, cell.x, cell.y, north, south, east, west)
         // Keep five homes in the CityRT visual reference strip.
         return (
           <group key={`${cell.x}:${cell.y}`} position={cellToWorld(cell.x + offsetX, cell.y + offsetZ)} rotation={[0, orientation * Math.PI / 2, 0]}>
@@ -586,6 +601,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
               south={south}
               east={east}
               west={west}
+              junction={junction}
               hasWater={cell.hasWater}
               hasPower={cell.hasPower}
               hasSupplies={cell.hasSupplies}

@@ -318,8 +318,17 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const laneX = -dz * ROAD_LANE_OFFSET
       const laneZ = dx * ROAD_LANE_OFFSET
       const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, 0.055, from[2] + dz * car.progress + laneZ)
-      const isBlocked = group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
-        Math.hypot(other.position.x - nextPosition.x, other.position.z - nextPosition.z) < 0.48)
+      const isBlocked = group.children.some((other, otherIndex) => {
+        if (otherIndex === i || !other.visible) return false
+        const otherDirectionX = Math.sin(other.rotation.y)
+        const otherDirectionZ = Math.cos(other.rotation.y)
+        // Adjacent lanes and opposite traffic must not block this car.
+        if (directionX * otherDirectionX + directionZ * otherDirectionZ < 0.85) return false
+        const relativeX = other.position.x - nextPosition.x
+        const relativeZ = other.position.z - nextPosition.z
+        const lateral = Math.abs(relativeX * directionZ - relativeZ * directionX)
+        return lateral < 0.38 && Math.hypot(relativeX, relativeZ) < 0.48
+      })
       if (isBlocked) {
         car.segment = oldSegment
         car.progress = oldProgress
