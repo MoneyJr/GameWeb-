@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Grid } from '../../types/city'
 import { TileType } from '../../types/city'
 
-type Walker = { x: number; z: number; phase: number; direction: number; axis: 'x' | 'z'; standing: boolean }
 type Emitter = { x: number; y: number; z: number; phase: number; dark: boolean }
 
 const PARTICLE_MATERIAL = new THREE.ShaderMaterial({
@@ -15,48 +14,9 @@ const PARTICLE_MATERIAL = new THREE.ShaderMaterial({
 })
 
 const GRID_OFFSET = 31.5
-const WALKER_COLORS = ['#8b3f2f', '#425b73', '#c17b32', '#61734a', '#704d70']
-
-/** Shared smoke buffer plus instanced pedestrians, avoiding per-person draw calls. */
+/** Shared low-cost smoke buffer for factory chimneys and residential fireplaces. */
 export function LivingCityParticles({ grid }: { grid: Grid }) {
   const points = useRef<THREE.Points>(null)
-  const bodyRef = useRef<THREE.InstancedMesh>(null)
-  const headRef = useRef<THREE.InstancedMesh>(null)
-  const walkers = useMemo<Walker[]>(() => {
-    const result: Walker[] = []
-    for (const row of grid) for (const cell of row) {
-      const isHome = cell.type === TileType.RESIDENTIAL
-      const isShop = cell.type === TileType.COMMERCIAL
-      const isPark = cell.type === TileType.PARK
-      if (!isHome && !isShop && !isPark) continue
-      const roadSides = [
-        { dx: 0, dz: -1 }, { dx: 1, dz: 0 }, { dx: 0, dz: 1 }, { dx: -1, dz: 0 },
-      ].filter(({ dx, dz }) => grid[cell.y + dz]?.[cell.x + dx]?.type === TileType.ROAD)
-      if (!roadSides.length) continue
-
-      roadSides.forEach(({ dx, dz }, sideIndex) => {
-        const roadX = cell.x + dx - GRID_OFFSET
-        const roadZ = cell.y + dz - GRID_OFFSET
-        // Road tiles have 0.2-unit sidewalks centered 0.4 from the road center.
-        // Place walkers on the sidewalk nearest their home, shop, or park.
-        const sidewalkX = roadX - dx * 0.4
-        const sidewalkZ = roadZ - dz * 0.4
-        const axis = dx !== 0 ? 'z' : 'x'
-        const count = 2
-        for (let i = 0; i < count; i += 1) result.push({
-          x: sidewalkX + (axis === 'x' ? (i ? 0.2 : -0.2) : 0),
-          z: sidewalkZ + (axis === 'z' ? (i ? 0.2 : -0.2) : 0),
-          phase: (cell.x * 0.73 + cell.y * 1.17 + i * 2.4 + sideIndex) % (Math.PI * 2),
-          direction: i ? -1 : 1,
-          axis,
-          // One person pauses by each storefront/porch; park visitors linger
-          // along the walk beside the green rather than in the roadway.
-          standing: isPark || i === 1,
-        })
-      })
-    }
-    return result
-  }, [grid])
   const emitters = useMemo<Emitter[]>(() => {
     const result: Emitter[] = []
     for (const row of grid) for (const cell of row) {
@@ -84,27 +44,7 @@ export function LivingCityParticles({ grid }: { grid: Grid }) {
     geometry.setAttribute('aAlpha', new THREE.BufferAttribute(alpha, 1))
     geometry.setAttribute('aColor', new THREE.BufferAttribute(color, 3))
     return geometry
-  }, [emitters, smokeCount, walkers.length])
-  const bodyGeometry = useMemo(() => new THREE.CylinderGeometry(0.08, 0.08, 0.22, 7), [])
-  const headGeometry = useMemo(() => new THREE.SphereGeometry(0.06, 8, 6), [])
-  const pedestrianMaterial = useMemo(() => new THREE.MeshToonMaterial({ color: '#ffffff' }), [])
-  const bodyTransform = useMemo(() => new THREE.Object3D(), [])
-  const headTransform = useMemo(() => new THREE.Object3D(), [])
-
-  useEffect(() => {
-    const bodies = bodyRef.current
-    const heads = headRef.current
-    if (bodies) bodies.count = walkers.length
-    if (heads) heads.count = walkers.length
-    if (!bodies || !heads) return
-    walkers.forEach((_, index) => {
-      const color = new THREE.Color(WALKER_COLORS[index % WALKER_COLORS.length])
-      bodies.setColorAt(index, color)
-      heads.setColorAt(index, color.clone().multiplyScalar(0.72))
-    })
-    if (bodies.instanceColor) bodies.instanceColor.needsUpdate = true
-    if (heads.instanceColor) heads.instanceColor.needsUpdate = true
-  }, [walkers])
+  }, [emitters, smokeCount])
 
   useFrame(({ clock }) => {
     const target = points.current
@@ -123,32 +63,12 @@ export function LivingCityParticles({ grid }: { grid: Grid }) {
         pointSize.setX(index, (0.12 + phase * 0.1) * 1.8)
       }
     }
-    const bodies = bodyRef.current
-    const heads = headRef.current
-    for (let i = 0; i < walkers.length; i += 1) {
-      const walker = walkers[i]
-      const stride = walker.standing ? 0 : Math.sin(elapsed * 0.8 + walker.phase) * 0.16 * walker.direction
-      const x = walker.x + (walker.axis === 'x' ? stride : 0)
-      const z = walker.z + (walker.axis === 'z' ? stride : 0)
-      // y=0.15 is the foot level above the road tile and its sidewalk slab.
-      bodyTransform.position.set(x, 0.15 + 0.11, z)
-      bodyTransform.rotation.set(0, walker.axis === 'x' ? Math.PI / 2 : 0, 0)
-      bodyTransform.updateMatrix()
-      bodies?.setMatrixAt(i, bodyTransform.matrix)
-      headTransform.position.set(x, 0.15 + 0.22 + 0.06, z)
-      headTransform.updateMatrix()
-      heads?.setMatrixAt(i, headTransform.matrix)
-    }
     position.needsUpdate = true
     alpha.needsUpdate = true
     pointSize.needsUpdate = true
-    if (bodies) { bodies.instanceMatrix.needsUpdate = true; bodies.computeBoundingSphere() }
-    if (heads) { heads.instanceMatrix.needsUpdate = true; heads.computeBoundingSphere() }
   })
 
   return <group>
     <points ref={points} geometry={geometry} material={PARTICLE_MATERIAL} frustumCulled={false} />
-    <instancedMesh ref={bodyRef} args={[bodyGeometry, pedestrianMaterial, Math.max(walkers.length, 1)]} frustumCulled={false} />
-    <instancedMesh ref={headRef} args={[headGeometry, pedestrianMaterial, Math.max(walkers.length, 1)]} frustumCulled={false} />
   </group>
 }
