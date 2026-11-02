@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
 import { ChristmasTreeMesh } from './SeasonalMeshes'
+import { GlassSkyscraperMesh, ModernBlockMesh, OfficeTowerMesh } from './ModernMeshes'
 
 /* -------------------------------------------------------------------------- */
 /*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
@@ -361,7 +362,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
+import { getFacadeMaterial, getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -1023,23 +1024,16 @@ function FireStationMesh() {
 }
 
 function ModernGlassTowerMesh() {
-  const floors = Array.from({ length: 11 }, (_, index) => 0.52 + index * 0.61)
-  const glassWindow = (row: number, column: number) => ((row + column) % 3 === 0 ? '#fef08a' : '#e0f2fe')
   return <group>
     {/* Shared 2x2 landscaped plaza footprint. */}
     <Box size={[1.98, 0.08, 1.98]} position={[0, 0.04, 0]} color="#707779" />
     <Box size={[1.84, 0.035, 1.84]} position={[0, 0.095, 0]} color="#a9aaa2" />
     <Box size={[1.18, 0.06, 1.18]} position={[0, 0.14, 0]} color="#52796f" />
-    {/* Three setbacks form a stepped business tower with a 7.2-unit roofline. */}
-    <Box size={[1.2, 2.08, 1.2]} position={[0, 1.19, 0]} color="#3d6e75" />
-    <Box size={[1.05, 2.72, 1.05]} position={[0, 3.59, 0]} color="#527f8a" />
-    <Box size={[0.9, 2.34, 0.9]} position={[0, 6.12, 0]} color="#648c99" />
-    {floors.map((y, row) => <group key={`tower-windows-${y}`}>
-      {[-0.3, 0.3].map((x, column) => <Window key={`front-${x}`} position={[x, y, 0.606]} width={0.22} height={0.43} glass="#3d6e75" nightLight={glassWindow(row, column)} frame="#f0f6f8" cross={false} sill={false} />)}
-      {[-0.3, 0.3].map((z, column) => <Window key={`side-${z}`} position={[0.531, y, z]} facing="x" width={0.22} height={0.43} glass="#648c99" nightLight={glassWindow(row, column + 2)} frame="#f0f6f8" cross={false} sill={false} />)}
-    </group>)}
+    {/* Three setbacks form a stepped business tower; the facade shader draws windows on every side. */}
+    <Box size={[1.2, 2.08, 1.2]} position={[0, 1.19, 0]} color="#3d6e75" material={getFacadeMaterial({ wall: '#3d6e75', glass: '#8cc7d6', spacing: [0.15, 0.3], frame: [0.12, 0.16] })} />
+    <Box size={[1.05, 2.72, 1.05]} position={[0, 3.59, 0]} color="#527f8a" material={getFacadeMaterial({ wall: '#527f8a', glass: '#a3d4e0', spacing: [0.15, 0.3], frame: [0.12, 0.16] })} />
+    <Box size={[0.9, 2.34, 0.9]} position={[0, 6.12, 0]} color="#648c99" material={getFacadeMaterial({ wall: '#648c99', glass: '#b8e0ea', spacing: [0.15, 0.3], frame: [0.12, 0.16] })} />
     {[-0.43, -0.14, 0.14, 0.43].map((x) => <Box key={`front-lamella-${x}`} size={[0.025, 6.75, 0.035]} position={[x, 3.7, 0.615]} color="#f0f6f8" />)}
-    {[-0.43, -0.14, 0.14, 0.43].map((z) => <Box key={`side-lamella-${z}`} size={[0.035, 6.75, 0.025]} position={[0.615, 3.7, z]} color="#f0f6f8" />)}
     {/* Rooftop terrace and illuminated helipad crown. */}
     <Box size={[0.96, 0.1, 0.96]} position={[0, 7.27, 0]} color="#6d8c46" />
     <Cylinder radius={0.34} height={0.018} segments={32} position={[0, 7.33, 0]} color="#dceef2" />
@@ -1567,6 +1561,8 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
+      } else if (catalogId === 'res_modern_block') {
+        model = <ModernBlockMesh />
       } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
         model = <Residential variant={variant} catalogId="res_apartment" />
         if (catalogId === 'res_panel_block') { w = 2; h = 2 }
@@ -1584,6 +1580,12 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       if (catalogId === 'com_cinema_cosmos') {
         model = <CinemaCosmosMesh />
         w = 3; h = 2
+      } else if (catalogId === 'com_office_tower') {
+        model = <OfficeTowerMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'com_glass_skyscraper') {
+        model = <GlassSkyscraperMesh />
+        w = 2; h = 2
       } else if (catalogId === 'com_market_hall') {
         model = <MarketHallMesh />
         w = 2; h = 1

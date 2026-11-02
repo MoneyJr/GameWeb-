@@ -15,6 +15,7 @@ import { getToonMaterial, setSnowLevel } from './primitives'
 import { Snowfall } from './Snowfall'
 import { FireLayer, OverlayLayer } from './OverlayLayer'
 import { PhotoCapture } from './PhotoCapture'
+import { Greenery } from './Greenery'
 import type { QualityProfile } from '../../lib/quality'
 import type { CoverageMaps } from '../../lib/coverage'
 import type { OverlayMode } from '../../lib/overlays'
@@ -240,7 +241,7 @@ function cellsBetween(from: Cell, to: Cell): Cell[] {
 /*  Мир: земля, сетка и все построенные тайлы                                   */
 /* -------------------------------------------------------------------------- */
 
-export const GroundSlab = memo(function GroundSlab({ minutes, palette }: { minutes: number; palette: SeasonPalette }) {
+export const GroundSlab = memo(function GroundSlab({ minutes, palette, showGrid = false }: { minutes: number; palette: SeasonPalette; showGrid?: boolean }) {
   const terrainMaterial = useRef<THREE.MeshToonMaterial>(null)
   const displayedNight = useRef(0)
   const dayTerrainColor = useMemo(() => new THREE.Color(palette.ground), [palette])
@@ -279,10 +280,10 @@ export const GroundSlab = memo(function GroundSlab({ minutes, palette }: { minut
         <primitive object={terrain} attach="geometry" />
         <meshToonMaterial ref={terrainMaterial} color={palette.ground} />
       </mesh>
-      <primitive object={gridLines} position={[0, 0.003, 0]} />
+      <primitive object={gridLines} position={[0, 0.003, 0]} visible={showGrid} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[350, 350]} />
-        <shadowMaterial color="#383f4d" transparent opacity={0.28} />
+        <shadowMaterial color="#24366b" transparent opacity={0.3} />
       </mesh>
     </group>
   )
@@ -1075,7 +1076,8 @@ const MOON_COLOR = new THREE.Color('#7aa2dc')
 const DAY_AMBIENT = new THREE.Color('#ede0d4')
 const DUSK_AMBIENT = new THREE.Color('#d89b91')
 const NIGHT_AMBIENT = new THREE.Color('#243354')
-const DAY_SUN_POSITION = new THREE.Vector3(30, 45, 25)
+/** Солнце сбоку-сверху: крыша, освещённая и теневая стены получают три разных тона. */
+const DAY_SUN_POSITION = new THREE.Vector3(30, 57, 12)
 const DUSK_SUN_POSITION = new THREE.Vector3(20, 11, 14)
 const MOON_POSITION = new THREE.Vector3(-24, 28, 14)
 
@@ -1090,6 +1092,21 @@ function calcNightLevel(minutes: number): number {
     return 1 - (minutes - 300) / 60
   }
   return 0
+}
+
+/** Солнце и его теневая камера следуют за центром обзора — тени есть в любой части карты. */
+function SunFollow({ sunRef }: { sunRef: MutableRefObject<THREE.DirectionalLight | null> }) {
+  useFrame((state) => {
+    const sun = sunRef.current
+    const controls = state.controls as unknown as { target?: THREE.Vector3 } | null
+    if (!sun || !controls?.target) return
+    const { x, z } = controls.target
+    sun.position.x += x
+    sun.position.z += z
+    sun.target.position.set(x, 0, z)
+    sun.target.updateMatrixWorld()
+  })
+  return null
 }
 
 function NightManager({ minutes, ambientRef, sunRef }: {
@@ -1342,7 +1359,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <ambientLight ref={ambientRef} intensity={0.6} color="#ede0d4" />
       <directionalLight
         ref={sunRef}
-        position={[35, 50, 25]}
+        position={[30, 57, 12]}
         intensity={1.8}
         color="#fff0dd"
         castShadow
@@ -1357,11 +1374,13 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         shadow-normalBias={0.015}
       />
 
-      <GroundSlab minutes={minutes} palette={palette} />
+      <SunFollow sunRef={sunRef} />
+      <GroundSlab minutes={minutes} palette={palette} showGrid={activeTool !== ToolId.CURSOR} />
       <NaturalHorizon palette={palette} />
       {palette.snow > 0 && <Snowfall count={quality.snowCount} />}
       <PhotoCapture />
       <World grid={grid} />
+      <Greenery grid={grid} foliage={palette.foliage} />
       <LivingCityParticles grid={grid} />
       <OverlayLayer grid={grid} coverage={coverage} mode={overlay} />
       <FireLayer grid={grid} />

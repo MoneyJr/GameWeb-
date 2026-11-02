@@ -65,8 +65,8 @@ const option = (tool: ToolId, labelKey: string, icon: LucideIcon): DockOption =>
 })
 
 const catalogIcons: Record<string, LucideIcon> = {
-  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2, res_half_timbered: House, res_cozy_estate: House,
-  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape, com_market_hall: Store,
+  res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2, res_half_timbered: House, res_cozy_estate: House, res_modern_block: Building2,
+  com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape, com_market_hall: Store, com_office_tower: Building2, com_glass_skyscraper: Building2,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse, ind_winery: Grape, ind_brickworks: Factory, ind_concrete_plant: Warehouse, ind_steel_foundry: Factory,
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
   lnd_park: TreePine, park_winter_tree: TreePine, lnd_church: Church, lnd_cathedral: Church, park_rose_garden: Trees,

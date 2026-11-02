@@ -29,7 +29,7 @@ let gradientMap: THREE.DataTexture | null = null
 /** 3-ступенчатая градиентная карта для "мультяшного" ступенчатого освещения. */
 export function getGradientMap(): THREE.DataTexture {
   if (gradientMap === null) {
-    const texture = new THREE.DataTexture(new Uint8Array([105, 180, 255]), 3, 1, THREE.RedFormat)
+    const texture = new THREE.DataTexture(new Uint8Array([92, 152, 208, 255]), 4, 1, THREE.RedFormat)
     texture.minFilter = THREE.NearestFilter
     texture.magFilter = THREE.NearestFilter
     texture.generateMipmaps = false
@@ -48,25 +48,27 @@ export function setSnowLevel(level: number): void {
 }
 
 const SNOW_VERTEX_HEAD = 'varying vec3 vSnowNormal;\nvarying float vSnowHeight;\n'
+const SNOW_VERTEX_BODY = `
+  mat4 snowModel = modelMatrix;
+  #ifdef USE_INSTANCING
+    snowModel = modelMatrix * instanceMatrix;
+  #endif
+  vSnowNormal = normalize((snowModel * vec4(objectNormal, 0.0)).xyz);`
+const SNOW_FRAGMENT = `
+  // Снег только на верхних гранях выше земли (крыши, карнизы), дороги и газоны не белеют.
+  float snowCover = uSnow * smoothstep(0.3, 0.62, normalize(vSnowNormal).y) * step(0.12, vSnowHeight);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), snowCover);`
 function addSnowCover(material: THREE.MeshToonMaterial): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSnow = snowUniform
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${SNOW_VERTEX_HEAD}`)
-      .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>
-  mat4 snowModel = modelMatrix;
-  #ifdef USE_INSTANCING
-    snowModel = modelMatrix * instanceMatrix;
-  #endif
-  vSnowNormal = normalize((snowModel * vec4(objectNormal, 0.0)).xyz);`)
+      .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>${SNOW_VERTEX_BODY}`)
       .replace('#include <project_vertex>', `#include <project_vertex>
   vSnowHeight = (snowModel * vec4(transformed, 1.0)).y;`)
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\nuniform float uSnow;\n${SNOW_VERTEX_HEAD}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>
-  // Снег только на верхних гранях выше земли (крыши, карнизы), дороги и газоны не белеют.
-  float snowCover = uSnow * smoothstep(0.3, 0.62, normalize(vSnowNormal).y) * step(0.12, vSnowHeight);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), snowCover);`)
+      .replace('#include <color_fragment>', `#include <color_fragment>${SNOW_FRAGMENT}`)
   }
   material.customProgramCacheKey = () => 'ink-toon-snow'
 }
@@ -85,6 +87,80 @@ export function getToonMaterial(color: string): THREE.MeshToonMaterial {
     addSnowCover(material)
     materialCache.set(color, material)
   }
+  return material
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Фасады: сетка окон рисуется шейдером на всех вертикальных стенах          */
+/* -------------------------------------------------------------------------- */
+
+/** Уровень ночи для окон фасадов (0 — день, 1 — ночь). */
+const facadeNightUniform = { value: 0 }
+
+export interface FacadeOptions {
+  /** Цвет стены (простенков и перекрытий). */
+  wall: string
+  /** Цвет стекла днём. */
+  glass: string
+  /** Цвет горящего окна ночью. */
+  lit?: string
+  /** Шаг окон по горизонтали и высота этажа. */
+  spacing?: [number, number]
+  /** Доля простенка по горизонтали и вертикали (0..0.5). */
+  frame?: [number, number]
+  /** Сплошное остекление с тонкими импостами (для стеклянных башен). */
+  curtain?: boolean
+}
+
+const facadeCache = new Map<string, THREE.MeshToonMaterial>()
+
+/** Материал стены с окнами: окна на всех сторонах, ночью часть загорается; снег ложится на крыши. */
+export function getFacadeMaterial(options: FacadeOptions): THREE.MeshToonMaterial {
+  const key = JSON.stringify(options)
+  const cached = facadeCache.get(key)
+  if (cached) return cached
+  const { wall, glass, lit = '#ffd27a', spacing = [0.2, 0.3], frame = [0.2, 0.24], curtain = false } = options
+  const material = new THREE.MeshToonMaterial({ color: wall, gradientMap: getGradientMap(), polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+  const glassColor = new THREE.Color(glass)
+  const litColor = new THREE.Color(lit)
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSnow = snowUniform
+    shader.uniforms.uNight = facadeNightUniform
+    shader.uniforms.uGlass = { value: glassColor }
+    shader.uniforms.uLit = { value: litColor }
+    shader.uniforms.uSpacing = { value: new THREE.Vector2(spacing[0], spacing[1]) }
+    shader.uniforms.uFrame = { value: new THREE.Vector2(curtain ? 0.04 : frame[0], curtain ? 0.08 : frame[1]) }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
+      .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>${SNOW_VERTEX_BODY}\n  vFacadeNormal = objectNormal;`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+  vSnowHeight = (snowModel * vec4(transformed, 1.0)).y;
+  vFacadePos = transformed;`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform float uSnow; uniform float uNight; uniform vec3 uGlass; uniform vec3 uLit; uniform vec2 uSpacing; uniform vec2 uFrame;
+${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  float facadeWindow = 0.0;
+  float facadeLit = 0.0;
+  vec3 facadeN = normalize(vFacadeNormal);
+  if (abs(facadeN.y) < 0.5) {
+    float along = abs(facadeN.x) > 0.5 ? vFacadePos.z : vFacadePos.x;
+    vec2 cell = vec2(along / uSpacing.x, vFacadePos.y / uSpacing.y);
+    vec2 f = fract(cell);
+    facadeWindow = step(uFrame.x, f.x) * step(f.x, 1.0 - uFrame.x) * step(uFrame.y, f.y) * step(f.y, 1.0 - uFrame.y);
+    float seed = fract(sin(dot(floor(cell) + facadeN.xz * 31.0, vec2(12.9898, 78.233))) * 43758.5453);
+    facadeLit = uNight * step(0.42, seed) * facadeWindow;
+    // Лёгкий диагональный блик на стекле — «нарисованное» отражение неба.
+    float streak = smoothstep(0.55, 0.6, fract((along + vFacadePos.y) * 0.9)) * 0.18;
+    vec3 glassTone = mix(uGlass, vec3(1.0), streak + seed * 0.08);
+    diffuseColor.rgb = mix(diffuseColor.rgb, glassTone, facadeWindow);
+  }${SNOW_FRAGMENT}`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+  totalEmissiveRadiance += uLit * facadeLit * 0.95;`)
+  }
+  material.customProgramCacheKey = () => `ink-facade-${key}`
+  facadeCache.set(key, material)
   return material
 }
 
@@ -231,6 +307,7 @@ export function getCurrentNightLevel(): number {
 /** Применяет уровень ночи (0 — день, 1 — глубокая ночь) ко всем светящимся материалам. */
 export function applyNightLevel(level: number): void {
   currentNightLevel = level
+  facadeNightUniform.value = level
   for (const entry of glassMaterials.values()) paintGlass(entry, level)
   lampBulbMaterial.color.lerpColors(BULB_DAY, BULB_NIGHT, level)
   lampGlowOuterMaterial.opacity = level * 0.26

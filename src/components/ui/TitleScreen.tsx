@@ -14,7 +14,7 @@ import { setSnowLevel } from '../3d/primitives'
 
 /** Сезонная палитра стартового экрана (зимой — снег, весной — цветение). */
 const TITLE_PALETTE = SEASON_PALETTES[currentSeason()]
-const TITLE_SEASONAL = currentSeason() !== 'autumn'
+const TITLE_SEASONAL = true
 const seasonalLeaves = (count: number) => Array.from({ length: count }, (_, i) => TITLE_PALETTE.foliage[i % TITLE_PALETTE.foliage.length])
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 

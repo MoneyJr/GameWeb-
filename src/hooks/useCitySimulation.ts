@@ -966,7 +966,7 @@ case 'TICK': {
       let questIndex = state.questIndex
       let questReward = 0
       const quest = QUESTS[questIndex]
-      if (quest && quest.check(buildQuestContext(finalGrid, counts, population, state.happiness))) {
+      if (!state.sandbox && quest && quest.check(buildQuestContext(finalGrid, counts, population, state.happiness))) {
         questReward = quest.reward
         questIndex += 1
       }

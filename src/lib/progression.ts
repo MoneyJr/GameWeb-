@@ -23,7 +23,7 @@ export function rankForPopulation(population: number): number {
 const UNLOCK_RANK: Record<string, number> = {
   res_townhouse: 1, res_half_timbered: 1, com_grocery: 1, ind_warehouse: 1, civ_school: 1, park_rose_garden: 1, utl_solar: 1,
   res_apartment: 2, com_wine_tavern: 2, com_market_hall: 2, ind_winery: 2, ind_brickworks: 2, civ_hospital: 2, lnd_church: 2, [ToolId.POLICE]: 2,
-  res_panel_block: 3, com_mall: 3, ind_factory: 3, ind_concrete_plant: 3, civ_stadium: 3,
+  res_panel_block: 3, res_modern_block: 3, com_office_tower: 3, com_glass_skyscraper: 4, com_mall: 3, ind_factory: 3, ind_concrete_plant: 3, civ_stadium: 3,
   res_modern_glass_tower: 4, com_cinema_cosmos: 4, ind_steel_foundry: 4, lnd_cathedral: 4,
 }
 
