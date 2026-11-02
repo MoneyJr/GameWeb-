@@ -33,7 +33,7 @@ export function SettingsPanel({ quality, onQualityChange, onClose }: { quality: 
       <div className={section}>
         <div className="mb-3 flex items-center justify-between"><h3 className="text-sm font-bold">🔊 {t('settings.sound')}</h3>
           <button type="button" className={chip(!audio.muted)} onClick={() => { unlockAudio(); setAudioSettings({ muted: !audio.muted }) }}>{audio.muted ? t('settings.off') : t('settings.on')}</button></div>
-        {([['music', t('settings.music')], ['effects', t('settings.effects')]] as const).map(([key, label]) => <label key={key} className="mb-2 grid grid-cols-[90px_1fr_36px] items-center gap-2 text-xs font-bold last:mb-0">
+        {([['master', t('settings.master')], ['music', t('settings.music')], ['effects', t('settings.effects')]] as const).map(([key, label]) => <label key={key} className="mb-2 grid grid-cols-[90px_1fr_36px] items-center gap-2 text-xs font-bold last:mb-0">
           <span>{label}</span>
           <input type="range" min="0" max="100" value={Math.round(audio[key] * 100)} onChange={(event) => { unlockAudio(); setAudioSettings({ [key]: Number(event.target.value) / 100 }) }} onPointerUp={() => key === 'effects' && playSound('coin')} className="accent-ink" />
           <span className="text-right">{Math.round(audio[key] * 100)}</span>

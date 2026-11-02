@@ -9,6 +9,7 @@ import { useI18n, type Language } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from '../3d/InkOutlinePass'
 import { currentSeason, SEASON_PALETTES } from '../../lib/season'
 import { Snowfall } from '../3d/Snowfall'
+import { getAudioSettings, setAudioSettings, unlockAudio } from '../../lib/sound'
 import { setSnowLevel } from '../3d/primitives'
 
 /** Сезонная палитра стартового экрана (зимой — снег, весной — цветение). */
@@ -524,11 +525,10 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     try { return localStorage.getItem(MAYOR_NAME_KEY) || t('title.mayorPlaceholder') } catch { return t('title.mayorPlaceholder') }
   })
   const [activeAction, setActiveAction] = useState(0)
+  // Эти ползунки управляют общим звуковым модулем игры (src/lib/sound.ts).
   const [audio, setAudio] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('inkville-audio-settings') ?? '{}') as Partial<{ master: number; music: number; sfx: number; musicMuted: boolean }>
-      return { master: saved.master ?? 80, music: saved.music ?? 55, sfx: saved.sfx ?? 75, musicMuted: saved.musicMuted ?? false }
-    } catch { return { master: 80, music: 55, sfx: 75, musicMuted: false } }
+    const saved = getAudioSettings()
+    return { master: Math.round(saved.master * 100), music: Math.round(saved.music * 100), sfx: Math.round(saved.effects * 100), musicMuted: saved.muted }
   })
   const [profileName, setProfileName] = useState(mayorName)
   const [cityStats, setCityStats] = useState(readCityStats)
@@ -581,7 +581,8 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
   }
   const updateAudio = (next: typeof audio) => {
     setAudio(next)
-    try { localStorage.setItem('inkville-audio-settings', JSON.stringify(next)) } catch { /* Storage may be disabled. */ }
+    unlockAudio()
+    setAudioSettings({ master: next.master / 100, music: next.music / 100, effects: next.sfx / 100, muted: next.musicMuted })
     document.documentElement.dataset.soundEnabled = String(next.master > 0 && !next.musicMuted)
     window.dispatchEvent(new CustomEvent('INKVILLE_AUDIO_SETTINGS_CHANGED', { detail: next }))
   }

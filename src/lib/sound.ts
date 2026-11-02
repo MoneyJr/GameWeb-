@@ -5,13 +5,14 @@
 export type SoundName = 'build' | 'demolish' | 'coin' | 'success' | 'error' | 'click'
 
 export interface AudioSettings {
+  master: number
   music: number
   effects: number
   muted: boolean
 }
 
 const STORAGE_KEY = 'inkville-audio'
-const DEFAULT_SETTINGS: AudioSettings = { music: 0.5, effects: 0.7, muted: false }
+const DEFAULT_SETTINGS: AudioSettings = { master: 0.8, music: 0.5, effects: 0.7, muted: false }
 
 let context: AudioContext | null = null
 let master: GainNode | null = null
@@ -26,7 +27,11 @@ const listeners = new Set<(value: AudioSettings) => void>()
 function readSettings(): AudioSettings {
   try {
     const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<AudioSettings> | null
-    return { ...DEFAULT_SETTINGS, ...(parsed ?? {}) }
+    if (parsed) return { ...DEFAULT_SETTINGS, ...parsed }
+    // Перенос старых настроек со стартового экрана (0–100).
+    const legacy = JSON.parse(localStorage.getItem('inkville-audio-settings') ?? 'null') as { master?: number; music?: number; sfx?: number; musicMuted?: boolean } | null
+    if (legacy) return { master: (legacy.master ?? 80) / 100, music: (legacy.music ?? 50) / 100, effects: (legacy.sfx ?? 70) / 100, muted: legacy.musicMuted ?? false }
+    return { ...DEFAULT_SETTINGS }
   } catch { return { ...DEFAULT_SETTINGS } }
 }
 
@@ -47,7 +52,7 @@ export function setAudioSettings(next: Partial<AudioSettings>): void {
 function applyVolumes() {
   if (!context || !master || !musicBus || !effectsBus) return
   const now = context.currentTime
-  master.gain.setTargetAtTime(settings.muted ? 0 : 1, now, 0.05)
+  master.gain.setTargetAtTime(settings.muted ? 0 : settings.master, now, 0.05)
   musicBus.gain.setTargetAtTime(settings.music * 0.35, now, 0.1)
   effectsBus.gain.setTargetAtTime(settings.effects * 0.6, now, 0.05)
 }

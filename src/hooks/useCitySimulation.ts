@@ -1049,7 +1049,8 @@ function createInitialState(): SimState {
         const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
         return {
           ...save,
-          grid,
+          // Сохранённые здания уже достроены — не проигрываем анимацию стройки при каждом запуске.
+          grid: grid.map((row) => row.map((cell) => (cell.animate ? { ...cell, animate: false } : cell))),
           population,
           budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
           materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
