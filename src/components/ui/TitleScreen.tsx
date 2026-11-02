@@ -7,6 +7,14 @@ import { TileModel } from '../3d/BuildingMeshes'
 import { TileType } from '../../types/city'
 import { useI18n, type Language } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from '../3d/InkOutlinePass'
+import { currentSeason, SEASON_PALETTES } from '../../lib/season'
+import { Snowfall } from '../3d/Snowfall'
+import { setSnowLevel } from '../3d/primitives'
+
+/** Сезонная палитра стартового экрана (зимой — снег, весной — цветение). */
+const TITLE_PALETTE = SEASON_PALETTES[currentSeason()]
+const TITLE_SEASONAL = currentSeason() !== 'autumn'
+const seasonalLeaves = (count: number) => Array.from({ length: count }, (_, i) => TITLE_PALETTE.foliage[i % TITLE_PALETTE.foliage.length])
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
 
 type MenuControls = ThreeOrbitControls
@@ -50,6 +58,7 @@ function MenuCameraFlight({ active, controlsRef, onComplete }: { active: boolean
 }
 
 function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: boolean; onFlightComplete: () => void }) {
+  useEffect(() => { setSnowLevel(TITLE_PALETTE.snow) }, [])
   const controlsRef = useRef<MenuControls | null>(null)
   const { city, parks, trees, hills, infill, gardenCells, roundabouts } = useMemo(() => {
     const cells: { x: number; z: number; type: TileType }[] = []
@@ -144,18 +153,19 @@ function ShowcaseCity({ transitioning, onFlightComplete }: { transitioning: bool
   }, [])
   return (
     <>
-      <color attach="background" args={['#D8C7A5']} />
-      <fogExp2 attach="fog" args={['#D8C7A5', 0.002]} />
+      <color attach="background" args={[TITLE_PALETTE.sky]} />
+      <fogExp2 attach="fog" args={[TITLE_PALETTE.sky, 0.002]} />
+      {TITLE_PALETTE.snow > 0 && <Snowfall count={1400} />}
       <ambientLight intensity={0.6} color="#ede0d4" />
       <directionalLight position={[35, 50, 25]} intensity={1.8} color="#fff0dd" castShadow shadow-mapSize={[2048, 2048]} shadow-camera-near={0.5} shadow-camera-far={90} shadow-camera-left={-28} shadow-camera-right={28} shadow-camera-top={28} shadow-camera-bottom={-28} shadow-bias={-0.0003} />
       <OrbitControls ref={controlsRef} autoRotate={!transitioning} autoRotateSpeed={0.4} enablePan={false} enableZoom={false} target={[5, 0.9, -1]} />
       <MenuCameraFlight active={transitioning} controlsRef={controlsRef} onComplete={onFlightComplete} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.03, 0]} receiveShadow>
         <planeGeometry args={[120, 120]} />
-        <meshToonMaterial color="#cfb997" />
+        <meshToonMaterial color={TITLE_SEASONAL ? TITLE_PALETTE.ground : '#cfb997'} />
       </mesh>
       {hills.map((hill, i) => <mesh key={`hill-${i}`} position={[hill.x, -0.12, hill.z]} scale={hill.scale} receiveShadow>
-        <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
+        <icosahedronGeometry args={[1, 2]} /><meshToonMaterial color={TITLE_SEASONAL ? TITLE_PALETTE.hills[i % 3] : i % 2 ? '#9b7548' : '#b49a66'} /><Edges color="#261c14" threshold={28} />
       </mesh>)}
       {trees.map((tree, i) => <ShowcaseTree key={`forest-${i}`} {...tree} />)}
       {city.map(({ x, z, type, i, north, south, east, west, junction }) => (
@@ -190,7 +200,7 @@ function ShowcaseSceneReady({ onReady }: { onReady: () => void }) {
   return null
 }
 
-const forestLeafMaterials = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824'].map((color) => {
+const forestLeafMaterials = (TITLE_SEASONAL ? seasonalLeaves(10) : ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#c86d24', '#963824', '#963824']).map((color) => {
   const material = new THREE.MeshToonMaterial({ color })
   ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
   return material
@@ -249,7 +259,7 @@ function ShowcasePark({ position = [0, 0, 0] }: { position?: [number, number, nu
 }
 
 function GardenCell({ position, variant }: { position: [number, number, number]; variant: number }) {
-  const autumn = ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#963824', '#963824']
+  const autumn = TITLE_SEASONAL ? seasonalLeaves(9) : ['#d99b26', '#d99b26', '#d99b26', '#e5a93c', '#e5a93c', '#c86d24', '#c86d24', '#963824', '#963824']
   const leaf = autumn[variant % autumn.length]
   return <group position={position}>
     <mesh position={[0, 0.014, 0]} receiveShadow><boxGeometry args={[0.96, 0.028, 0.96]} /><meshToonMaterial color={variant % 5 === 0 ? '#72894b' : '#839450'} /></mesh>
@@ -599,7 +609,7 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     <div className={`absolute inset-0 z-40 overflow-hidden bg-[#EAE2D2] transition-opacity duration-300 ${leaving ? 'opacity-0' : 'opacity-100'}`}>
       <Canvas shadows dpr={[1, 1.5]} camera={{ position: [28, 42, 38], fov: 24 }} gl={{ antialias: true }} onCreated={({ gl }) => {
         gl.autoClear = true
-        gl.setClearColor(new THREE.Color('#D8C7A5'), 1)
+        gl.setClearColor(new THREE.Color(TITLE_PALETTE.sky), 1)
         gl.toneMapping = THREE.NoToneMapping
       }}>
         <ShowcaseCity transitioning={transitioning} onFlightComplete={finishFlight} />

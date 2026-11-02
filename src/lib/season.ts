@@ -27,7 +27,7 @@ export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
     river: '#2b6cb0', riverBank: '#c9ad7f', snow: 0,
   },
   winter: {
-    ground: '#e9edf0', sky: '#dfe5ea',
+    ground: '#f6f8fa', sky: '#eaf0f4',
     foliage: ['#f1f5f9', '#f1f5f9', '#e2e8f0', '#3f6b4f', '#3f6b4f', '#2f5640', '#4b7a5c', '#f8fafc'],
     hills: ['#eef2f5', '#d6dee5', '#c3ced8'], vines: ['#8a7560', '#76624f', '#e2e8f0', '#f1f5f9'],
     river: '#9cc0d8', riverBank: '#dfe6ec', snow: 1,

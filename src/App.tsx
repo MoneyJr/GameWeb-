@@ -9,11 +9,14 @@ import { TitleScreen } from './components/ui/TitleScreen'
 import type { CityProfile } from './components/ui/TitleScreen'
 import { useI18n } from './i18n/I18nProvider'
 import { addPlaySeconds } from './lib/cityProfile'
+import { OverlayPicker } from './components/ui/OverlayPicker'
+import { QuestCard } from './components/ui/QuestCard'
+import type { OverlayMode } from './lib/overlays'
 
 function App() {
   const sim = useCitySimulation()
   const { t } = useI18n()
-  const { togglePause, notice } = sim
+  const { togglePause, notice, undo } = sim
   const [visibleNoticeId, setVisibleNoticeId] = useState<number | null>(null)
   const [started, setStarted] = useState(new URLSearchParams(window.location.search).has('preview'))
   const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
@@ -23,6 +26,7 @@ function App() {
   const titleVisible = !started
   const resStyle = "EU"
   const [catalogId, setCatalogId] = useState<string | undefined>(undefined)
+  const [overlay, setOverlay] = useState<OverlayMode>('none')
   // A shareable visual fixture, enabled with ?preview=cityrt, keeps the simulation's normal empty start intact.
   const displayGrid = useMemo<Grid>(() => {
     if (new URLSearchParams(window.location.search).get('preview') !== 'cityrt') return sim.grid
@@ -72,6 +76,7 @@ function App() {
 
   const handleStart = (mode: 'new' | 'continue' | 'sandbox', profile?: CityProfile) => {
     if (mode !== 'continue') sim.reset()
+    if (mode === 'sandbox') sim.enableSandbox()
     let savedProfile = profile
     if (mode === 'continue' && !savedProfile) {
       try { savedProfile = JSON.parse(localStorage.getItem('inkville-city-profile') ?? 'null') as CityProfile | undefined } catch { savedProfile = undefined }
@@ -114,9 +119,13 @@ function App() {
   // Пробел — пауза. Инструменты выбираются хоткеями категорий в нижней панели (1, U, H, S, I, V, P, X).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey) return
       const target = event.target as HTMLElement | null
       if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault()
+        undo()
+        return
+      }
       if (event.code === 'Space') {
         event.preventDefault()
         togglePause()
@@ -124,7 +133,7 @@ function App() {
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [togglePause])
+  }, [togglePause, undo])
 
   // Уведомление исчезает через 2.5 секунды.
   useEffect(() => {
@@ -148,6 +157,8 @@ function App() {
         minutes={sim.minutes}
         budget={sim.budget}
         placementStyle={resStyle}
+        coverage={sim.coverage}
+        overlay={overlay}
       />
 
       <div className="pointer-events-none absolute inset-0 z-30 animate-hud-fade-in [&>*]:pointer-events-auto">
@@ -190,7 +201,11 @@ function App() {
         </div>
       )}
 
-      <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} />
+      <OverlayPicker mode={overlay} onChange={setOverlay} />
+      {sim.canUndo && <button type="button" onClick={undo} aria-label={t('action.undo')} title={t('action.undo')} className="absolute bottom-[calc(env(safe-area-inset-bottom)+104px)] right-[calc(env(safe-area-inset-right)+12px)] z-30 flex h-11 items-center gap-1.5 rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/90 px-3.5 text-sm font-bold text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">↶ <span className="hidden sm:inline">{t('action.undo').split(' · ')[0]}</span></button>}
+      <QuestCard rank={sim.rank} questIndex={sim.questIndex} context={sim.questContext} sandbox={sim.sandbox} />
+
+      <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} rank={sim.rank} sandbox={sim.sandbox} />
       </div>
       {selectedResidence && (() => {
         const home = sim.grid[selectedResidence.y]?.[selectedResidence.x]
@@ -227,6 +242,8 @@ function App() {
           lastNet={sim.lastNet}
           waterServed={sim.waterStats.served}
           waterTotal={sim.waterStats.total}
+          finance={sim.finance}
+          budget={sim.budget}
         />
       )}
       </>}

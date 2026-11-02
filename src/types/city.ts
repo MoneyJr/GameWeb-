@@ -45,6 +45,8 @@ export interface GridCell {
   residents?: number
   maxResidents?: number
   residentialFloors?: number
+  /** Сколько тактов ещё горит здание (пожар). */
+  fire?: number
   /** Prebuilt showcase structures are rendered finished on the first frame. */
   animate?: boolean
 }

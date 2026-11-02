@@ -13,6 +13,9 @@ import { useI18n } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from './InkOutlinePass'
 import { getToonMaterial, setSnowLevel } from './primitives'
 import { Snowfall } from './Snowfall'
+import { FireLayer, OverlayLayer } from './OverlayLayer'
+import type { CoverageMaps } from '../../lib/coverage'
+import type { OverlayMode } from '../../lib/overlays'
 import { currentSeason, SEASON_PALETTES, type SeasonPalette } from '../../lib/season'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
@@ -1044,6 +1047,8 @@ export interface CitySceneProps {
   placementStyle?: string
   catalogId?: string
   materials: { bricks: number; concrete: number; steel: number }
+  coverage: CoverageMaps
+  overlay: OverlayMode
 }
 
 import { applyNightLevel } from './primitives'
@@ -1161,7 +1166,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials, coverage, overlay }: CitySceneProps) {
   const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
@@ -1335,6 +1340,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       {palette.snow > 0 && <Snowfall />}
       <World grid={grid} />
       <LivingCityParticles grid={grid} />
+      <OverlayLayer grid={grid} coverage={coverage} mode={overlay} />
+      <FireLayer grid={grid} />
       <TrafficSystem grid={grid} minutes={minutes} />
       <InteractionLayer
         grid={grid}

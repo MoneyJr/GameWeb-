@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../lib/cityConfig'
 import { BUILDING_BY_ID, canonicalCatalogId, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
+import { QUESTS, rankForPopulation, unlockRankOf, type QuestContext } from '../lib/progression'
+import { computeCoverage, isCovered, type CoverageMaps } from '../lib/coverage'
 import { activeEvents, eventModifiers, sameEvents, type CityEventId, type CityEventModifiers } from '../lib/cityEvents'
 import {
   GRID_SIZE,
@@ -112,6 +114,63 @@ interface SimState {
   warehouseCapacity: number
   /** Активные сезонные события. */
   events: CityEventId[]
+  /** Максимальный достигнутый ранг города (не понижается). */
+  rank: number
+  /** Номер текущего задания советника. */
+  questIndex: number
+  /** Песочница: всё открыто, большой бюджет. */
+  sandbox: boolean
+  /** История для «Отменить» (не сохраняется). */
+  undo: UndoEntry[]
+}
+
+interface UndoEntry {
+  /** Клетки в том виде, какими они были до действия. */
+  cells: GridCell[]
+  refund: number
+  materials: { bricks: number; concrete: number; steel: number }
+}
+
+const UNDOABLE = new Set(['PLACE', 'REMOVE', 'UPGRADE', 'MERGE', 'MERGE_TOWERS'])
+const UNDO_LIMIT = 20
+
+/** Обёртка над reducer: запоминает изменённые клетки для отмены и обрабатывает UNDO. */
+function reducerWithUndo(state: SimState, action: Action): SimState {
+  if (action.type === 'UNDO') {
+    const entry = state.undo[state.undo.length - 1]
+    if (!entry) return state
+    const grid = state.grid.map((row) => row.slice())
+    for (const cell of entry.cells) grid[cell.y][cell.x] = cell
+    return {
+      ...state,
+      grid: recomputeServices(grid, eventModifiers(state.events).energyMultiplier),
+      budget: state.budget + entry.refund,
+      materials: {
+        bricks: state.materials.bricks + entry.materials.bricks,
+        concrete: state.materials.concrete + entry.materials.concrete,
+        steel: state.materials.steel + entry.materials.steel,
+      },
+      undo: state.undo.slice(0, -1),
+    }
+  }
+  const next = reducer(state, action)
+  if (!UNDOABLE.has(action.type) || next.grid === state.grid) return next
+  const cells: GridCell[] = []
+  for (let y = 0; y < GRID_SIZE; y += 1) for (let x = 0; x < GRID_SIZE; x += 1) {
+    const before = state.grid[y][x], after = next.grid[y][x]
+    if (before.type !== after.type || before.catalogId !== after.catalogId || before.level !== after.level || before.refX !== after.refX || before.refY !== after.refY) cells.push(before)
+  }
+  if (cells.length === 0) return next
+  const entry: UndoEntry = {
+    cells,
+    refund: Math.max(0, state.budget - next.budget),
+    materials: {
+      bricks: Math.max(0, state.materials.bricks - next.materials.bricks),
+      concrete: Math.max(0, state.materials.concrete - next.materials.concrete),
+      steel: Math.max(0, state.materials.steel - next.materials.steel),
+    },
+  }
+  return { ...next, undo: [...state.undo.slice(-(UNDO_LIMIT - 1)), entry] }
 }
 
 type Action =
@@ -128,6 +187,8 @@ type Action =
   | { type: 'TAKE_LOAN'; amount: number }
   | { type: 'REPAY_LOAN' }
   | { type: 'RESET' }
+  | { type: 'SET_SANDBOX' }
+  | { type: 'UNDO' }
 
 function createEmptyGrid(): Grid {
   return Array.from({ length: GRID_SIZE }, (_, y) =>
@@ -495,8 +556,18 @@ function countTiles(grid: Grid): CityCounts {
 }
 
 /** Каталог задаёт готовую чистую сумму за каждый десятиминутный такт. */
-function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], modifiers: CityEventModifiers): number {
-  let total = 0
+export interface IncomeBreakdown {
+  residential: number
+  commercial: number
+  industrial: number
+  other: number
+  maintenance: number
+  net: number
+}
+
+/** Доходы по категориям и расходы на содержание за один такт (10 игровых минут). */
+function computeIncomeBreakdown(grid: Grid, taxRates: SimState['taxRates'], modifiers: CityEventModifiers): IncomeBreakdown {
+  const result: IncomeBreakdown = { residential: 0, commercial: 0, industrial: 0, other: 0, maintenance: 0, net: 0 }
   for (const row of grid) for (const cell of row) {
     if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT) continue
     const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
@@ -506,7 +577,7 @@ function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], modifiers:
       : entry.category === 'commercial' ? 'commercial'
         : entry.category === 'industrial' ? 'industrial' : undefined
     // Жилые дома, магазины и заводы без воды или света не работают и налогов не платят.
-    const serviced = !taxGroup || (cell.hasWater && cell.hasPower)
+    const serviced = !taxGroup || (cell.hasWater && cell.hasPower && !cell.fire)
     const taxableIncome = serviced ? entry.income ?? Math.max(0, entry.tickNet) : 0
     let taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
     if (cell.type === TileType.RESIDENTIAL && cell.level > 1) taxMultiplier *= 1 + (cell.level - 1) * 0.4
@@ -515,9 +586,15 @@ function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], modifiers:
     // Магазинам без поставок с заводов (через дорожную сеть) не хватает товара.
     if (cell.type === TileType.COMMERCIAL && !cell.hasSupplies) taxMultiplier *= 0.8
     taxMultiplier *= modifiers.incomeMultiplier[catalogId!] ?? 1
-    total += taxableIncome * taxMultiplier - (entry.maintenance ?? Math.max(0, -entry.tickNet))
+    result[taxGroup ?? 'other'] += taxableIncome * taxMultiplier
+    result.maintenance += entry.maintenance ?? Math.max(0, -entry.tickNet)
   }
-  return Math.round(total)
+  result.net = Math.round(result.residential + result.commercial + result.industrial + result.other - result.maintenance)
+  return result
+}
+
+function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], modifiers: CityEventModifiers): number {
+  return computeIncomeBreakdown(grid, taxRates, modifiers).net
 }
 
 /** Сколько жителей «обслуживает» одно очко счастья от парков, школ, больниц и т.п. */
@@ -548,10 +625,77 @@ function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid, popu
   return Math.round(Math.min(100, Math.max(0, h)))
 }
 
+/** Пожары начинаются только в городе от этого населения — новичков не наказываем. */
+export const FIRE_SAFE_POPULATION = 300
+const FIRE_CHANCE_UNCOVERED = 0.00012
+const FIRE_CHANCE_COVERED = 0.00002
+const FIRE_TICKS_COVERED = 6
+const FIRE_TICKS_UNCOVERED = 30
+
+/**
+ * Пожары: здание без пожарного депо в радиусе загорается чаще и горит дольше.
+ * Пока горит — не платит налоги и теряет жителей; без депо после пожара дом теряет уровень.
+ */
+function updateFires(grid: Grid, coverage: CoverageMaps, population: number, day: number, minute: number): { grid: Grid; started: GridCell | null } {
+  let started: GridCell | null = null
+  const next = grid.map((row) => row.map((cell) => {
+    const burnable = cell.type === TileType.RESIDENTIAL || cell.type === TileType.COMMERCIAL || cell.type === TileType.INDUSTRIAL
+    if (!burnable) return cell
+    const covered = isCovered(coverage, 'fire', cell.x, cell.y)
+    if (cell.fire) {
+      const remaining = cell.fire - 1
+      if (remaining > 0) {
+        const residents = cell.type === TileType.RESIDENTIAL ? Math.max(0, (cell.residents ?? 0) - 1) : cell.residents
+        return { ...cell, fire: remaining, residents }
+      }
+      // Потушили. Без пожарных дом успел сильно пострадать.
+      if (!covered && cell.type === TileType.RESIDENTIAL) {
+        return { ...cell, fire: undefined, level: 1, residents: Math.floor((cell.residents ?? 0) / 2) }
+      }
+      return { ...cell, fire: undefined }
+    }
+    if (population < FIRE_SAFE_POPULATION) return cell
+    const chance = covered ? FIRE_CHANCE_COVERED : FIRE_CHANCE_UNCOVERED
+    if (seededRandom(cell.x, cell.y, day, minute, 911) >= chance) return cell
+    const burning = { ...cell, fire: covered ? FIRE_TICKS_COVERED : FIRE_TICKS_UNCOVERED }
+    started ??= burning
+    return burning
+  }))
+  return { grid: next, started }
+}
+
+/** Доля жителей вне радиуса полиции; маленький посёлок обходится без полиции. */
+function crimeRateFor(grid: Grid, coverage: CoverageMaps, population: number): number {
+  if (population <= CRIME_FREE_POPULATION) return 0
+  let uncovered = 0
+  for (const row of grid) for (const cell of row) {
+    if (cell.type === TileType.RESIDENTIAL && !isCovered(coverage, 'police', cell.x, cell.y)) uncovered += cell.residents ?? 0
+  }
+  return Math.min(100, Math.round((uncovered / population) * 100))
+}
+
+function buildQuestContext(grid: Grid, counts: CityCounts, population: number, happiness: number): QuestContext {
+  const catalog: Record<string, number> = {}
+  for (const row of grid) for (const cell of row) {
+    const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
+    if (id && cell.type !== TileType.FOOTPRINT) catalog[id] = (catalog[id] ?? 0) + 1
+  }
+  return {
+    population, happiness,
+    roads: counts.roads, houses: counts.houses, pumps: counts.pumps,
+    generators: counts.wind + counts.solarPanels + counts.coal,
+    unservicedHouses: counts.unservicedHouses, shops: counts.shops, suppliedShops: counts.suppliedShops,
+    parks: counts.parks, policeStations: counts.policeStations, fireStations: counts.fireStations,
+    catalog,
+  }
+}
+
 function reducer(state: SimState, action: Action): SimState {
   switch (action.type) {
     case 'RESET':
       return createFreshState()
+    case 'SET_SANDBOX':
+      return { ...state, sandbox: true, budget: Math.max(state.budget, 50_000), debt: 0, rank: Math.max(state.rank, 4) }
     case 'SET_TAX':
       return { ...state, taxRates: { ...state.taxRates, [action.category]: Math.min(20, Math.max(1, action.rate)) } }
     case 'TAKE_LOAN':
@@ -565,6 +709,10 @@ function reducer(state: SimState, action: Action): SimState {
       const { x, y, tool, style } = action
       if (!inBounds(x, y)) return state
       
+      const requiredRank = unlockRankOf(action.catalogId ?? tool)
+      if (!state.sandbox && state.rank < requiredRank) {
+        return { ...state, notice: { id: Date.now(), text: 'Эта постройка откроется на следующем ранге города. Растите население!' } }
+      }
       const baseDef = TOOL_DEFINITIONS[tool]
       const catalogEntry = action.catalogId ? BUILDING_BY_ID[action.catalogId] : undefined
       const def = catalogEntry ? { ...baseDef, tile: catalogEntry.tile, cost: catalogEntry.cost } : baseDef
@@ -679,7 +827,7 @@ function reducer(state: SimState, action: Action): SimState {
       let newGrid = state.grid.map((row, r) =>
         row.map((cell, c) => {
           if (r >= targetY && r < targetY + h && c >= targetX && c < targetX + w) {
-            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, orientation: undefined, hasWater: false, hasPower: false, smog: false, parked: false, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
+            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, orientation: undefined, hasWater: false, hasPower: false, smog: false, parked: false, fire: undefined, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
           }
           return cell;
         })
@@ -786,30 +934,53 @@ case 'TICK': {
           ? cell
           : { ...cell, residents: nextResidents, maxResidents, level }
       }))
-      const population = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
-      const counts = countTiles(cityGrid)
-      const net = computeNetIncome(cityGrid, state.taxRates, modifiers)
-      const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION + CRIME_FREE_POPULATION
-      const crimeRate = population > totalPoliceCap && population > 0
-        ? Math.min(100, Math.round(((population - totalPoliceCap) / population) * 100))
-        : 0
+      const populationBefore = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+      const coverage = computeCoverage(cityGrid)
+      const fires = updateFires(cityGrid, coverage, populationBefore, nextDay, gameMinute)
+      const finalGrid = fires.grid
+      const population = finalGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+      const counts = countTiles(finalGrid)
+      const net = computeNetIncome(finalGrid, state.taxRates, modifiers)
+      const crimeRate = crimeRateFor(finalGrid, coverage, population)
+      const fireNotice = fires.started
+        ? { id: Date.now(), text: isCovered(coverage, 'fire', fires.started.x, fires.started.y)
+          ? '🔥 Пожар! Пожарные уже выехали.'
+          : '🔥 Пожар! Рядом нет пожарного депо — здание горит долго.' }
+        : state.notice
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
-      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid, population, modifiers) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
+      const happinessDrift = (targetHappiness(counts, crimeRate, finalGrid, population, modifiers) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
+      // Пустая казна: службы недополучают денег, жители недовольны.
+      const bankruptLoss = state.budget < 0 ? 15 : 0
+      const dailyServiceLoss = (unservicedHouseShare * 25 + bankruptLoss) * MINUTES_PER_TICK / MINUTES_PER_DAY
       // Ежедневный платёж по кредиту действительно уменьшает долг.
       const loanPayment = state.debt > 0 && isMidnight ? Math.min(DAILY_LOAN_PAYMENT, state.debt) : 0
       const netTickIncome = net - loanPayment
       const materials = { ...state.materials }
-      for (const row of cityGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL) {
+      for (const row of finalGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL && !cell.fire) {
         if (cell.catalogId === 'ind_brickworks') materials.bricks = Math.min(state.warehouseCapacity, materials.bricks + 1)
         if (cell.catalogId === 'ind_concrete_plant') materials.concrete = Math.min(state.warehouseCapacity, materials.concrete + 1)
         if (cell.catalogId === 'ind_steel_foundry') materials.steel = Math.min(state.warehouseCapacity, materials.steel + 1)
       }
+      const rank = Math.max(state.rank, rankForPopulation(population))
+      // Задания советника: награда сразу на счёт, затем следующее задание.
+      let questIndex = state.questIndex
+      let questReward = 0
+      const quest = QUESTS[questIndex]
+      if (quest && quest.check(buildQuestContext(finalGrid, counts, population, state.happiness))) {
+        questReward = quest.reward
+        questIndex += 1
+      }
+      const nextBudget = Math.round(state.budget + netTickIncome + questReward)
       return {
         ...state,
-        grid: cityGrid,
+        rank,
+        questIndex,
+        grid: finalGrid,
         population,
-        budget: Math.max(0, Math.round(state.budget + netTickIncome)),
+        notice: state.budget >= 0 && nextBudget < 0
+          ? { id: Date.now(), text: '⚠️ Казна пуста! Поднимите налоги в мэрии или снесите убыточные здания.' }
+          : fireNotice,
+        budget: nextBudget,
         lastNet: netTickIncome,
         happiness: Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss)),
         debt: state.debt - loanPayment,
@@ -842,6 +1013,10 @@ function createFreshState(): SimState {
     materials: { bricks: 0, concrete: 0, steel: 0 },
     warehouseCapacity: 100,
     events: activeEvents({ day: 1, now: Date.now() }),
+    rank: 0,
+    questIndex: 0,
+    sandbox: false,
+    undo: [],
   }
 }
 
@@ -880,6 +1055,10 @@ function createInitialState(): SimState {
           materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
           warehouseCapacity: save.warehouseCapacity ?? 100,
           events: activeEvents({ day, now: Date.now() }),
+          rank: Math.max(save.rank ?? 0, rankForPopulation(population)),
+          questIndex: save.questIndex ?? 0,
+          sandbox: save.sandbox ?? false,
+          undo: [],
         }
       }
     }
@@ -893,14 +1072,14 @@ const SAVE_INTERVAL_MS = 10_000
 function persistState(state: SimState) {
   try {
     const hasCity = state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
-    if (hasCity) localStorage.setItem(SAVE_KEY, JSON.stringify(state))
+    if (hasCity) localStorage.setItem(SAVE_KEY, JSON.stringify({ ...state, undo: undefined }))
     else localStorage.removeItem(SAVE_KEY)
   } catch { /* Storage can be unavailable in private browsing. */ }
 }
 
 /** Чистое состояние симуляции города: сетка, инструмент, экономика и игровой таймер. */
 export function useCitySimulation() {
-  const [state, dispatch] = useReducer(reducer, undefined, createInitialState)
+  const [state, dispatch] = useReducer(reducerWithUndo, undefined, createInitialState)
   if (typeof window !== "undefined") { (window as any).__SIM_DISPATCH = dispatch; (window as any).__SIM_STATE = state; }
   const [activeTool, setActiveTool] = useState<ToolId>(ToolId.CURSOR)
   const [paused, setPaused] = useState(true)
@@ -951,6 +1130,8 @@ export function useCitySimulation() {
   const mergeNeighborhood = useCallback((x: number, y: number) => dispatch({ type: 'MERGE', x, y }), [])
   const mergeTowers = useCallback((x: number, y: number) => dispatch({ type: 'MERGE_TOWERS', x, y }), [])
   const expandWarehouse = useCallback(() => dispatch({ type: 'EXPAND_WAREHOUSE' }), [])
+  const enableSandbox = useCallback(() => dispatch({ type: 'SET_SANDBOX' }), [])
+  const undo = useCallback(() => dispatch({ type: 'UNDO' }), [])
 
   const togglePause = useCallback(() => setPaused((value) => !value), [])
 
@@ -978,14 +1159,19 @@ export function useCitySimulation() {
     { produced: counts.energyProduced, consumed: Math.round(counts.energyConsumed * modifiers.energyMultiplier) }
   ), [counts, modifiers])
 
+  const coverage = useMemo(() => computeCoverage(state.grid), [state.grid])
   const capacityStats = useMemo(() => {
-    const policeCapacity = counts.policeStations * POLICE_CAPACITY_PER_STATION + CRIME_FREE_POPULATION
-    const fireCapacity = counts.fireStations * FIRE_CAPACITY_PER_STATION
-    const crimeRate = state.population > policeCapacity && state.population > 0
-      ? Math.min(100, Math.round(((state.population - policeCapacity) / state.population) * 100))
-      : 0
-    return { policeCapacity, fireCapacity, crimeRate }
-  }, [counts, state.population])
+    // Доля зданий в радиусе полиции и пожарных (в процентах).
+    let buildings = 0, police = 0, fire = 0
+    for (const row of state.grid) for (const cell of row) {
+      if (cell.type !== TileType.RESIDENTIAL && cell.type !== TileType.COMMERCIAL && cell.type !== TileType.INDUSTRIAL) continue
+      buildings += 1
+      if (isCovered(coverage, 'police', cell.x, cell.y)) police += 1
+      if (isCovered(coverage, 'fire', cell.x, cell.y)) fire += 1
+    }
+    const percent = (value: number) => buildings ? Math.round((value / buildings) * 100) : 100
+    return { policeCapacity: percent(police), fireCapacity: percent(fire), crimeRate: crimeRateFor(state.grid, coverage, state.population) }
+  }, [coverage, state.grid, state.population])
 
   const prestige = useMemo(() => {
     const developed = counts.houses + counts.shops + counts.factories + counts.parks
@@ -1000,6 +1186,15 @@ export function useCitySimulation() {
     lastNet: state.lastNet,
     happiness: Math.round(state.happiness),
     events: state.events,
+    coverage,
+    rank: state.rank,
+    questIndex: state.questIndex,
+    sandbox: state.sandbox,
+    questContext: useMemo(() => buildQuestContext(state.grid, counts, state.population, state.happiness), [counts, state.grid, state.population, state.happiness]),
+    enableSandbox,
+    undo,
+    canUndo: state.undo.length > 0,
+    finance: useMemo(() => computeIncomeBreakdown(state.grid, state.taxRates, eventModifiers(state.events)), [state.grid, state.taxRates, state.events]),
     taxRates: state.taxRates,
     debt: state.debt,
     demands,

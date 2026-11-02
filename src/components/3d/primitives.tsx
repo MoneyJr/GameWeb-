@@ -65,7 +65,7 @@ function addSnowCover(material: THREE.MeshToonMaterial): void {
       .replace('#include <common>', `#include <common>\nuniform float uSnow;\n${SNOW_VERTEX_HEAD}`)
       .replace('#include <color_fragment>', `#include <color_fragment>
   // Снег только на верхних гранях выше земли (крыши, карнизы), дороги и газоны не белеют.
-  float snowCover = uSnow * smoothstep(0.55, 0.85, normalize(vSnowNormal).y) * step(0.12, vSnowHeight);
+  float snowCover = uSnow * smoothstep(0.3, 0.62, normalize(vSnowNormal).y) * step(0.12, vSnowHeight);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), snowCover);`)
   }
   material.customProgramCacheKey = () => 'ink-toon-snow'

@@ -27,12 +27,16 @@ import { ToolId } from '../../types/city'
 import { BUILDING_CATALOG, type BuildingCategoryId } from '../../store/buildingCatalog'
 import { useI18n } from '../../i18n/I18nProvider'
 import { currentSeason } from '../../lib/season'
+import { RANKS, unlockRankOf } from '../../lib/progression'
 
 interface BottomDockProps {
   activeTool: ToolId
   onSelect: (tool: ToolId) => void
   selectedCatalogId?: string
   onCatalogSelect?: (id: string | undefined) => void
+  /** Текущий ранг города: более поздние здания показываются с замком. */
+  rank?: number
+  sandbox?: boolean
 }
 
 interface DockOption {
@@ -96,8 +100,12 @@ const CATEGORIES: Category[] = [
   { key: 'X', labelKey: 'category.demolish', icon: Trash2, options: [option(ToolId.BULLDOZE, 'item.demolish', Trash2)] },
 ]
 
-export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogSelect }: BottomDockProps) {
-  const { t } = useI18n()
+export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogSelect, rank = 0, sandbox = false }: BottomDockProps) {
+  const { t, language } = useI18n()
+  const lockRank = (item: DockOption) => {
+    const required = unlockRankOf(item.catalogId ?? item.tool)
+    return !sandbox && rank < required ? required : null
+  }
   const [activeCategory, setActiveCategory] = useState<string | null>(null)
   const selectedCategory = CATEGORIES.find((category) => category.key === activeCategory)
 
@@ -169,8 +177,9 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
             const Icon = item.icon
             const selected = item.catalogId ? selectedCatalogId === item.catalogId : activeTool === item.tool
             const label = t(item.labelKey)
-            const description = item.catalogId ? t(`description.${item.catalogId}`) : ''
-            return <button key={item.id} type="button" aria-pressed={selected} title={`${label} · $${item.cost}${item.footprint ? ` · ${item.footprint[0]}x${item.footprint[1]}` : ''}`} onClick={() => chooseOption(selectedCategory, item)} className="dock-item-button">
+            const locked = lockRank(item)
+            const description = locked !== null ? `🔒 ${RANKS[locked].icon} ${RANKS[locked].name[language]} · ${RANKS[locked].population}+` : item.catalogId ? t(`description.${item.catalogId}`) : ''
+            return <button key={item.id} type="button" aria-pressed={selected} disabled={locked !== null} title={`${label} · $${item.cost}${item.footprint ? ` · ${item.footprint[0]}x${item.footprint[1]}` : ''}`} onClick={() => chooseOption(selectedCategory, item)} className={`dock-item-button ${locked !== null ? 'cursor-not-allowed opacity-50 grayscale' : ''}`}>
               <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-[#eee9df] text-[#332c24]"><Icon size={23} strokeWidth={1.7} /></span>
               <span className="flex min-w-0 flex-col gap-1"><span className="truncate text-xs font-semibold leading-tight">{label}</span>{description && <span className="truncate text-[9px] text-stone-500">{description}</span>}<span className="flex items-center gap-1"><span className="w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-bold text-emerald-700">${item.cost}</span>{item.footprint && <span className="rounded-full bg-stone-200 px-1.5 py-0.5 text-[9px] font-bold text-stone-600">{item.footprint[0]}x{item.footprint[1]}</span>}</span></span>
             </button>

@@ -115,7 +115,7 @@ export function TopBar({
           <span data-testid="stat-population-value" className="tabular-nums">{compactNumber(population)}</span>
         </Metric>
         <Metric id="stat-budget" icon={<Coins className="size-3.5 text-amber-600" />} label={t('hud.budget')}>
-          <span data-testid="stat-budget-value" className="tabular-nums">${compactNumber(Math.round(budget))}</span>
+          <span data-testid="stat-budget-value" className={cn('tabular-nums', budget < 0 && 'font-black text-rose-700')}>{budget < 0 ? '−' : ''}${compactNumber(Math.abs(Math.round(budget)))}</span>
           <span className={cn('flex items-center gap-0.5 text-[10px] tabular-nums', positive ? 'text-emerald-700' : 'text-rose-700')}>
             {positive ? <TrendingUp className="size-3" /> : <TrendingDown className="size-3" />}{positive ? '+' : '−'}${compactNumber(Math.abs(lastNet))}
           </span>
