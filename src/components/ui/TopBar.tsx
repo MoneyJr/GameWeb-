@@ -4,6 +4,7 @@ import { createPortal } from 'react-dom'
 import { cn } from '../../lib/utils'
 import type { SimSpeed } from '../../types/city'
 import { useI18n } from '../../i18n/I18nProvider'
+import type { CityEventId } from '../../lib/cityEvents'
 
 interface TopBarProps {
   demands: { residential: number; commercial: number; industrial: number }
@@ -23,6 +24,7 @@ interface TopBarProps {
   fireCapacity: number
   minutes: number
   day: number
+  events: readonly CityEventId[]
   paused: boolean
   speed: SimSpeed
   onTogglePause: () => void
@@ -52,7 +54,7 @@ function Metric({ id, icon, children, className, label }: { id: string; icon: Re
 export function TopBar({
   population, budget, lastNet, happiness, waterServed, waterTotal,
   waterProduced, waterConsumed, energyProduced, energyConsumed, prestige,
-  crimeRate, policeCapacity, fireCapacity, minutes, day, demands, paused,
+  crimeRate, policeCapacity, fireCapacity, minutes, day, events, demands, paused,
   speed, onTogglePause, onSpeedChange, materials, warehouseCapacity, materialFlow, onExpandWarehouse,
 }: TopBarProps) {
   const { t } = useI18n()
@@ -71,7 +73,10 @@ export function TopBar({
       : minutes >= 1080 && minutes < 1260
         ? <Sunset className="size-3.5 text-orange-600" />
         : <Moon className="size-3.5 text-indigo-500" />
-  const fairActive = day <= 14
+  const winterActive = events.includes('winter')
+  const fairActive = events.includes('harvest')
+  const eventIcon = winterActive ? '❄️' : fairActive ? '🍂' : null
+  const eventTooltip = winterActive ? t('hud.winterTooltip') : fairActive ? t('hud.fairTooltip') : t('hud.time')
   const totalMaterials = materials.bricks + materials.concrete + materials.steel
   const totalCapacity = warehouseCapacity * 3
 
@@ -133,8 +138,8 @@ export function TopBar({
         <Metric id="stat-prestige" icon={<Star className="size-3.5 fill-amber-400 text-amber-600" />} label={t('hud.prestige')}>
           <span data-testid="stat-prestige-value">{prestige.toFixed(1)}</span>
         </Metric>
-        <Metric id="stat-time" icon={fairActive ? <span aria-hidden="true">🍂</span> : timeIcon} label={`${t('hud.day', day)}, ${formatClock(minutes)}`} className={fairActive ? 'border-amber-700/20 bg-[#fbf1d8]' : undefined}>
-          <span title={fairActive ? t('hud.fairTooltip') : t('hud.time')}>{formatClock(minutes)}</span>
+        <Metric id="stat-time" icon={eventIcon ? <span aria-hidden="true">{eventIcon}</span> : timeIcon} label={`${t('hud.day', day)}, ${formatClock(minutes)}`} className={winterActive ? 'border-sky-700/20 bg-[#eaf3f8]' : fairActive ? 'border-amber-700/20 bg-[#fbf1d8]' : undefined}>
+          <span title={eventTooltip}>{formatClock(minutes)}</span>
         </Metric>
         <div className="flex h-8 shrink-0 items-center gap-1 rounded-full border border-stone-700/10 bg-white/65 px-1">
           <button id="btn-pause" type="button" aria-label={paused ? t('hud.resume') : t('hud.pause')} aria-pressed={paused} onClick={onTogglePause}

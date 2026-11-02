@@ -632,10 +632,10 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
         <form onSubmit={event => { event.preventDefault(); createCity() }} className="w-full max-w-md rounded-3xl border-2 border-[#2C241D] bg-[#F4EEDD] p-6 text-[#2c241d] shadow-[7px_7px_0px_#2C241D] sm:p-8">
           <h2 className="font-serif text-2xl font-black">{t('title.cityModal')}</h2>
           <label className="mt-5 block text-xs font-bold">{t('title.cityName')}
-            <input autoFocus required maxLength={40} value={cityName} onChange={event => setCityName(event.target.value)} placeholder={t('title.cityPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+            <input autoFocus required maxLength={40} value={cityName} onChange={event => setCityName(event.target.value)} placeholder={t('title.cityPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-base sm:text-sm outline-none focus:border-[#9b6237]" />
           </label>
           <label className="mt-4 block text-xs font-bold">{t('title.mayorName')}
-            <input maxLength={32} value={mayorName} onChange={event => setMayorName(event.target.value)} placeholder={t('title.mayorPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+            <input maxLength={32} value={mayorName} onChange={event => setMayorName(event.target.value)} placeholder={t('title.mayorPlaceholder')} className="mt-1.5 h-11 w-full rounded-xl border border-[#655340]/45 bg-[#fffaf0] px-3 text-base sm:text-sm outline-none focus:border-[#9b6237]" />
           </label>
           <div className="mt-5 flex flex-wrap justify-between gap-2">
             <button type="button" onClick={() => { const names = CITY_NAMES[language]; setCityName(names[Math.floor(Math.random() * names.length)]) }} className="rounded-lg border border-[#655340]/35 bg-white/50 px-3 py-2 text-xs font-bold">{t('title.randomName')}</button>
@@ -668,7 +668,7 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
           <div className="mt-4 rounded-2xl border border-[#655340]/25 bg-[#fffaf0]/55 p-4">
             <h3 className="text-sm font-black">{t('settings.account')}</h3>
             <label className="mt-3 block text-xs font-semibold">{t('settings.mayor')}
-              <input maxLength={32} value={profileName} onChange={event => setProfileName(event.target.value)} onBlur={saveMayorName} className="mt-1.5 h-10 w-full rounded-xl border border-[#655340]/35 bg-[#fffaf0] px-3 text-sm outline-none focus:border-[#9b6237]" />
+              <input maxLength={32} value={profileName} onChange={event => setProfileName(event.target.value)} onBlur={saveMayorName} className="mt-1.5 h-10 w-full rounded-xl border border-[#655340]/35 bg-[#fffaf0] px-3 text-base sm:text-sm outline-none focus:border-[#9b6237]" />
             </label>
             <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
               <div className="rounded-xl bg-white/60 p-3"><span className="block text-stone-600">{t('settings.founded')}</span><strong className="mt-1 block text-base">{cityStats.foundedCities}</strong></div>

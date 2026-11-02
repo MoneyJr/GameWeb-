@@ -17,6 +17,7 @@ const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
 const ISO_POLAR_ANGLE = Math.acos(CAMERA_POSITION[1] / Math.hypot(...CAMERA_POSITION))
 const PAN_LIMIT = GRID_SIZE / 2 + 4
+const CAMERA_UP = new THREE.Vector3(0, 1, 0)
 
 type Cell = { x: number; y: number }
 
@@ -1225,6 +1226,36 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     window.addEventListener('touchmove', preventCanvasGesture, { passive: false })
     return () => window.removeEventListener('touchmove', preventCanvasGesture)
   }, [])
+  /** Плавно поворачивает камеру вокруг центра обзора (по умолчанию на 90°). */
+  const rotateBy = useCallback((angle: number) => {
+    const controls = controlsRef.current
+    if (!controls) return
+    const camera = controls.object
+    const startOffset = camera.position.clone().sub(controls.target)
+    const startedAt = performance.now()
+    const duration = 380
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / duration)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      const offset = startOffset.clone().applyAxisAngle(CAMERA_UP, angle * eased)
+      camera.position.copy(controls.target).add(offset)
+      camera.lookAt(controls.target)
+      controls.update()
+      if (progress < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [])
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.target instanceof HTMLElement && ['INPUT', 'TEXTAREA', 'SELECT'].includes(event.target.tagName)) return
+      const key = event.key.toLowerCase()
+      if (key === 'q') rotateBy(-Math.PI / 2)
+      else if (key === 'e') rotateBy(Math.PI / 2)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [rotateBy])
   const zoomBy = (direction: 'in' | 'out') => {
     const controls = controlsRef.current
     if (!controls || !(controls.object instanceof THREE.OrthographicCamera)) return
@@ -1363,9 +1394,13 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
           </div>
         </div>
       )}
-      <div className="absolute right-3 top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2 md:hidden" aria-label="Управление масштабом камеры">
+      <div className="absolute right-[calc(env(safe-area-inset-right)+12px)] top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2" aria-label="Управление камерой">
+        <button type="button" onClick={() => rotateBy(-Math.PI / 2)} aria-label={t('camera.rotateLeft')} title={t('camera.rotateLeft')} className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-xl font-bold text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">⟲</button>
+        <button type="button" onClick={() => rotateBy(Math.PI / 2)} aria-label={t('camera.rotateRight')} title={t('camera.rotateRight')} className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-xl font-bold text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">⟳</button>
+        <div className="mt-2 flex flex-col gap-2 md:hidden" aria-label="Управление масштабом камеры">
         <button type="button" onClick={() => zoomBy('in')} aria-label="Приблизить" className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-2xl font-medium text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">+</button>
         <button type="button" onClick={() => zoomBy('out')} aria-label="Отдалить" className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-2xl font-medium text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">−</button>
+        </div>
       </div>
     {!sceneReady && <SceneLoadingOverlay />}
     </>

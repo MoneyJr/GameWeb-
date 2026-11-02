@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from 'react'
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { TOOL_DEFINITIONS } from '../lib/cityConfig'
 import { BUILDING_BY_ID, canonicalCatalogId, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
+import { activeEvents, eventModifiers, sameEvents, type CityEventId, type CityEventModifiers } from '../lib/cityEvents'
 import {
   GRID_SIZE,
   TileType,
@@ -13,13 +14,15 @@ import {
 /** Стартовый бюджет, выданный как банковский заём. */
 export const START_BUDGET = 1000
 export const INITIAL_LOAN = 1000
-export const DAILY_LOAN_PAYMENT = 10
+export const DAILY_LOAN_PAYMENT = 50
 /** Длительность тика при скорости 1x (мс). */
 export const BASE_TICK_MS = 2000
 /** Сколько игровых минут проходит за тик. Бюджет пересчитывается каждые 10 минут. */
 export const MINUTES_PER_TICK = 10
 export const POLICE_CAPACITY_PER_STATION = 800
 export const FIRE_CAPACITY_PER_STATION = 800
+/** Небольшой посёлок обходится без полиции: преступность начинается только сверх этого населения. */
+export const CRIME_FREE_POPULATION = 300
 
 const MINUTES_PER_DAY = 24 * 60
 
@@ -37,7 +40,6 @@ function seededRandom(...parts: number[]): number {
   return (seed >>> 0) / 4294967296
 }
 
-const HARVEST_FAIR_END_DAY = 14
 const zoningDistance = (a: GridCell, b: GridCell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 
 function hasNearbyCatalog(grid: Grid, cell: GridCell, predicate: (id: string | undefined) => boolean, radius = 2): boolean {
@@ -50,12 +52,24 @@ function hasNearbyCatalog(grid: Grid, cell: GridCell, predicate: (id: string | u
   return false
 }
 
+/** Источник смога — любое производство с загрязнением 2+ из каталога. */
 function isPollutingBuilding(id: string | undefined): boolean {
-  return id === 'ind_factory' || id === 'ind_workshop'
+  const entry = id ? BUILDING_BY_ID[id] : undefined
+  return entry?.category === 'industrial' && (entry.pollution ?? 0) >= 2
 }
 
+/** Зелёные и культурные объекты (парки, скверы, храмы), которые повышают ценность жилья рядом. */
 function isGreenAmenity(id: string | undefined): boolean {
-  return id === 'lnd_park' || id === 'lnd_church' || id === 'lnd_cathedral'
+  const entry = id ? BUILDING_BY_ID[id] : undefined
+  return !!entry && (entry.category === 'parks' || entry.category === 'landmarks') && (entry.happiness ?? 0) > 0
+}
+
+/** Наносит значение на все клетки в манхэттенском радиусе вокруг точки. */
+function stampRadius(field: Int16Array, cx: number, cy: number, radius: number, value: number) {
+  for (let y = Math.max(0, cy - radius); y <= Math.min(GRID_SIZE - 1, cy + radius); y += 1) {
+    const span = radius - Math.abs(y - cy)
+    for (let x = Math.max(0, cx - span); x <= Math.min(GRID_SIZE - 1, cx + span); x += 1) field[y * GRID_SIZE + x] += value
+  }
 }
 
 function residenceProfile(x: number, y: number, day = 1, minute = 0) {
@@ -96,6 +110,8 @@ interface SimState {
   noticeSeq: number
   materials: { bricks: number; concrete: number; steel: number }
   warehouseCapacity: number
+  /** Активные сезонные события. */
+  events: CityEventId[]
 }
 
 type Action =
@@ -105,7 +121,7 @@ type Action =
   | { type: 'MERGE'; x: number; y: number }
   | { type: 'MERGE_TOWERS'; x: number; y: number }
   | { type: 'EXPAND_WAREHOUSE' }
-  | { type: 'TICK' }
+  | { type: 'TICK'; now: number }
   | { type: 'CHEAT_BUDGET'; amount: number }
   | { type: 'CHEAT_TIME'; ticks: number }
   | { type: 'SET_TAX'; category: 'residential' | 'commercial' | 'industrial'; rate: number }
@@ -145,7 +161,7 @@ const NEIGHBOR_STEPS: ReadonlyArray<readonly [number, number]> = [
  *
  * Клетки, у которых ничего не изменилось, сохраняют ссылку (важно для React.memo в 3D-сцене).
  */
-function recomputeServices(grid: Grid): Grid {
+function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
   const isRoad = (x: number, y: number): boolean => inBounds(x, y) && grid[y][x].type === TileType.ROAD
 
   const roadDistance: number[][] = grid.map((r) => r.map(() => 0))
@@ -186,7 +202,7 @@ function recomputeServices(grid: Grid): Grid {
           }
         }
       }
-      if (cell.type === TileType.COAL || (cell.type === TileType.INDUSTRIAL && isPollutingBuilding(cell.catalogId))) {
+      if (cell.type === TileType.COAL || (cell.type === TileType.INDUSTRIAL && isPollutingBuilding(cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]))) {
         coals.push([cell.x, cell.y])
       }
       if (cell.type === TileType.PARK) {
@@ -240,7 +256,17 @@ function recomputeServices(grid: Grid): Grid {
     }
     return false
   }
-  const isPoweredSource = (x: number, y: number) => powerSources.some(([sx, sy]) => sx === x && sy === y)
+  const powerSourceKeys = new Set(powerSources.map(([sx, sy]) => sy * GRID_SIZE + sx))
+  const isPoweredSource = (x: number, y: number) => powerSourceKeys.has(y * GRID_SIZE + x)
+
+  // Смог и близость к паркам считаем один раз «штампами», а не перебором для каждой клетки.
+  const smogField = new Int16Array(GRID_SIZE * GRID_SIZE)
+  const parkField = new Int16Array(GRID_SIZE * GRID_SIZE)
+  for (const [cx, cy] of coals) stampRadius(smogField, cx, cy, 2, 1)
+  for (const [px, py] of parks) {
+    stampRadius(smogField, px, py, 1, -1)
+    stampRadius(parkField, px, py, 1, 1)
+  }
 
   const component = grid.map((row) => row.map(() => -1))
   let componentId = 0
@@ -273,16 +299,8 @@ function recomputeServices(grid: Grid): Grid {
       else if (cell.type === TileType.ROAD) hasWater = isWateredRoad(cell.x, cell.y)
       else if (occupied) hasWater = buildingTouchesServedRoad(cell, isWateredRoad)
       
-      // Smog calculation
-      let smogCount = 0
-      for (const [cx, cy] of coals) {
-        if (Math.abs(cell.x - cx) + Math.abs(cell.y - cy) <= 2) smogCount++
-      }
-      for (const [px, py] of parks) {
-        if (Math.abs(cell.x - px) + Math.abs(cell.y - py) <= 1) smogCount--
-      }
-      const smog = smogCount > 0
-      const parked = parks.some(([px, py]) => Math.abs(cell.x - px) + Math.abs(cell.y - py) <= 1)
+      const smog = smogField[cell.y * GRID_SIZE + cell.x] > 0
+      const parked = parkField[cell.y * GRID_SIZE + cell.x] > 0
       const hasSupplies = cell.type === TileType.COMMERCIAL && NEIGHBOR_STEPS.some(([dx, dy]) => {
         const nx = cell.x + dx, ny = cell.y + dy
         return isRoad(nx, ny) && factoryComponents.has(component[ny][nx])
@@ -297,7 +315,7 @@ function recomputeServices(grid: Grid): Grid {
       const consumesUtilities = !!catalogEntry && catalogEntry.category !== 'utilities' && (catalogEntry.energy !== undefined || catalogEntry.water !== undefined)
       if (consumesUtilities) {
         const requiredWater = catalogEntry?.water ?? 1
-        const requiredPower = catalogEntry?.energy ?? 1
+        const requiredPower = (catalogEntry?.energy ?? 1) * energyMultiplier
         hasWater = hasWater && waterUsed + requiredWater <= waterCapacity
         hasPower = hasPower && powerUsed + requiredPower <= powerCapacity
         if (hasWater) waterUsed += requiredWater
@@ -357,9 +375,10 @@ export interface CityCounts {
   smogHouses: number
   consumers: number
   wateredConsumers: number
+  /** Бонус к счастью от домов рядом с парками (0–12). */
+  parkValue: number
 }
 
-export let globalParkValue = 0;
 function countTiles(grid: Grid): CityCounts {
   let parkValue = 0;
   const counts: CityCounts = {
@@ -396,6 +415,7 @@ function countTiles(grid: Grid): CityCounts {
     smogHouses: 0,
     consumers: 0,
     wateredConsumers: 0,
+    parkValue: 0,
   }
   for (const row of grid) {
     for (const cell of row) {
@@ -444,8 +464,10 @@ function countTiles(grid: Grid): CityCounts {
           if (!cell.hasWater) counts.unwateredHouses += 1
           if (!cell.hasWater || !cell.hasPower) counts.unservicedHouses += 1
           if (cell.smog) counts.smogHouses += 1
-          if ((cell as any).parked) counts.parkedHouses += 1
-          if (cell.parked) parkValue = Math.min(12, parkValue + 3)
+          if (cell.parked) {
+            counts.parkedHouses += 1
+            parkValue = Math.min(12, parkValue + 3)
+          }
           break
         case TileType.COMMERCIAL:
           counts.shops += 1
@@ -468,12 +490,12 @@ function countTiles(grid: Grid): CityCounts {
       if (cell.hasPower) counts.poweredConsumers += 1
     }
   }
-  globalParkValue = parkValue;
+  counts.parkValue = parkValue
   return counts
 }
 
 /** Каталог задаёт готовую чистую сумму за каждый десятиминутный такт. */
-function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], day: number): number {
+function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], modifiers: CityEventModifiers): number {
   let total = 0
   for (const row of grid) for (const cell of row) {
     if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT) continue
@@ -483,32 +505,46 @@ function computeNetIncome(grid: Grid, taxRates: SimState['taxRates'], day: numbe
     const taxGroup = entry.category === 'residential' ? 'residential'
       : entry.category === 'commercial' ? 'commercial'
         : entry.category === 'industrial' ? 'industrial' : undefined
-    const taxableIncome = entry.income ?? Math.max(0, entry.tickNet)
+    // Жилые дома, магазины и заводы без воды или света не работают и налогов не платят.
+    const serviced = !taxGroup || (cell.hasWater && cell.hasPower)
+    const taxableIncome = serviced ? entry.income ?? Math.max(0, entry.tickNet) : 0
     let taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
     if (cell.type === TileType.RESIDENTIAL && cell.level > 1) taxMultiplier *= 1 + (cell.level - 1) * 0.4
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)) taxMultiplier *= 1.3
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isPollutingBuilding)) taxMultiplier *= 0.8
-    if (day <= HARVEST_FAIR_END_DAY && (catalogId === 'com_bakery' || catalogId === 'com_grocery')) taxMultiplier *= 1.2
+    // Магазинам без поставок с заводов (через дорожную сеть) не хватает товара.
+    if (cell.type === TileType.COMMERCIAL && !cell.hasSupplies) taxMultiplier *= 0.8
+    taxMultiplier *= modifiers.incomeMultiplier[catalogId!] ?? 1
     total += taxableIncome * taxMultiplier - (entry.maintenance ?? Math.max(0, -entry.tickNet))
   }
   return Math.round(total)
 }
 
-/** Целевое счастье учитывает нехватку воды, загрязнение и перегруз полиции. */
-function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid, day: number): number {
-  if (day <= HARVEST_FAIR_END_DAY) return 100
+/** Сколько жителей «обслуживает» одно очко счастья от парков, школ, больниц и т.п. */
+const RESIDENTS_PER_AMENITY_POINT = 10
+const AMENITY_HAPPINESS_MAX = 20
+const BASE_HAPPINESS = 70
+
+/**
+ * Целевое счастье: база 70, плюс до +20 за обеспеченность досугом и услугами
+ * (относительно населения), бонус уютных домов у парков и события; минус смог и преступность.
+ */
+function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid, population: number, modifiers: CityEventModifiers): number {
   if (counts.consumers === 0) return 100
-  let h = 100 - crimeRate * 0.5
+  let h = BASE_HAPPINESS - crimeRate * 0.5 + modifiers.happinessBonus
   if (counts.houses > 0) {
     h -= (counts.smogHouses / counts.houses) * 25
     const cozyHomes = grid.flat().filter((cell) => cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)).length
     h += (cozyHomes / counts.houses) * 5
   }
-  h += globalParkValue
+  h += counts.parkValue
+  let amenityPoints = 0
   for (const row of grid) for (const cell of row) {
     const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
-    if (id) h += BUILDING_BY_ID[id]?.happiness ?? 0
+    if (id) amenityPoints += BUILDING_BY_ID[id]?.happiness ?? 0
   }
+  const amenityDemand = Math.max(20, population / RESIDENTS_PER_AMENITY_POINT)
+  h += AMENITY_HAPPINESS_MAX * Math.min(1, amenityPoints / amenityDemand)
   return Math.round(Math.min(100, Math.max(0, h)))
 }
 
@@ -614,7 +650,7 @@ function reducer(state: SimState, action: Action): SimState {
         })
       )
       
-      newGrid = recomputeServices(newGrid)
+      newGrid = recomputeServices(newGrid, eventModifiers(state.events).energyMultiplier)
       return { ...state, grid: newGrid, budget: state.budget - cost, materials: { bricks: state.materials.bricks - (materialCost.bricks ?? 0), concrete: state.materials.concrete - (materialCost.concrete ?? 0), steel: state.materials.steel - (materialCost.steel ?? 0) } }
     }
     case 'REMOVE': {
@@ -649,7 +685,7 @@ function reducer(state: SimState, action: Action): SimState {
         })
       )
       
-      newGrid = recomputeServices(newGrid)
+      newGrid = recomputeServices(newGrid, eventModifiers(state.events).energyMultiplier)
       return { ...state, grid: newGrid }
     }
     case 'UPGRADE': {
@@ -680,7 +716,7 @@ function reducer(state: SimState, action: Action): SimState {
       }
       grid[y][x] = { ...grid[y][x], type: TileType.RESIDENTIAL, catalogId: 'res_modern_glass_tower', level: 1, residents: 140, maxResidents: 350, residentialFloors: 18, orientation: 0 }
       for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]] as const) grid[y + dy][x + dx] = { ...grid[y + dy][x + dx], type: TileType.FOOTPRINT, refX: x, refY: y }
-      const recomputed = recomputeServices(grid)
+      const recomputed = recomputeServices(grid, eventModifiers(state.events).energyMultiplier)
       const population = recomputed.reduce((total, row) => total + row.reduce((sum, cell) => sum + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
       return { ...state, grid: recomputed, population, budget: state.budget - 1000, materials: { ...state.materials, concrete: state.materials.concrete - 10, steel: state.materials.steel - 5 } }
     }
@@ -706,7 +742,7 @@ function reducer(state: SimState, action: Action): SimState {
       for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) grid[y0 + dy][x0 + dx] = { ...grid[y0 + dy][x0 + dx], type: TileType.EMPTY, catalogId: undefined, refX: undefined, refY: undefined, residents: undefined, maxResidents: undefined, residentialFloors: undefined, orientation: undefined, level: 1 }
       grid[y0][x0] = { ...grid[y0][x0], type: TileType.RESIDENTIAL, catalogId: 'res_megapolis_complex', orientation: vertical ? 1 : 0, residents, maxResidents: 1050, residentialFloors: 30, level: 1, animate: true }
       for (let dy = 0; dy < height; dy += 1) for (let dx = 0; dx < width; dx += 1) if (dx || dy) grid[y0 + dy][x0 + dx] = { ...grid[y0 + dy][x0 + dx], type: TileType.FOOTPRINT, refX: x0, refY: y0 }
-      return { ...state, grid: recomputeServices(grid), budget: state.budget - 1500, materials: { ...state.materials, concrete: state.materials.concrete - 30, steel: state.materials.steel - 15 } }
+      return { ...state, grid: recomputeServices(grid, eventModifiers(state.events).energyMultiplier), budget: state.budget - 1500, materials: { ...state.materials, concrete: state.materials.concrete - 30, steel: state.materials.steel - 15 } }
     }
     case 'EXPAND_WAREHOUSE':
       if (state.budget < 500) return { ...state, notice: { id: Date.now(), text: 'Для расширения склада нужно $500.' } }
@@ -719,7 +755,12 @@ case 'TICK': {
       const crossesHour = Math.floor(nextMinutes / 60) > Math.floor(state.minutes / 60)
       const immigrationWindow = gameMinute % 150 === 0
       const demographicWindow = gameMinute % 360 === 0
-      const cityGrid = state.grid.map(row => row.map(cell => {
+      const events = activeEvents({ day: nextDay, now: action.now })
+      const eventsChanged = !sameEvents(events, state.events)
+      const modifiers = eventModifiers(events)
+      // При смене сезона (например, зимнее отопление) пересчитываем распределение энергии.
+      const baseGrid = eventsChanged ? recomputeServices(state.grid, modifiers.energyMultiplier) : state.grid
+      const cityGrid = baseGrid.map(row => row.map(cell => {
         if (cell.type !== TileType.RESIDENTIAL) return cell
         const capacity = getHomeCapacity(cell)
         const residents = cell.residents ?? 0
@@ -737,22 +778,27 @@ case 'TICK': {
           nextResidents = Math.min(capacity, Math.max(0, residents + direction * fluctuation))
         }
 
-        const level = isMidnight && cell.parked && !cell.smog ? Math.min(4, cell.level + 1) : cell.level
-        return nextResidents === residents && level === cell.level
+        // Дом у парка без смога сам дорастает до 2 уровня; дальше — только платное улучшение.
+        const grows = isMidnight && serviced && cell.parked && !cell.smog && cell.level < 2
+        const level = grows ? 2 : cell.level
+        const maxResidents = grows ? Math.round(capacity * 1.4) : capacity
+        return nextResidents === residents && level === cell.level && maxResidents === cell.maxResidents
           ? cell
-          : { ...cell, residents: nextResidents, maxResidents: capacity, level }
+          : { ...cell, residents: nextResidents, maxResidents, level }
       }))
       const population = cityGrid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
       const counts = countTiles(cityGrid)
-      const net = computeNetIncome(cityGrid, state.taxRates, nextDay)
-      const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION
+      const net = computeNetIncome(cityGrid, state.taxRates, modifiers)
+      const totalPoliceCap = counts.policeStations * POLICE_CAPACITY_PER_STATION + CRIME_FREE_POPULATION
       const crimeRate = population > totalPoliceCap && population > 0
         ? Math.min(100, Math.round(((population - totalPoliceCap) / population) * 100))
         : 0
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
-      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid, nextDay) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
+      const happinessDrift = (targetHappiness(counts, crimeRate, cityGrid, population, modifiers) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const dailyServiceLoss = unservicedHouseShare * 25 * MINUTES_PER_TICK / MINUTES_PER_DAY
-      const netTickIncome = net - (state.debt > 0 && isMidnight ? DAILY_LOAN_PAYMENT : 0)
+      // Ежедневный платёж по кредиту действительно уменьшает долг.
+      const loanPayment = state.debt > 0 && isMidnight ? Math.min(DAILY_LOAN_PAYMENT, state.debt) : 0
+      const netTickIncome = net - loanPayment
       const materials = { ...state.materials }
       for (const row of cityGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL) {
         if (cell.catalogId === 'ind_brickworks') materials.bricks = Math.min(state.warehouseCapacity, materials.bricks + 1)
@@ -765,10 +811,13 @@ case 'TICK': {
         population,
         budget: Math.max(0, Math.round(state.budget + netTickIncome)),
         lastNet: netTickIncome,
-        happiness: nextDay <= HARVEST_FAIR_END_DAY ? 100 : Math.round(Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss))),
+        happiness: Math.min(100, Math.max(0, state.happiness + happinessDrift - dailyServiceLoss)),
+        debt: state.debt - loanPayment,
         minutes: gameMinute,
         day: nextDay,
+        ticks: state.ticks + 1,
         materials,
+        events,
       }
     }
     default:
@@ -792,12 +841,13 @@ function createFreshState(): SimState {
     noticeSeq: 0,
     materials: { bricks: 0, concrete: 0, steel: 0 },
     warehouseCapacity: 100,
+    events: activeEvents({ day: 1, now: Date.now() }),
   }
 }
 
 function createInitialState(): SimState {
   try {
-    const raw = localStorage.getItem('inkville-save-v2')
+    const raw = localStorage.getItem(SAVE_KEY)
     if (raw) {
       const save = JSON.parse(raw) as SimState
       if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) {
@@ -818,7 +868,8 @@ function createInitialState(): SimState {
               residents = Math.floor(maxResidents * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
             }
           }
-          return { ...normalizedCell, residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
+          // Уровень 4 был доступен только через старый бесплатный авто-рост — приводим к максимуму 3.
+          return { ...normalizedCell, level: Math.min(3, cell.level ?? 1), residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
         }))
         const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
         return {
@@ -828,11 +879,23 @@ function createInitialState(): SimState {
           budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
           materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
           warehouseCapacity: save.warehouseCapacity ?? 100,
+          events: activeEvents({ day, now: Date.now() }),
         }
       }
     }
   } catch { /* Ignore malformed or unavailable browser storage and start a fresh city. */ }
   return createFreshState()
+}
+
+const SAVE_KEY = 'inkville-save-v2'
+const SAVE_INTERVAL_MS = 10_000
+
+function persistState(state: SimState) {
+  try {
+    const hasCity = state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
+    if (hasCity) localStorage.setItem(SAVE_KEY, JSON.stringify(state))
+    else localStorage.removeItem(SAVE_KEY)
+  } catch { /* Storage can be unavailable in private browsing. */ }
 }
 
 /** Чистое состояние симуляции города: сетка, инструмент, экономика и игровой таймер. */
@@ -845,17 +908,35 @@ export function useCitySimulation() {
 
   useEffect(() => {
     if (paused) return undefined
-    const timer = window.setInterval(() => dispatch({ type: 'TICK' }), BASE_TICK_MS / speed)
+    const timer = window.setInterval(() => dispatch({ type: 'TICK', now: Date.now() }), BASE_TICK_MS / speed)
     return () => window.clearInterval(timer)
   }, [paused, speed])
 
+  // Сохранение: не чаще раза в 10 секунд, плюс сразу при уходе со страницы.
+  const latestState = useRef(state)
+  const lastSavedAt = useRef(0)
   useEffect(() => {
-    try {
-      const hasCity = state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
-      if (hasCity) localStorage.setItem('inkville-save-v2', JSON.stringify(state))
-      else localStorage.removeItem('inkville-save-v2')
-    } catch { /* Storage can be unavailable in private browsing. */ }
+    latestState.current = state
+    const isEmpty = !state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
+    if (isEmpty || Date.now() - lastSavedAt.current >= SAVE_INTERVAL_MS) {
+      persistState(state)
+      lastSavedAt.current = Date.now()
+    }
   }, [state])
+  useEffect(() => {
+    const flush = () => {
+      persistState(latestState.current)
+      lastSavedAt.current = Date.now()
+    }
+    const onVisibility = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+      flush()
+    }
+  }, [])
 
   const placeTile = useCallback(
     (x: number, y: number, style?: string, catalogId?: string, orientation: 0 | 1 | 2 | 3 = 0) => dispatch({ type: 'PLACE', x, y, tool: activeTool, style, catalogId, orientation }),
@@ -863,6 +944,9 @@ export function useCitySimulation() {
   )
 
   const removeTile = useCallback((x: number, y: number) => dispatch({ type: 'REMOVE', x, y }), [])
+  const setTaxRate = useCallback((category: keyof SimState['taxRates'], rate: number) => dispatch({ type: 'SET_TAX', category, rate }), [])
+  const takeLoan = useCallback((amount: number) => dispatch({ type: 'TAKE_LOAN', amount }), [])
+  const repayLoan = useCallback(() => dispatch({ type: 'REPAY_LOAN' }), [])
   const upgradeTile = useCallback((x: number, y: number) => dispatch({ type: 'UPGRADE', x, y }), [])
   const mergeNeighborhood = useCallback((x: number, y: number) => dispatch({ type: 'MERGE', x, y }), [])
   const mergeTowers = useCallback((x: number, y: number) => dispatch({ type: 'MERGE_TOWERS', x, y }), [])
@@ -871,8 +955,11 @@ export function useCitySimulation() {
   const togglePause = useCallback(() => setPaused((value) => !value), [])
 
   
+  // Один подсчёт клеток на изменение сетки вместо пяти отдельных.
+  const counts = useMemo(() => countTiles(state.grid), [state.grid])
+  const modifiers = useMemo(() => eventModifiers(state.events), [state.events])
+
   const demands = useMemo(() => {
-    const counts = countTiles(state.grid)
     const jobs = counts.servicedShops * 6 + counts.servicedFactories * 12
     const unemployed = Math.max(0, state.population - jobs)
     const freeJobs = Math.max(0, jobs - state.population)
@@ -881,41 +968,38 @@ export function useCitySimulation() {
     const comDemand = Math.min(100, Math.max(0, (shopsNeeded - counts.shops) / 5) * 100)
     const indDemand = Math.min(100, (unemployed / 20) * 100)
     return { residential: resDemand, commercial: comDemand, industrial: indDemand }
-  }, [state.grid, state.population])
+  }, [counts, state.population])
 
-  const waterStats = useMemo(() => {
-    const counts = countTiles(state.grid)
-    return { served: counts.wateredConsumers, total: counts.consumers, produced: counts.waterProduced, consumed: counts.waterConsumed }
-  }, [state.grid])
+  const waterStats = useMemo(() => (
+    { served: counts.wateredConsumers, total: counts.consumers, produced: counts.waterProduced, consumed: counts.waterConsumed }
+  ), [counts])
 
-  const energyStats = useMemo(() => {
-    const counts = countTiles(state.grid)
-    return { produced: counts.energyProduced, consumed: counts.energyConsumed }
-  }, [state.grid])
+  const energyStats = useMemo(() => (
+    { produced: counts.energyProduced, consumed: Math.round(counts.energyConsumed * modifiers.energyMultiplier) }
+  ), [counts, modifiers])
 
   const capacityStats = useMemo(() => {
-    const counts = countTiles(state.grid)
-    const policeCapacity = counts.policeStations * POLICE_CAPACITY_PER_STATION
+    const policeCapacity = counts.policeStations * POLICE_CAPACITY_PER_STATION + CRIME_FREE_POPULATION
     const fireCapacity = counts.fireStations * FIRE_CAPACITY_PER_STATION
     const crimeRate = state.population > policeCapacity && state.population > 0
       ? Math.min(100, Math.round(((state.population - policeCapacity) / state.population) * 100))
       : 0
     return { policeCapacity, fireCapacity, crimeRate }
-  }, [state.grid, state.population])
+  }, [counts, state.population])
 
   const prestige = useMemo(() => {
-    const counts = countTiles(state.grid)
     const developed = counts.houses + counts.shops + counts.factories + counts.parks
     if (developed === 0) return 0
     return Math.min(5, Math.round((state.happiness / 25 + counts.parks * 0.22 + counts.shops * 0.06 + counts.houses * 0.01) * 10) / 10)
-  }, [state.grid, state.happiness])
+  }, [counts, state.happiness])
 
   return {
     grid: state.grid,
     population: state.population,
     budget: state.budget,
     lastNet: state.lastNet,
-    happiness: state.happiness,
+    happiness: Math.round(state.happiness),
+    events: state.events,
     taxRates: state.taxRates,
     debt: state.debt,
     demands,
@@ -939,6 +1023,9 @@ export function useCitySimulation() {
     mergeNeighborhood,
     mergeTowers,
     expandWarehouse,
+    setTaxRate,
+    takeLoan,
+    repayLoan,
     materials: state.materials,
     warehouseCapacity: state.warehouseCapacity,
     reset: useCallback(() => dispatch({ type: 'RESET' }), []),

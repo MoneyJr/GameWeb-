@@ -141,7 +141,7 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
   }, [activeCategory, onSelect, onCatalogSelect])
 
   return (
-    <nav aria-label={t('category.construction')} className="pointer-events-none absolute bottom-4 left-1/2 z-40 -translate-x-1/2 flex max-w-[calc(100vw-12px)] justify-center">
+    <nav aria-label={t('category.construction')} className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom)+16px)] left-1/2 z-40 -translate-x-1/2 flex max-w-[calc(100vw-12px)] justify-center">
       <style>{`
         .dock-category-bar { display:flex; width:min(672px,calc(100vw - 12px)); align-items:center; justify-content:space-around; gap:3px; overflow-x:auto; scrollbar-width:none; border:1px solid rgba(43,43,43,.2); border-radius:16px; background:rgba(244,241,234,.95); padding:8px 16px; color:#262626; box-shadow:0 20px 32px rgba(20,16,12,.2); backdrop-filter:blur(12px); }
         .dock-category-bar::-webkit-scrollbar { display:none; }

@@ -4,7 +4,6 @@ import { BottomDock } from './components/ui/BottomDock'
 import { CityHallModal } from './components/ui/CityHallModal'
 import { TopBar } from './components/ui/TopBar'
 import { useCitySimulation } from './hooks/useCitySimulation'
-import { TOOL_ORDER } from './lib/cityConfig'
 import { TileType, type Grid } from './types/city'
 import { TitleScreen } from './components/ui/TitleScreen'
 import type { CityProfile } from './components/ui/TitleScreen'
@@ -14,7 +13,7 @@ import { addPlaySeconds } from './lib/cityProfile'
 function App() {
   const sim = useCitySimulation()
   const { t } = useI18n()
-  const { setActiveTool, togglePause, notice } = sim
+  const { togglePause, notice } = sim
   const [visibleNoticeId, setVisibleNoticeId] = useState<number | null>(null)
   const [started, setStarted] = useState(new URLSearchParams(window.location.search).has('preview'))
   const [welcome, setWelcome] = useState<{ cityName: string; returning: boolean; nonce: number; messageKey: string } | null>(null)
@@ -112,21 +111,20 @@ function App() {
   const concretePlants = sim.grid.flat().filter((cell) => cell.catalogId === 'ind_concrete_plant').length
   const steelPlants = sim.grid.flat().filter((cell) => cell.catalogId === 'ind_steel_foundry').length
 
-  // Горячие клавиши: 1–7 — инструменты, Пробел — пауза.
+  // Пробел — пауза. Инструменты выбираются хоткеями категорий в нижней панели (1, U, H, S, I, V, P, X).
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return
-      const index = Number(event.key) - 1
-      if (Number.isInteger(index) && index >= 0 && index < TOOL_ORDER.length) {
-        setActiveTool(TOOL_ORDER[index])
-      } else if (event.code === 'Space') {
+      const target = event.target as HTMLElement | null
+      if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
+      if (event.code === 'Space') {
         event.preventDefault()
         togglePause()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [setActiveTool, togglePause])
+  }, [togglePause])
 
   // Уведомление исчезает через 2.5 секунды.
   useEffect(() => {
@@ -170,6 +168,7 @@ function App() {
         fireCapacity={sim.capacityStats.fireCapacity}
         minutes={sim.minutes}
         day={sim.day}
+        events={sim.events}
         demands={sim.demands}
         paused={sim.paused}
         speed={sim.speed}
@@ -219,10 +218,10 @@ function App() {
         <CityHallModal
           onClose={() => setCityHallOpen(false)}
           taxRates={sim.taxRates}
-          onTaxChange={(category, rate) => (window as any).__SIM_DISPATCH({ type: 'SET_TAX', category, rate })}
+          onTaxChange={sim.setTaxRate}
           debt={sim.debt}
-          onLoan={(amount) => (window as any).__SIM_DISPATCH({ type: 'TAKE_LOAN', amount })}
-          onRepay={() => (window as any).__SIM_DISPATCH({ type: 'REPAY_LOAN' })}
+          onLoan={sim.takeLoan}
+          onRepay={sim.repayLoan}
           population={sim.population}
           happiness={sim.happiness}
           lastNet={sim.lastNet}
