@@ -49,5 +49,6 @@ export function buildShowcaseGrid(): Grid {
   // Немного времени, чтобы заселились жители (пешеходы зависят от населения).
   const now = Date.parse('2026-10-15T12:00:00')
   for (let i = 0; i < 80; i += 1) run({ type: 'TICK', now })
-  return state.grid
+  // Витрина показывает готовый город — без анимации стройки.
+  return state.grid.map((row) => row.map((cell) => (cell.animate ? { ...cell, animate: false } : cell)))
 }

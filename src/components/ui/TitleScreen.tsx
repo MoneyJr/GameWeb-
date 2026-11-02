@@ -94,8 +94,10 @@ function ShowcaseSceneReady({ onReady }: { onReady: () => void }) {
   const { gl, scene, camera } = useThree()
   useEffect(() => {
     let active = true
+    // На слабых устройствах подготовка шейдеров может затянуться — меню показываем не позже чем через 6 секунд.
+    const fallback = window.setTimeout(() => { if (active) onReady() }, 6000)
     void gl.compileAsync(scene, camera).catch(() => undefined).finally(() => { if (active) onReady() })
-    return () => { active = false }
+    return () => { active = false; window.clearTimeout(fallback) }
   }, [camera, gl, onReady, scene])
   return null
 }

@@ -186,7 +186,8 @@ ${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
   totalEmissiveRadiance += uLit * facadeLit * 0.95;`)
       .replace('#include <opaque_fragment>', HATCH_FRAGMENT)
   }
-  material.customProgramCacheKey = () => `ink-facade-${key}`
+  // Код шейдера у всех фасадов одинаковый (отличаются только uniform-параметры) — компилируем его один раз.
+  material.customProgramCacheKey = () => 'ink-facade'
   facadeCache.set(key, material)
   return material
 }
@@ -226,7 +227,7 @@ vec2 stoneHash(vec2 p) { p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5,
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.6, grout);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), uSnow * 0.8);`)
   }
-  material.customProgramCacheKey = () => `ink-flagstone-${key}`
+  material.customProgramCacheKey = () => 'ink-flagstone'
   flagstoneCache.set(key, material)
   return material
 }

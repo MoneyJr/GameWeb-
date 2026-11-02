@@ -56,10 +56,11 @@ function SceneCompiler({ onReady }: { onReady: () => void }) {
   const { gl, scene, camera } = useThree()
   useEffect(() => {
     let active = true
+    const fallback = window.setTimeout(() => { if (active) onReady() }, 6000)
     void gl.compileAsync(scene, camera)
       .catch(() => undefined)
       .finally(() => { if (active) onReady() })
-    return () => { active = false }
+    return () => { active = false; window.clearTimeout(fallback) }
   }, [camera, gl, onReady, scene])
   return null
 }
