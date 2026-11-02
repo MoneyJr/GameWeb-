@@ -4,6 +4,7 @@ import * as THREE from 'three'
 import { GRID_SIZE, TileType } from '../../types/city'
 import type { Grid } from '../../types/city'
 import { getGradientMap, getToonMaterial, vehicleHeadlightBeamMaterial, ROAD_LANE_OFFSET } from './primitives'
+import { createVehicleMesh, VEHICLE_COLORS, VEHICLE_KINDS } from './Vehicles'
 
 interface RoadCell { x: number; y: number }
 interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
@@ -23,7 +24,7 @@ const CAR_COUNT = 18
 const CAR_SPEED = 1.15
 const SAFE_DISTANCE = 1.2
 const STOP_DISTANCE = 0.8
-const CAR_COLORS = ['#991b1b', '#1e40af', '#d97706', '#334155', '#496b59']
+const CAR_COLORS = VEHICLE_COLORS
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
 const inkLineMaterial = new THREE.LineBasicMaterial({ color: '#2b1e17', transparent: true, opacity: 0.9 })
@@ -176,7 +177,8 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
     vehicleType: index < 2 ? 'truck' as const : 'car' as const, currentSpeed: 0,
   })))
   const vehicleModels = useMemo(() => carsRef.current.map((_, index) => {
-    const sedan = createSedanMesh(CAR_COLORS[index % CAR_COLORS.length])
+    // Грузовики с прицепом — на базе фургона, остальные — разные легковые модели.
+    const sedan = createVehicleMesh(index < 2 ? 'van' : VEHICLE_KINDS[index % VEHICLE_KINDS.length], CAR_COLORS[index % CAR_COLORS.length])
     const trailer = new THREE.Group()
     trailer.name = 'vehicle-trailer'
     trailer.visible = index < 2
@@ -245,8 +247,8 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
           Math.hypot(other.position.x - spawnPosition.x, other.position.z - spawnPosition.z) < SAFE_DISTANCE)) continue
         const trailer = mesh.getObjectByName('vehicle-trailer')
         if (trailer) trailer.visible = car.vehicleType === 'truck'
-        const body = mesh.getObjectByName('vehicle-body') as THREE.Mesh | undefined
-        if (body) body.material = getToonMaterial(CAR_COLORS[car.colorIndex])
+        const paint = getToonMaterial(CAR_COLORS[car.colorIndex % CAR_COLORS.length])
+        mesh.traverse((part) => { if (part.name === 'vehicle-body' && part instanceof THREE.Mesh) part.material = paint })
         car.active = true
         mesh.visible = true
         mesh.position.copy(spawnPosition)

@@ -14,7 +14,7 @@ export function serviceKindOf(cell: GridCell): ServiceKind | null {
   if (cell.type === TileType.POLICE) return 'police'
   if (cell.type !== TileType.FIRE_STATION) return null
   if (!cell.catalogId || cell.catalogId === 'civ_fire') return 'fire'
-  if (cell.catalogId === 'civ_school') return 'education'
+  if (cell.catalogId === 'civ_school' || cell.catalogId === 'civ_university') return 'education'
   if (cell.catalogId === 'civ_hospital') return 'health'
   return null
 }
@@ -32,7 +32,8 @@ export function computeCoverage(grid: Grid): CoverageMaps {
     if (!kind) continue
     // Станция работает только с водой и электричеством.
     if (!cell.hasPower || !cell.hasWater) continue
-    const radius = SERVICE_RADIUS[kind]
+    // Университет охватывает образованием почти весь город.
+    const radius = cell.catalogId === 'civ_university' ? 18 : SERVICE_RADIUS[kind]
     const map = maps[kind]
     for (let y = Math.max(0, cell.y - radius); y <= Math.min(GRID_SIZE - 1, cell.y + radius); y += 1) {
       for (let x = Math.max(0, cell.x - radius); x <= Math.min(GRID_SIZE - 1, cell.x + radius); x += 1) {

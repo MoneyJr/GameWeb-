@@ -191,6 +191,46 @@ ${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
   return material
 }
 
+const flagstoneCache = new Map<string, THREE.MeshToonMaterial>()
+/** Брусчатка из камней неправильной формы (диаграмма Вороного в мировых координатах). */
+export function getFlagstoneMaterial(color = '#b9a888', scale = 5): THREE.MeshToonMaterial {
+  const key = `${color}|${scale}`
+  const cached = flagstoneCache.get(key)
+  if (cached) return cached
+  const material = new THREE.MeshToonMaterial({ color, gradientMap: getGradientMap(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSnow = snowUniform
+    shader.uniforms.uStoneScale = { value: scale }
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vStoneWorld;\n')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vStoneWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>
+uniform float uSnow; uniform float uStoneScale;
+varying vec3 vStoneWorld;
+vec2 stoneHash(vec2 p) { p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3))); return fract(sin(p) * 43758.5453); }
+`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  vec2 sp = vStoneWorld.xz * uStoneScale;
+  vec2 cellId = floor(sp);
+  float f1 = 8.0, f2 = 8.0; vec2 nearest = vec2(0.0);
+  for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+    vec2 g = vec2(float(i), float(j));
+    vec2 o = stoneHash(cellId + g) * 0.8 + 0.1;
+    float d = length(g + o - fract(sp));
+    if (d < f1) { f2 = f1; f1 = d; nearest = cellId + g; } else if (d < f2) { f2 = d; }
+  }
+  float grout = 1.0 - smoothstep(0.03, 0.08, f2 - f1);
+  float tint = stoneHash(nearest).x;
+  diffuseColor.rgb *= 0.9 + tint * 0.18;
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.6, grout);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), uSnow * 0.8);`)
+  }
+  material.customProgramCacheKey = () => `ink-flagstone-${key}`
+  flagstoneCache.set(key, material)
+  return material
+}
+
 let paverMaterial: THREE.MeshToonMaterial | null = null
 /** Тротуарная плитка: швы рисуются шейдером в мировых координатах, стыки клеток незаметны. */
 export function getPaverMaterial(): THREE.MeshToonMaterial {

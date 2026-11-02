@@ -44,7 +44,12 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
     }
   }, [])
 
+  // Деревья зависят только от того, какие клетки застроены, а не от числа жителей.
+  const builtKey = useMemo(() => grid.flat().filter((cell) => cell.type !== TileType.EMPTY).map((cell) => cell.y * GRID_SIZE + cell.x).join(','), [grid])
+  const gridRef = useRef(grid)
+  gridRef.current = grid
   const trees = useMemo(() => {
+    const grid = gridRef.current
     const built = new Uint8Array(GRID_SIZE * GRID_SIZE)
     for (const row of grid) for (const cell of row) if (cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD) built[cell.y * GRID_SIZE + cell.x] = 1
     const result: Tree[] = []
@@ -71,7 +76,7 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
       }
     }
     return result
-  }, [grid, foliage])
+  }, [builtKey, foliage])
 
   useLayoutEffect(() => {
     const trunkMesh = trunks.current, crownMesh = crowns.current, crownLine = crownOutlines.current, pineMesh = pines.current, pineLine = pineOutlines.current

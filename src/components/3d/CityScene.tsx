@@ -16,6 +16,7 @@ import { Snowfall } from './Snowfall'
 import { FireLayer, OverlayLayer } from './OverlayLayer'
 import { PhotoCapture } from './PhotoCapture'
 import { Greenery } from './Greenery'
+import { Pedestrians } from './Pedestrians'
 import type { QualityProfile } from '../../lib/quality'
 import type { CoverageMaps } from '../../lib/coverage'
 import type { OverlayMode } from '../../lib/overlays'
@@ -1383,6 +1384,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <PhotoCapture />
       <World grid={grid} />
       <Greenery grid={grid} foliage={palette.foliage} />
+      <Pedestrians grid={grid} />
       <LivingCityParticles grid={grid} />
       <OverlayLayer grid={grid} coverage={coverage} mode={overlay} />
       <FireLayer grid={grid} />

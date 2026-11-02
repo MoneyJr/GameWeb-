@@ -5,6 +5,7 @@ import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
 import { ChristmasTreeMesh } from './SeasonalMeshes'
+import { ParkingLotMesh, PlazaMesh, TownSquareMesh, TrafficLight, UniversityMesh } from './CivicMeshes'
 import { BrickLoftMesh, GlassSkyscraperMesh, ModernBlockMesh, OfficeTowerMesh, StreetTree } from './ModernMeshes'
 
 /* -------------------------------------------------------------------------- */
@@ -291,6 +292,12 @@ export function Road({ north, south, east, west, junction, variant = 0 }: RoadLi
       ].filter((side) => side.open).map(({ key, rotate, at }) => <group key={`zebra-${key}`} position={[rotate ? at : 0, 0.045, rotate ? 0 : at]}>
         {[-0.24, -0.144, -0.048, 0.048, 0.144, 0.24].filter((offset) => Math.abs(offset) < asphaltHalf - 0.02).map((offset) => <Box key={offset} size={rotate ? [0.16, 0.008, 0.05] : [0.05, 0.008, 0.16]} position={rotate ? [0, 0, offset] : [offset, 0, 0]} color="#f4f1ea" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
       </group>)}
+
+      {/* Светофоры на перекрёстках с тремя и более направлениями */}
+      {isIntersection && [north, south, east, west].filter(Boolean).length >= 3 && <>
+        <TrafficLight position={[walkOffset, 0.06, walkOffset]} rotation={Math.PI} />
+        <TrafficLight position={[-walkOffset, 0.06, -walkOffset]} phase={1} />
+      </>}
 
       {/* Фонари и уличные деревья по очереди вдоль тротуара */}
       {sides.filter((side) => !side.road).map(({ key, along, sign }) => {
@@ -1620,6 +1627,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       else if (catalogId === 'lnd_park') model = <FountainSquareMesh />
       else if (catalogId === 'park_rose_garden') model = <RoseGardenMesh />
       else if (catalogId === 'park_winter_tree') model = <ChristmasTreeMesh />
+      else if (catalogId === 'park_plaza') model = <PlazaMesh />
+      else if (catalogId === 'park_town_square') { model = <TownSquareMesh />; w = 2; h = 2 }
+      else if (catalogId === 'lnd_parking') { model = <ParkingLotMesh />; w = 2; h = 1 }
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />
@@ -1644,6 +1654,9 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
     case TileType.FIRE_STATION:
       if (catalogId === 'civ_stadium') {
         model = <StadiumMesh />
+        w = 3; h = 3
+      } else if (catalogId === 'civ_university') {
+        model = <UniversityMesh />
         w = 3; h = 3
       } else model = <CatalogCivicMesh catalogId={catalogId} />
       dust = 8
