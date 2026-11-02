@@ -26,6 +26,7 @@ import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
 import { ToolId } from '../../types/city'
 import { BUILDING_CATALOG, type BuildingCategoryId } from '../../store/buildingCatalog'
 import { useI18n } from '../../i18n/I18nProvider'
+import { currentSeason } from '../../lib/season'
 
 interface BottomDockProps {
   activeTool: ToolId
@@ -64,13 +65,13 @@ const catalogIcons: Record<string, LucideIcon> = {
   com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape, com_market_hall: Store,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse, ind_winery: Grape, ind_brickworks: Factory, ind_concrete_plant: Warehouse, ind_steel_foundry: Factory,
   civ_fire: Flame, civ_school: Building2, civ_hospital: Building2, civ_stadium: Trophy, lnd_townhall: Landmark,
-  lnd_park: TreePine, lnd_church: Church, lnd_cathedral: Church, park_rose_garden: Trees,
+  lnd_park: TreePine, park_winter_tree: TreePine, lnd_church: Church, lnd_cathedral: Church, park_rose_garden: Trees,
   utl_wind: Wind, utl_solar: Sun, utl_water: Droplets,
   field_wheat: TreePine, field_plow: Route,
 }
 
 const catalogOptions = (category: BuildingCategoryId): DockOption[] => BUILDING_CATALOG
-  .filter((entry) => entry.category === category)
+  .filter((entry) => entry.category === category && (!entry.season || entry.season === currentSeason()))
   .map((entry) => ({
     id: entry.id,
     catalogId: entry.id,

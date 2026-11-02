@@ -4,6 +4,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
+import { ChristmasTreeMesh } from './SeasonalMeshes'
 
 /* -------------------------------------------------------------------------- */
 /*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
@@ -1623,6 +1624,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'lnd_church') model = <CatalogLandmarkMesh catalogId={catalogId} />
       else if (catalogId === 'lnd_park') model = <FountainSquareMesh />
       else if (catalogId === 'park_rose_garden') model = <RoseGardenMesh />
+      else if (catalogId === 'park_winter_tree') model = <ChristmasTreeMesh />
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />

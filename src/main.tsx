@@ -9,3 +9,10 @@ createRoot(document.getElementById('root')!).render(
     <I18nProvider><App /></I18nProvider>
   </StrictMode>,
 )
+
+// PWA: в продакшене регистрируем service worker (установка на главный экран, офлайн-запуск).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => { /* Игра работает и без service worker. */ })
+  })
+}

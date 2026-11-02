@@ -11,7 +11,9 @@ import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from './InkOutlinePass'
-import { getToonMaterial } from './primitives'
+import { getToonMaterial, setSnowLevel } from './primitives'
+import { Snowfall } from './Snowfall'
+import { currentSeason, SEASON_PALETTES, type SeasonPalette } from '../../lib/season'
 
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
@@ -233,10 +235,10 @@ function cellsBetween(from: Cell, to: Cell): Cell[] {
 /*  Мир: земля, сетка и все построенные тайлы                                   */
 /* -------------------------------------------------------------------------- */
 
-export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: number }) {
+export const GroundSlab = memo(function GroundSlab({ minutes, palette }: { minutes: number; palette: SeasonPalette }) {
   const terrainMaterial = useRef<THREE.MeshToonMaterial>(null)
   const displayedNight = useRef(0)
-  const dayTerrainColor = useMemo(() => new THREE.Color('#d8c7a5'), [])
+  const dayTerrainColor = useMemo(() => new THREE.Color(palette.ground), [palette])
   const nightTerrainColor = useMemo(() => new THREE.Color('#1b2432'), [])
   const terrainColor = useMemo(() => new THREE.Color(), [])
   useFrame((_, delta) => {
@@ -270,7 +272,7 @@ export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: numbe
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
         <primitive object={terrain} attach="geometry" />
-        <meshToonMaterial ref={terrainMaterial} color="#d8c7a5" />
+        <meshToonMaterial ref={terrainMaterial} color={palette.ground} />
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
@@ -281,7 +283,7 @@ export const GroundSlab = memo(function GroundSlab({ minutes }: { minutes: numbe
   )
 })
 
-export const NaturalHorizon = memo(function NaturalHorizon() {
+export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palette: SeasonPalette }) {
   const treeParts = useMemo(() => {
     const trunkGeometry = new THREE.CylinderGeometry(0.09, 0.15, 0.9, 6)
     trunkGeometry.translate(0, 0.45, 0)
@@ -336,7 +338,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       }
       return Math.sqrt(minDistanceSquared)
     }
-    const foliagePalette = ['#eab308', '#eab308', '#eab308', '#eab308', '#eab308', '#d97724', '#d97724', '#d97724', '#991b1b', '#991b1b']
+    const foliagePalette = palette.foliage
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
@@ -417,7 +419,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
     root.add(leaves)
 
-    const hillColors = ['#c49a45', '#a36f32', '#8b7355']
+    const hillColors = palette.hills
     hillSpecs.forEach(([x, z, sx, sy, sz], index) => {
       const hillMaterial = new THREE.MeshToonMaterial({ color: hillColors[index % hillColors.length] })
       ;(hillMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
@@ -443,7 +445,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     })
     // Draw vineyard terraces as two instanced layers so the distant slopes read
     // as cultivated land without adding hundreds of separate draw calls.
-    const vineColors = ['#d99b26', '#e5a93c', '#c86d24', '#963824']
+    const vineColors = palette.vines
     const rowMesh = new THREE.InstancedMesh(
       new THREE.BoxGeometry(1, 0.045, 0.1),
       new THREE.MeshToonMaterial({ color: '#795b36' }),
@@ -508,10 +510,10 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
       geometry.computeVertexNormals()
       return geometry
     }
-    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.012), new THREE.MeshToonMaterial({ color: '#c9ad7f', side: THREE.DoubleSide }))
+    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.012), new THREE.MeshToonMaterial({ color: palette.riverBank, side: THREE.DoubleSide }))
     // The backdrop ground is now continuous; keep the river surface just above
     // the terrain so the blue channel cannot be hidden beneath the 1200-unit plane.
-    const river = new THREE.Mesh(ribbon(3.35, 0.026), new THREE.MeshToonMaterial({ color: '#2b6cb0', side: THREE.DoubleSide }))
+    const river = new THREE.Mesh(ribbon(3.35, 0.026), new THREE.MeshToonMaterial({ color: palette.river, side: THREE.DoubleSide }))
     riverBanks.receiveShadow = true
     river.receiveShadow = true
     root.add(riverBanks, river)
@@ -553,7 +555,7 @@ export const NaturalHorizon = memo(function NaturalHorizon() {
     stones.castShadow = true
     root.add(stones, reeds)
     return root
-  }, [treeParts])
+  }, [treeParts, palette])
 
   return <primitive object={scenery} />
 })
@@ -1046,6 +1048,7 @@ export interface CitySceneProps {
 
 import { applyNightLevel } from './primitives'
 
+/** Дневное небо; меняется под сезон. */
 const DAY_SKY = new THREE.Color('#d8c7a5')
 const DUSK_SKY = new THREE.Color('#b889a2')
 const NIGHT_COLOR = new THREE.Color('#1b2432')
@@ -1207,6 +1210,11 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
   const markSceneReady = useCallback(() => setSceneReady(true), [])
   const isReferencePreview = new URLSearchParams(window.location.search).get('preview') === 'cityrt'
   const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0
+  const palette = useMemo(() => SEASON_PALETTES[currentSeason()], [])
+  useLayoutEffect(() => {
+    DAY_SKY.set(palette.sky)
+    setSnowLevel(palette.snow)
+  }, [palette])
   const cameraTarget: [number, number, number] = isReferencePreview ? [-0.5, 0, -0.5] : [0, 0, -3.5]
   const cameraPosition: [number, number, number] = [
     cameraTarget[0] + CAMERA_POSITION[0],
@@ -1285,7 +1293,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         gl.shadowMap.enabled = true
         gl.shadowMap.type = THREE.PCFSoftShadowMap
         gl.autoClear = true
-        gl.setClearColor(new THREE.Color('#D8C7A5'), 1)
+        gl.setClearColor(new THREE.Color(palette.sky), 1)
         gl.toneMapping = THREE.NoToneMapping
       }}
       onContextMenu={(e) => e.preventDefault()}
@@ -1296,8 +1304,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       >
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
-      <color attach="background" args={['#D8C7A5']} />
-      <fogExp2 attach="fog" args={['#D8C7A5', 0.002]} />
+      <color attach="background" args={[palette.sky]} />
+      <fogExp2 attach="fog" args={[palette.sky, 0.002]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
 
       <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={0.5} far={1500} />
@@ -1322,8 +1330,9 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         shadow-normalBias={0.015}
       />
 
-      <GroundSlab minutes={minutes} />
-      <NaturalHorizon />
+      <GroundSlab minutes={minutes} palette={palette} />
+      <NaturalHorizon palette={palette} />
+      {palette.snow > 0 && <Snowfall />}
       <World grid={grid} />
       <LivingCityParticles grid={grid} />
       <TrafficSystem grid={grid} minutes={minutes} />

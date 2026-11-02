@@ -1,3 +1,4 @@
+import type { Season } from '../lib/season'
 import { TileType, ToolId, type TileType as TileTypeValue, type ToolId as ToolIdValue } from '../types/city'
 
 export type BuildingCategoryId = 'residential' | 'commercial' | 'industrial' | 'civic' | 'parks' | 'landmarks' | 'utilities'
@@ -27,6 +28,8 @@ export interface BuildingCatalogEntry {
   footprint?: [number, number]
   materialCost?: { bricks?: number; concrete?: number; steel?: number }
   model: string
+  /** Сезонная постройка: доступна для строительства только в этот сезон. */
+  season?: Season
 }
 
 const residential = ToolId.RESIDENTIAL
@@ -64,6 +67,7 @@ export const BUILDING_CATALOG: readonly BuildingCatalogEntry[] = [
   { id: 'civ_stadium', name: 'Спортивный стадион', category: 'civic', tool: civic, tile: TileType.FIRE_STATION, cost: 400, tickNet: -8, maintenance: 8, happiness: 18, footprint: [3, 3], model: 'stadium' },
   { id: 'lnd_park', name: 'Сквер с фонтаном', category: 'parks', tool: parks, tile: TileType.PARK, cost: 80, tickNet: 0, happiness: 10, water: 1, model: 'fountain-square' },
   { id: 'park_rose_garden', name: 'Осенний розарий и сквер', category: 'parks', tool: parks, tile: TileType.PARK, cost: 120, tickNet: 0, happiness: 12, model: 'rose-garden' },
+  { id: 'park_winter_tree', name: 'Главная городская ёлка', category: 'parks', tool: parks, tile: TileType.PARK, cost: 300, tickNet: -3, maintenance: 3, happiness: 18, model: 'winter-tree', season: 'winter' },
   { id: 'lnd_church', name: 'Церковь со шпилем', category: 'parks', tool: parks, tile: TileType.PARK, cost: 380, tickNet: -6, maintenance: 6, happiness: 15, energy: 2, water: 1, model: 'church' },
   { id: 'lnd_cathedral', name: 'Белокаменный собор', category: 'landmarks', tool: parks, tile: TileType.PARK, cost: 650, tickNet: -12, maintenance: 12, happiness: 25, footprint: [2, 2], model: 'cathedral' },
   { id: 'lnd_townhall', name: 'Городская Ратуша', category: 'landmarks', tool: ToolId.CITY_HALL, tile: TileType.CITY_HALL, cost: 500, tickNet: -10, maintenance: 10, happiness: 20, energy: 3, water: 2, footprint: [2, 2], model: 'townhall' },

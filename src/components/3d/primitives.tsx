@@ -41,6 +41,36 @@ export function getGradientMap(): THREE.DataTexture {
 
 const materialCache = new Map<string, THREE.MeshToonMaterial>()
 
+/** Общий уровень снега (0..1) для всех мультяшных материалов: снег ложится на верхние грани. */
+export const snowUniform = { value: 0 }
+export function setSnowLevel(level: number): void {
+  snowUniform.value = level
+}
+
+const SNOW_VERTEX_HEAD = 'varying vec3 vSnowNormal;\nvarying float vSnowHeight;\n'
+function addSnowCover(material: THREE.MeshToonMaterial): void {
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSnow = snowUniform
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${SNOW_VERTEX_HEAD}`)
+      .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>
+  mat4 snowModel = modelMatrix;
+  #ifdef USE_INSTANCING
+    snowModel = modelMatrix * instanceMatrix;
+  #endif
+  vSnowNormal = normalize((snowModel * vec4(objectNormal, 0.0)).xyz);`)
+      .replace('#include <project_vertex>', `#include <project_vertex>
+  vSnowHeight = (snowModel * vec4(transformed, 1.0)).y;`)
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', `#include <common>\nuniform float uSnow;\n${SNOW_VERTEX_HEAD}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  // Снег только на верхних гранях выше земли (крыши, карнизы), дороги и газоны не белеют.
+  float snowCover = uSnow * smoothstep(0.55, 0.85, normalize(vSnowNormal).y) * step(0.12, vSnowHeight);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), snowCover);`)
+  }
+  material.customProgramCacheKey = () => 'ink-toon-snow'
+}
+
 export function getToonMaterial(color: string): THREE.MeshToonMaterial {
   let material = materialCache.get(color)
   if (material === undefined) {
@@ -52,6 +82,7 @@ export function getToonMaterial(color: string): THREE.MeshToonMaterial {
       polygonOffsetFactor: 1,
       polygonOffsetUnits: 1,
     })
+    addSnowCover(material)
     materialCache.set(color, material)
   }
   return material
