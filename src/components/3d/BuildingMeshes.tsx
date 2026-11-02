@@ -5,7 +5,7 @@ import * as THREE from 'three'
 import { TileType } from '../../types/city'
 import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
 import { ChristmasTreeMesh } from './SeasonalMeshes'
-import { GlassSkyscraperMesh, ModernBlockMesh, OfficeTowerMesh } from './ModernMeshes'
+import { BrickLoftMesh, GlassSkyscraperMesh, ModernBlockMesh, OfficeTowerMesh, StreetTree } from './ModernMeshes'
 
 /* -------------------------------------------------------------------------- */
 /*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
@@ -65,9 +65,9 @@ function getToonMaterial(color: string): THREE.MeshToonMaterial {
   return material
 }
 
-const roadCurbMaterial = new THREE.MeshToonMaterial({
-  color: '#dcd4c5', gradientMap: getGradientMap(),
-  polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1,
+const roadCenterMaterial = new THREE.MeshToonMaterial({
+  color: '#e8b923', gradientMap: getGradientMap(),
+  polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
 })
 const roadMarkingMaterial = new THREE.MeshToonMaterial({
   color: '#ffffff', gradientMap: getGradientMap(),
@@ -242,74 +242,65 @@ export interface RoadLinks {
 export function Road({ north, south, east, west, junction, variant = 0 }: RoadLinks & { variant?: number }) {
   const isIntersection = junction ?? ((north || south) && (east || west))
   const isStraightX = east || west || (!north && !south)
-  const isStraightZ = north || south
+  const isStraightZ = !isStraightX && (north || south)
+  const half = ROAD_TILE_LENGTH / 2
+  const asphaltHalf = ROAD_ASPHALT_WIDTH / 2
+  const walk = ROAD_CURB_WIDTH
+  const walkOffset = ROAD_CURB_OFFSET
+  const paver = getPaverMaterial()
+  // Для прямого участка: стороны поперёк движения. Если там тоже дорога (широкий проспект) — продолжаем асфальт, иначе тротуар.
+  const sides: Array<{ key: string; road: boolean; along: 'x' | 'z'; sign: number }> = isIntersection ? [] : isStraightX
+    ? [{ key: 'n', road: !!north, along: 'x', sign: -1 }, { key: 's', road: !!south, along: 'x', sign: 1 }]
+    : [{ key: 'w', road: !!west, along: 'z', sign: -1 }, { key: 'e', road: !!east, along: 'z', sign: 1 }]
 
   return (
     <group>
-      {/* Asphalt */}
-      {isIntersection ? <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#292524" /> : isStraightX ?
-        <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#292524" /> :
-        <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#292524" />}
+      {/* Асфальт */}
+      {isIntersection
+        ? <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#3a3735" />
+        : isStraightX
+          ? <Box size={[ROAD_TILE_LENGTH, 0.04, ROAD_ASPHALT_WIDTH]} position={[0, 0.02, 0]} color="#3a3735" />
+          : <Box size={[ROAD_ASPHALT_WIDTH, 0.04, ROAD_TILE_LENGTH]} position={[0, 0.02, 0]} color="#3a3735" />}
 
-      {/* Sidewalks (тротуары с бордюрами) */}
-      {isStraightX && !isIntersection && (
-        <group>
-          <Box size={[ROAD_TILE_LENGTH, 0.02, ROAD_CURB_WIDTH]} position={[0, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[ROAD_TILE_LENGTH, 0.02, ROAD_CURB_WIDTH]} position={[0, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-        </group>
-      )}
-      {isStraightZ && !isIntersection && (
-        <group>
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_TILE_LENGTH]} position={[-ROAD_CURB_OFFSET, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_TILE_LENGTH]} position={[ROAD_CURB_OFFSET, 0.05, 0]} color="#dcd4c5" material={roadCurbMaterial} />
-        </group>
-      )}
-      {isIntersection && (
-        <group>
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[-ROAD_CURB_OFFSET, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[ROAD_CURB_OFFSET, 0.05, -ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[-ROAD_CURB_OFFSET, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-          <Box size={[ROAD_CURB_WIDTH, 0.02, ROAD_CURB_WIDTH]} position={[ROAD_CURB_OFFSET, 0.05, ROAD_CURB_OFFSET]} color="#dcd4c5" material={roadCurbMaterial} />
-        </group>
-      )}
+      {/* Тротуары с плиткой (или продолжение асфальта у широкого проспекта) */}
+      {sides.map(({ key, road, along, sign }) => {
+        const size: Vec3 = along === 'x' ? [ROAD_TILE_LENGTH, road ? 0.04 : 0.06, walk] : [walk, road ? 0.04 : 0.06, ROAD_TILE_LENGTH]
+        const position: Vec3 = along === 'x' ? [0, road ? 0.02 : 0.03, sign * walkOffset] : [sign * walkOffset, road ? 0.02 : 0.03, 0]
+        return road
+          ? <Box key={key} size={size} position={position} color="#3a3735" outline={false} />
+          : <Box key={key} size={size} position={position} color="#d8d5cb" material={paver} />
+      })}
+      {isIntersection && [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => <Box key={`corner-${sx}-${sz}`} size={[walk, 0.06, walk]} position={[sx * walkOffset, 0.03, sz * walkOffset]} color="#d8d5cb" material={paver} />)}
+      {isIntersection && [
+        { key: 'n', open: north, pos: [0, -walkOffset] as const, along: 'x' as const },
+        { key: 's', open: south, pos: [0, walkOffset] as const, along: 'x' as const },
+        { key: 'w', open: west, pos: [-walkOffset, 0] as const, along: 'z' as const },
+        { key: 'e', open: east, pos: [walkOffset, 0] as const, along: 'z' as const },
+      ].filter((side) => !side.open).map(({ key, pos, along }) => <Box key={`closed-${key}`} size={along === 'x' ? [ROAD_ASPHALT_WIDTH, 0.06, walk] : [walk, 0.06, ROAD_ASPHALT_WIDTH]} position={[pos[0], 0.03, pos[1]]} color="#d8d5cb" material={paver} />)}
 
-      {/* Road Markings */}
-      {!isIntersection && isStraightX && (
-        <Box size={[0.4, 0.01, 0.02]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
-      )}
-      {!isIntersection && isStraightZ && (
-        <Box size={[0.02, 0.01, 0.4]} position={[0, 0.05, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />
-      )}
+      {/* Жёлтая осевая */}
+      {!isIntersection && isStraightX && !north && !south && <Box size={[ROAD_TILE_LENGTH, 0.008, 0.022]} position={[0, 0.045, 0]} color="#e8b923" material={roadCenterMaterial} outline={false} castShadow={false} />}
+      {!isIntersection && isStraightZ && !east && !west && <Box size={[0.022, 0.008, ROAD_TILE_LENGTH]} position={[0, 0.045, 0]} color="#e8b923" material={roadCenterMaterial} outline={false} castShadow={false} />}
 
-      {/* Zebra Crossings at Intersections */}
-      {isIntersection && (
-        <group position={[0, 0.05, 0]}>
-          {[-0.25, 0.25].map(x => (
-            <group key={`zebra-x-${x}`} position={[x, 0, 0]}>
-              {[-0.1, 0, 0.1].map(z => <Box key={z} size={[0.1, 0.01, 0.04]} position={[0, 0, z]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
-            </group>
-          ))}
-          {[-0.25, 0.25].map(z => (
-            <group key={`zebra-z-${z}`} position={[0, 0, z]}>
-              {[-0.1, 0, 0.1].map(x => <Box key={x} size={[0.04, 0.01, 0.1]} position={[x, 0, 0]} color="#ffffff" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
-            </group>
-          ))}
-        </group>
-      )}
+      {/* Зебры на каждом въезде в перекрёсток */}
+      {isIntersection && [
+        { key: 'n', open: north, rotate: false, at: -half + 0.12 },
+        { key: 's', open: south, rotate: false, at: half - 0.12 },
+        { key: 'w', open: west, rotate: true, at: -half + 0.12 },
+        { key: 'e', open: east, rotate: true, at: half - 0.12 },
+      ].filter((side) => side.open).map(({ key, rotate, at }) => <group key={`zebra-${key}`} position={[rotate ? at : 0, 0.045, rotate ? 0 : at]}>
+        {[-0.24, -0.144, -0.048, 0.048, 0.144, 0.24].filter((offset) => Math.abs(offset) < asphaltHalf - 0.02).map((offset) => <Box key={offset} size={rotate ? [0.16, 0.008, 0.05] : [0.05, 0.008, 0.16]} position={rotate ? [0, 0, offset] : [offset, 0, 0]} color="#f4f1ea" material={roadMarkingMaterial} outline={false} castShadow={false} />)}
+      </group>)}
 
-      {/* Streetlights and Trees */}
-      {isStraightX && !isIntersection && variant === 0 && (
-        <group>
-          <Streetlight position={[0, 0, -0.35]} />
-          <Streetlight position={[0, 0, 0.35]} rotation={[0, Math.PI, 0]} />
-        </group>
-      )}
-      {isStraightZ && !isIntersection && variant === 0 && (
-        <group>
-          <Streetlight position={[-0.35, 0, 0]} rotation={[0, Math.PI/2, 0]} />
-          <Streetlight position={[0.35, 0, 0]} rotation={[0, -Math.PI/2, 0]} />
-        </group>
-      )}
+      {/* Фонари и уличные деревья по очереди вдоль тротуара */}
+      {sides.filter((side) => !side.road).map(({ key, along, sign }) => {
+        const position: Vec3 = along === 'x' ? [0, 0.06, sign * (walkOffset + 0.02)] : [sign * (walkOffset + 0.02), 0.06, 0]
+        if (variant % 2 === 0) {
+          const rotation: Vec3 = along === 'x' ? [0, sign < 0 ? 0 : Math.PI, 0] : [0, sign < 0 ? Math.PI / 2 : -Math.PI / 2, 0]
+          return <Streetlight key={`lamp-${key}`} position={position} rotation={rotation} />
+        }
+        return <StreetTree key={`tree-${key}`} position={position} />
+      })}
     </group>
   )
 }
@@ -362,7 +353,7 @@ interface WindowProps {
   sill?: boolean
 }
 
-import { getFacadeMaterial, getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
+import { getFacadeMaterial, getPaverMaterial, getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
 
 /** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
 function Window({
@@ -1563,6 +1554,8 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
         w = 4; h = 2
       } else if (catalogId === 'res_modern_block') {
         model = <ModernBlockMesh />
+      } else if (catalogId === 'res_brick_loft') {
+        model = <BrickLoftMesh />
       } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
         model = <Residential variant={variant} catalogId="res_apartment" />
         if (catalogId === 'res_panel_block') { w = 2; h = 2 }

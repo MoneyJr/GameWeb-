@@ -12,7 +12,7 @@ export type Vec3 = [number, number, number]
 // City grid cells are 1 world unit wide. Leave a narrow 0.05 unit curb strip
 // on either side while keeping the full drivable asphalt beneath both lanes.
 export const ROAD_TILE_LENGTH = 1
-export const ROAD_ASPHALT_WIDTH = 0.9
+export const ROAD_ASPHALT_WIDTH = 0.7
 export const ROAD_LANE_OFFSET = ROAD_ASPHALT_WIDTH / 4
 export const ROAD_CURB_WIDTH = (ROAD_TILE_LENGTH - ROAD_ASPHALT_WIDTH) / 2
 export const ROAD_CURB_OFFSET = ROAD_TILE_LENGTH / 2 - ROAD_CURB_WIDTH / 2
@@ -47,6 +47,20 @@ export function setSnowLevel(level: number): void {
   snowUniform.value = level
 }
 
+/** Сила карандашной штриховки в тенях (0 — выключена, на низком качестве). */
+export const hatchUniform = { value: 1 }
+export function setHatching(strength: number): void {
+  hatchUniform.value = strength
+}
+const HATCH_HEAD = 'uniform float uHatch;\n'
+/** Тонкие диагональные штрихи на затенённых гранях — как в иллюстрации тушью. */
+const HATCH_FRAGMENT = `
+  float hatchLum = dot(outgoingLight, vec3(0.299, 0.587, 0.114));
+  float hatchBase = max(dot(diffuseColor.rgb, vec3(0.299, 0.587, 0.114)), 0.001);
+  float hatchShade = 1.0 - clamp(hatchLum / hatchBase, 0.0, 1.0);
+  float hatchLine = step(0.7, fract((gl_FragCoord.x - gl_FragCoord.y) / 5.0));
+  outgoingLight *= 1.0 - hatchLine * smoothstep(0.3, 0.5, hatchShade) * 0.2 * uHatch;
+  #include <opaque_fragment>`
 const SNOW_VERTEX_HEAD = 'varying vec3 vSnowNormal;\nvarying float vSnowHeight;\n'
 const SNOW_VERTEX_BODY = `
   mat4 snowModel = modelMatrix;
@@ -61,14 +75,16 @@ const SNOW_FRAGMENT = `
 function addSnowCover(material: THREE.MeshToonMaterial): void {
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSnow = snowUniform
+    shader.uniforms.uHatch = hatchUniform
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${SNOW_VERTEX_HEAD}`)
       .replace('#include <defaultnormal_vertex>', `#include <defaultnormal_vertex>${SNOW_VERTEX_BODY}`)
       .replace('#include <project_vertex>', `#include <project_vertex>
   vSnowHeight = (snowModel * vec4(transformed, 1.0)).y;`)
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', `#include <common>\nuniform float uSnow;\n${SNOW_VERTEX_HEAD}`)
+      .replace('#include <common>', `#include <common>\nuniform float uSnow;\n${HATCH_HEAD}${SNOW_VERTEX_HEAD}`)
       .replace('#include <color_fragment>', `#include <color_fragment>${SNOW_FRAGMENT}`)
+      .replace('#include <opaque_fragment>', HATCH_FRAGMENT)
   }
   material.customProgramCacheKey = () => 'ink-toon-snow'
 }
@@ -110,6 +126,8 @@ export interface FacadeOptions {
   frame?: [number, number]
   /** Сплошное остекление с тонкими импостами (для стеклянных башен). */
   curtain?: boolean
+  /** Цвет рамки окна. */
+  ink?: string
 }
 
 const facadeCache = new Map<string, THREE.MeshToonMaterial>()
@@ -125,6 +143,8 @@ export function getFacadeMaterial(options: FacadeOptions): THREE.MeshToonMateria
   const litColor = new THREE.Color(lit)
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSnow = snowUniform
+    shader.uniforms.uHatch = hatchUniform
+    shader.uniforms.uInk = { value: new THREE.Color(options.ink ?? '#2b2724') }
     shader.uniforms.uNight = facadeNightUniform
     shader.uniforms.uGlass = { value: glassColor }
     shader.uniforms.uLit = { value: litColor }
@@ -138,7 +158,7 @@ export function getFacadeMaterial(options: FacadeOptions): THREE.MeshToonMateria
   vFacadePos = transformed;`)
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>
-uniform float uSnow; uniform float uNight; uniform vec3 uGlass; uniform vec3 uLit; uniform vec2 uSpacing; uniform vec2 uFrame;
+uniform float uSnow; uniform float uNight; uniform vec3 uGlass; uniform vec3 uLit; uniform vec2 uSpacing; uniform vec2 uFrame; uniform vec3 uInk;\n${HATCH_HEAD}
 ${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
       .replace('#include <color_fragment>', `#include <color_fragment>
   float facadeWindow = 0.0;
@@ -155,12 +175,42 @@ ${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
     float streak = smoothstep(0.55, 0.6, fract((along + vFacadePos.y) * 0.9)) * 0.18;
     vec3 glassTone = mix(uGlass, vec3(1.0), streak + seed * 0.08);
     diffuseColor.rgb = mix(diffuseColor.rgb, glassTone, facadeWindow);
+    // Тёмная рамка вокруг окна и светлый подоконник, как в рисунке тушью.
+    float border = 0.05;
+    float outer = step(uFrame.x - border, f.x) * step(f.x, 1.0 - uFrame.x + border) * step(uFrame.y - border, f.y) * step(f.y, 1.0 - uFrame.y + border);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uInk, (outer - facadeWindow) * 0.75);
+    float sill = step(uFrame.y - border - 0.06, f.y) * step(f.y, uFrame.y - border) * step(uFrame.x - border, f.x) * step(f.x, 1.0 - uFrame.x + border);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.92, 0.88), sill * 0.8);
   }${SNOW_FRAGMENT}`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
   totalEmissiveRadiance += uLit * facadeLit * 0.95;`)
+      .replace('#include <opaque_fragment>', HATCH_FRAGMENT)
   }
   material.customProgramCacheKey = () => `ink-facade-${key}`
   facadeCache.set(key, material)
+  return material
+}
+
+let paverMaterial: THREE.MeshToonMaterial | null = null
+/** Тротуарная плитка: швы рисуются шейдером в мировых координатах, стыки клеток незаметны. */
+export function getPaverMaterial(): THREE.MeshToonMaterial {
+  if (paverMaterial) return paverMaterial
+  const material = new THREE.MeshToonMaterial({ color: '#d8d5cb', gradientMap: getGradientMap(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 })
+  material.onBeforeCompile = (shader) => {
+    shader.uniforms.uSnow = snowUniform
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vPaverWorld;\n')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vPaverWorld = (modelMatrix * vec4(transformed, 1.0)).xyz;')
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform float uSnow;\nvarying vec3 vPaverWorld;\n')
+      .replace('#include <color_fragment>', `#include <color_fragment>
+  vec2 tile = fract(vPaverWorld.xz * vec2(6.0, 6.0));
+  float seam = max(step(tile.x, 0.07), step(tile.y, 0.07));
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.82, seam);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95, 0.97, 1.0), uSnow * 0.85);`)
+  }
+  material.customProgramCacheKey = () => 'ink-paver'
+  paverMaterial = material
   return material
 }
 

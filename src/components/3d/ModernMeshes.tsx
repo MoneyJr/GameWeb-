@@ -1,5 +1,6 @@
 import * as THREE from 'three'
-import { Box, Cylinder, getFacadeMaterial, getToonMaterial, type Vec3 } from './primitives'
+import { Box, Cone, Cylinder, getFacadeMaterial, getToonMaterial, type Vec3 } from './primitives'
+import { currentSeason } from '../../lib/season'
 
 /* Современный стиль (ранги «Город» и выше): фасады с сеткой окон, детали на крышах, озеленённые площади. */
 
@@ -100,5 +101,54 @@ export function GlassSkyscraperMesh() {
     })}
     <Cylinder radius={0.05} radiusTop={0.01} height={1.2} segments={8} position={[0, y + 0.6, 0]} color="#e6eef0" />
     <mesh position={[0, y + 1.22, 0]} scale={0.05}><sphereGeometry args={[1, 8, 6]} /><meshBasicMaterial color="#ef4444" toneMapped={false} /></mesh>
+  </group>
+}
+
+const SEASON = currentSeason()
+/** Уличные «леденцы»: зелёные, зимой заснеженные, осенью часть желтеет. */
+const STREET_TREE_COLORS = SEASON === 'winter' ? ['#e3eaee', '#d5dfe5'] : SEASON === 'autumn' ? ['#6c9a4c', '#7aa555', '#d9a03a'] : SEASON === 'spring' ? ['#8cc56a', '#f3b6cf'] : ['#5f9446', '#6fa553']
+const facetSphere = new THREE.IcosahedronGeometry(1, 1)
+let streetTreeIndex = 0
+
+/** Дерево вдоль тротуара: тонкий ствол и круглая крона с обводкой. */
+export function StreetTree({ position }: { position: Vec3 }) {
+  const color = STREET_TREE_COLORS[(streetTreeIndex++) % STREET_TREE_COLORS.length]
+  return <group position={position}>
+    <Cylinder radius={0.012} height={0.3} segments={5} position={[0, 0.15, 0]} color="#4a3628" outline={false} />
+    <group position={[0, 0.36, 0]} scale={0.1}>
+      <mesh geometry={facetSphere} material={getToonMaterial(color)} castShadow />
+      <mesh geometry={facetSphere} material={blobOutline} scale={1.12} />
+    </group>
+  </group>
+}
+
+/** Кирпичный лофт 1×1: пожарная лестница, бак для воды и пергола на крыше. */
+export function BrickLoftMesh() {
+  const brick = getFacadeMaterial({ wall: '#a8462f', glass: '#3e5266', ink: '#f1ece2', spacing: [0.16, 0.26], frame: [0.22, 0.2] })
+  const height = 1.55
+  const top = 0.06 + height
+  return <group>
+    <Box size={[0.98, 0.06, 0.98]} position={[0, 0.03, 0]} color="#c8c6bf" />
+    <Box size={[0.8, height, 0.8]} position={[0, 0.06 + height / 2, 0]} color="#a8462f" material={brick} />
+    <Box size={[0.84, 0.08, 0.84]} position={[0, top + 0.04, 0]} color="#7d3424" />
+    <Box size={[0.76, 0.02, 0.76]} position={[0, top + 0.09, 0]} color="#5b5f61" outline={false} />
+    <Box size={[0.82, 0.12, 0.82]} position={[0, 0.12, 0]} color="#5d2b20" />
+    {/* Пожарная лестница по фасаду */}
+    {Array.from({ length: 5 }, (_, floor) => <group key={floor} position={[0.18, 0.36 + floor * 0.28, 0.43]}>
+      <Box size={[0.3, 0.015, 0.08]} position={[0, 0, 0]} color="#222" outline={false} />
+      <Box size={[0.3, 0.06, 0.006]} position={[0, 0.04, 0.04]} color="#222" outline={false} />
+      <Box size={[0.012, 0.3, 0.012]} position={[floor % 2 ? -0.1 : 0.1, 0.13, 0.02]} rotation={[0, 0, floor % 2 ? 0.6 : -0.6]} color="#222" outline={false} />
+    </group>)}
+    {/* Деревянный бак для воды на опорах */}
+    <group position={[-0.2, top + 0.1, -0.18]}>
+      {[[-0.06, -0.06], [0.06, -0.06], [-0.06, 0.06], [0.06, 0.06]].map(([x, z]) => <Box key={`${x}${z}`} size={[0.015, 0.14, 0.015]} position={[x, 0.07, z]} color="#3b3b3b" outline={false} />)}
+      <Cylinder radius={0.1} height={0.2} segments={10} position={[0, 0.24, 0]} color="#8a5a35" />
+      <Cone radius={0.11} height={0.07} segments={10} position={[0, 0.375, 0]} color="#6b4428" />
+    </group>
+    <group position={[0.18, top + 0.1, 0.12]}>
+      {[[-0.12, -0.1], [0.12, -0.1], [-0.12, 0.1], [0.12, 0.1]].map(([x, z]) => <Box key={`${x}${z}`} size={[0.015, 0.14, 0.015]} position={[x, 0.07, z]} color="#3e2c22" outline={false} />)}
+      <Box size={[0.3, 0.02, 0.26]} position={[0, 0.15, 0]} color="#5a3e2c" />
+    </group>
+    <Box size={[0.14, 0.08, 0.1]} position={[0.25, top + 0.14, -0.25]} color="#c9cdd0" />
   </group>
 }

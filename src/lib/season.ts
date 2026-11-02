@@ -21,8 +21,8 @@ export interface SeasonPalette {
 
 export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
   autumn: {
-    ground: '#d6dc8e', sky: '#e3dcc4',
-    foliage: ['#eab308', '#eab308', '#eab308', '#eab308', '#eab308', '#d97724', '#d97724', '#d97724', '#991b1b', '#991b1b'],
+    ground: '#a9b878', sky: '#e3dcc4',
+    foliage: ['#e9a24a', '#e9a24a', '#f0b257', '#de8c3a', '#e9a24a', '#c96a32', '#d97c3b', '#b8553a', '#7f9a4f', '#e3b25a'],
     hills: ['#c49a45', '#a36f32', '#8b7355'], vines: ['#d99b26', '#e5a93c', '#c86d24', '#963824'],
     river: '#2b6cb0', riverBank: '#c9ad7f', snow: 0,
   },
@@ -33,13 +33,13 @@ export const SEASON_PALETTES: Record<Season, SeasonPalette> = {
     river: '#9cc0d8', riverBank: '#dfe6ec', snow: 1,
   },
   spring: {
-    ground: '#c4e896', sky: '#e2ecdc',
+    ground: '#acd585', sky: '#e2ecdc',
     foliage: ['#f9a8d4', '#f9a8d4', '#fbcfe8', '#86c06c', '#6aa84f', '#86c06c', '#fde68a', '#a3d977'],
     hills: ['#a9c27a', '#8fae62', '#b8c98c'], vines: ['#86c06c', '#a3d977', '#f9a8d4', '#6aa84f'],
     river: '#3b82c4', riverBank: '#c9b98f', snow: 0,
   },
   summer: {
-    ground: '#b9e28a', sky: '#d9e8e6',
+    ground: '#a3cf7c', sky: '#d9e8e6',
     foliage: ['#4d8b3f', '#5b9a46', '#3f7a35', '#6aa84f', '#4d8b3f', '#7cb342', '#3f7a35'],
     hills: ['#9fb35e', '#86a04c', '#b0a65c'], vines: ['#5b9a46', '#4d8b3f', '#7cb342', '#3f7a35'],
     river: '#2b74b8', riverBank: '#c8b07f', snow: 0,

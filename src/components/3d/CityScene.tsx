@@ -11,7 +11,7 @@ import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
 import { useI18n } from '../../i18n/I18nProvider'
 import { ToonShadingSetup } from './InkOutlinePass'
-import { getToonMaterial, setSnowLevel } from './primitives'
+import { getToonMaterial, setHatching, setSnowLevel } from './primitives'
 import { Snowfall } from './Snowfall'
 import { FireLayer, OverlayLayer } from './OverlayLayer'
 import { PhotoCapture } from './PhotoCapture'
@@ -605,6 +605,7 @@ const World = memo(function World({ grid }: { grid: Grid }) {
             <TileModel
               key={cell.type}
               type={cell.type}
+              variant={(cell.x * 7 + cell.y * 13) % 4}
               catalogId={cell.catalogId}
               north={north}
               south={south}
@@ -1249,6 +1250,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     DAY_SKY.set(palette.sky)
     setSnowLevel(palette.snow)
   }, [palette])
+  useLayoutEffect(() => { setHatching(quality.level === 'low' ? 0 : 1) }, [quality.level])
   const cameraTarget: [number, number, number] = isReferencePreview ? [-0.5, 0, -0.5] : [0, 0, -3.5]
   const cameraPosition: [number, number, number] = [
     cameraTarget[0] + CAMERA_POSITION[0],

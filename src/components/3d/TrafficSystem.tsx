@@ -19,7 +19,7 @@ interface CarState {
   currentSpeed: number
 }
 
-const CAR_COUNT = 12
+const CAR_COUNT = 18
 const CAR_SPEED = 1.15
 const SAFE_DISTANCE = 1.2
 const STOP_DISTANCE = 0.8
@@ -192,6 +192,8 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       trailer.add(wheel)
     }
     sedan.add(trailer)
+    // Машины меньше, чтобы помещаться в полосы между тротуарами.
+    sedan.scale.setScalar(0.72)
     return sedan
   }), [])
   const groupRef = useRef<THREE.Group>(null)
