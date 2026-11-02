@@ -14,6 +14,8 @@ import { ToonShadingSetup } from './InkOutlinePass'
 import { getToonMaterial, setSnowLevel } from './primitives'
 import { Snowfall } from './Snowfall'
 import { FireLayer, OverlayLayer } from './OverlayLayer'
+import { PhotoCapture } from './PhotoCapture'
+import type { QualityProfile } from '../../lib/quality'
 import type { CoverageMaps } from '../../lib/coverage'
 import type { OverlayMode } from '../../lib/overlays'
 import { currentSeason, SEASON_PALETTES, type SeasonPalette } from '../../lib/season'
@@ -1049,6 +1051,9 @@ export interface CitySceneProps {
   materials: { bricks: number; concrete: number; steel: number }
   coverage: CoverageMaps
   overlay: OverlayMode
+  quality: QualityProfile
+  /** Фото-режим: прячем кнопки камеры. */
+  hideControls?: boolean
 }
 
 import { applyNightLevel } from './primitives'
@@ -1166,7 +1171,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials, coverage, overlay }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials, coverage, overlay, quality, hideControls = false }: CitySceneProps) {
   const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
@@ -1226,8 +1231,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     CAMERA_POSITION[1],
     cameraTarget[2] + CAMERA_POSITION[2],
   ]
-  const shadowMapSize: [number, number] = [2048, 2048]
-  const maxDpr = Math.min(window.devicePixelRatio || 1, 2)
+  const shadowMapSize: [number, number] = [quality.shadowMapSize, quality.shadowMapSize]
+  const maxDpr = Math.min(window.devicePixelRatio || 1, quality.maxDpr)
   const canvasContainerRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const preventCanvasGesture = (event: TouchEvent) => {
@@ -1293,9 +1298,10 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
       <Canvas
-      shadows={{ type: THREE.PCFSoftShadowMap }}
+      key={quality.level}
+      shadows={quality.shadows ? { type: THREE.PCFSoftShadowMap } : false}
       onCreated={({ gl }) => {
-        gl.shadowMap.enabled = true
+        gl.shadowMap.enabled = quality.shadows
         gl.shadowMap.type = THREE.PCFSoftShadowMap
         gl.autoClear = true
         gl.setClearColor(new THREE.Color(palette.sky), 1)
@@ -1303,7 +1309,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       }}
       onContextMenu={(e) => e.preventDefault()}
       dpr={[1, maxDpr]}
-      gl={{ antialias: true }}
+      gl={{ antialias: quality.antialias }}
       className="absolute inset-0 touch-none select-none"
       style={{ touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', pointerEvents: 'auto' }}
       >
@@ -1337,7 +1343,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
 
       <GroundSlab minutes={minutes} palette={palette} />
       <NaturalHorizon palette={palette} />
-      {palette.snow > 0 && <Snowfall />}
+      {palette.snow > 0 && <Snowfall count={quality.snowCount} />}
+      <PhotoCapture />
       <World grid={grid} />
       <LivingCityParticles grid={grid} />
       <OverlayLayer grid={grid} coverage={coverage} mode={overlay} />
@@ -1410,7 +1417,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
           </div>
         </div>
       )}
-      <div className="absolute right-[calc(env(safe-area-inset-right)+12px)] top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2" aria-label="Управление камерой">
+      <div className={`absolute right-[calc(env(safe-area-inset-right)+12px)] top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2 ${hideControls ? 'hidden' : ''}`} aria-label="Управление камерой">
         <button type="button" onClick={() => rotateBy(-Math.PI / 2)} aria-label={t('camera.rotateLeft')} title={t('camera.rotateLeft')} className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-xl font-bold text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">⟲</button>
         <button type="button" onClick={() => rotateBy(Math.PI / 2)} aria-label={t('camera.rotateRight')} title={t('camera.rotateRight')} className="flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/75 text-xl font-bold text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95">⟳</button>
         <div className="mt-2 flex flex-col gap-2 md:hidden" aria-label="Управление масштабом камеры">

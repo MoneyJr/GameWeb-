@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { CityScene } from './components/3d/CityScene'
 import { BottomDock } from './components/ui/BottomDock'
 import { CityHallModal } from './components/ui/CityHallModal'
@@ -11,6 +11,12 @@ import { useI18n } from './i18n/I18nProvider'
 import { addPlaySeconds } from './lib/cityProfile'
 import { OverlayPicker } from './components/ui/OverlayPicker'
 import { QuestCard } from './components/ui/QuestCard'
+import { SettingsPanel } from './components/ui/SettingsPanel'
+import { PhotoMode } from './components/ui/PhotoMode'
+import { playSound, setWinterMusic, unlockAudio, type SoundName } from './lib/sound'
+import { readQualityLevel, resolveQuality, saveQualityLevel, type QualityLevel } from './lib/quality'
+import { currentSeason } from './lib/season'
+import { Camera, Settings } from 'lucide-react'
 import type { OverlayMode } from './lib/overlays'
 
 function App() {
@@ -27,6 +33,37 @@ function App() {
   const resStyle = "EU"
   const [catalogId, setCatalogId] = useState<string | undefined>(undefined)
   const [overlay, setOverlay] = useState<OverlayMode>('none')
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>(readQualityLevel)
+  const quality = useMemo(() => resolveQuality(qualityLevel), [qualityLevel])
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [photoMode, setPhotoMode] = useState(false)
+  const changeQuality = (level: QualityLevel) => { setQualityLevel(level); saveQualityLevel(level) }
+
+  // Звук: включаем по первому касанию (требование браузеров), эффекты по событиям игры.
+  useEffect(() => {
+    const unlock = () => unlockAudio()
+    window.addEventListener('pointerdown', unlock)
+    window.addEventListener('keydown', unlock)
+    const onSound = (event: Event) => playSound((event as CustomEvent<SoundName>).detail)
+    window.addEventListener('INK_SOUND', onSound)
+    return () => {
+      window.removeEventListener('pointerdown', unlock)
+      window.removeEventListener('keydown', unlock)
+      window.removeEventListener('INK_SOUND', onSound)
+    }
+  }, [])
+  useEffect(() => { setWinterMusic(currentSeason() === 'winter' || sim.events.includes('winter')) }, [sim.events])
+  const buildingCount = useMemo(() => sim.grid.reduce((total, row) => total + row.filter((cell) => cell.type !== TileType.EMPTY && cell.type !== TileType.FOOTPRINT).length, 0), [sim.grid])
+  const previousBuildingCount = useRef(buildingCount)
+  useEffect(() => {
+    if (buildingCount > previousBuildingCount.current) playSound('build')
+    else if (buildingCount < previousBuildingCount.current) playSound('demolish')
+    previousBuildingCount.current = buildingCount
+  }, [buildingCount])
+  const photoCaption = useMemo(() => {
+    if (!photoMode) return ''
+    try { return (JSON.parse(localStorage.getItem('inkville-city-profile') ?? 'null') as { cityName?: string } | null)?.cityName ?? 'Inkville' } catch { return 'Inkville' }
+  }, [photoMode])
   // A shareable visual fixture, enabled with ?preview=cityrt, keeps the simulation's normal empty start intact.
   const displayGrid = useMemo<Grid>(() => {
     if (new URLSearchParams(window.location.search).get('preview') !== 'cityrt') return sim.grid
@@ -139,6 +176,7 @@ function App() {
   useEffect(() => {
     if (notice === null) return undefined
     setVisibleNoticeId(notice.id)
+    playSound('error')
     const timer = window.setTimeout(() => setVisibleNoticeId(null), 2500)
     return () => window.clearTimeout(timer)
   }, [notice])
@@ -158,10 +196,18 @@ function App() {
         budget={sim.budget}
         placementStyle={resStyle}
         coverage={sim.coverage}
-        overlay={overlay}
+        overlay={photoMode ? 'none' : overlay}
+        quality={quality}
+        hideControls={photoMode}
       />
 
-      <div className="pointer-events-none absolute inset-0 z-30 animate-hud-fade-in [&>*]:pointer-events-auto">
+      {photoMode && <PhotoMode caption={photoCaption} subtitle={t('photo.day', sim.day, sim.population.toLocaleString())} onExit={() => setPhotoMode(false)} />}
+      {settingsOpen && <SettingsPanel quality={qualityLevel} onQualityChange={changeQuality} onClose={() => setSettingsOpen(false)} />}
+      <div className={`pointer-events-none absolute inset-0 z-30 animate-hud-fade-in [&>*]:pointer-events-auto ${photoMode ? 'hidden' : ''}`}>
+      <div className="absolute right-[calc(env(safe-area-inset-right)+12px)] top-[calc(env(safe-area-inset-top)+64px)] z-20 flex flex-col gap-2">
+        <button type="button" onClick={() => setSettingsOpen(true)} aria-label={t('settings.title')} title={t('settings.title')} className="grid h-11 w-11 place-items-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/80 text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95"><Settings size={20} strokeWidth={1.8} /></button>
+        <button type="button" onClick={() => { setPhotoMode(true); setSelectedResidence(null) }} aria-label={t('photo.open')} title={t('photo.open')} className="grid h-11 w-11 place-items-center rounded-full border border-[#292a2c]/35 bg-[#fbf9f4]/80 text-[#292a2c] shadow-md backdrop-blur-sm active:scale-95"><Camera size={20} strokeWidth={1.8} /></button>
+      </div>
       <TopBar
         population={sim.population}
         budget={sim.budget}
@@ -207,7 +253,7 @@ function App() {
 
       <BottomDock activeTool={sim.activeTool} onSelect={sim.setActiveTool} selectedCatalogId={catalogId} onCatalogSelect={setCatalogId} rank={sim.rank} sandbox={sim.sandbox} />
       </div>
-      {selectedResidence && (() => {
+      {!photoMode && selectedResidence && (() => {
         const home = sim.grid[selectedResidence.y]?.[selectedResidence.x]
         if (!home || home.type !== TileType.RESIDENTIAL) return null
         return <aside className="fixed bottom-28 left-3 z-40 w-64 rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-3 text-sm text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur sm:left-6">
@@ -222,7 +268,7 @@ function App() {
           <p className="mt-2 text-[10px] text-stone-600">Материалы: кирпич {sim.materials.bricks}, бетон {sim.materials.concrete}, сталь {sim.materials.steel}</p>
         </aside>
       })()}
-      {welcome && <div key={welcome.nonce} className={`fixed bottom-24 left-4 z-40 max-w-[min(360px,calc(100vw-32px))] transition-all duration-500 sm:left-6 ${dismissedWelcomeNonce !== welcome.nonce ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
+      {!photoMode && welcome && <div key={welcome.nonce} className={`fixed bottom-24 left-4 z-40 max-w-[min(360px,calc(100vw-32px))] transition-all duration-500 sm:left-6 ${dismissedWelcomeNonce !== welcome.nonce ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-4 opacity-0'}`}>
         <div className="relative rounded-2xl border-2 border-[#2C241D] bg-[#F4EEDD]/95 p-4 pl-14 text-sm font-semibold leading-relaxed text-[#342a20] shadow-[4px_4px_0px_#2C241D] backdrop-blur-md">
           <span aria-hidden="true" className="absolute left-3 top-3 grid size-9 place-items-center rounded-full border border-[#2C241D]/25 bg-[#e6d5b7] text-xl">{welcome.returning ? '🐱' : '🧑‍🎨'}</span>
           {t(welcome.messageKey, welcome.cityName)}

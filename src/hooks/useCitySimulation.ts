@@ -695,7 +695,7 @@ function reducer(state: SimState, action: Action): SimState {
     case 'RESET':
       return createFreshState()
     case 'SET_SANDBOX':
-      return { ...state, sandbox: true, budget: Math.max(state.budget, 50_000), debt: 0, rank: Math.max(state.rank, 4) }
+      return { ...state, sandbox: true, budget: Math.max(state.budget, 50_000), debt: 0, rank: Math.max(state.rank, 4), materials: { bricks: state.warehouseCapacity, concrete: state.warehouseCapacity, steel: state.warehouseCapacity } }
     case 'SET_TAX':
       return { ...state, taxRates: { ...state.taxRates, [action.category]: Math.min(20, Math.max(1, action.rate)) } }
     case 'TAKE_LOAN':
@@ -1228,3 +1228,6 @@ export function useCitySimulation() {
 }
 
 export type CitySimulation = ReturnType<typeof useCitySimulation>
+
+/** Для автотестов симуляции (npm run test:sim). */
+export const simulationTesting = { reducer: reducerWithUndo, createFreshState }

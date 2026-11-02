@@ -1,33 +1,49 @@
-# React + TypeScript + Vite
+# Inkville
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Уютный градостроительный симулятор в рисованном стиле. Работает в браузере на телефоне и компьютере, устанавливается как приложение (PWA).
 
-Currently, two official plugins are available:
+**Играть:** https://game-web-wheat.vercel.app
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Что есть в игре
 
-## React Compiler
+- Дороги, вода и электричество по связной дорожной сети; дома, магазины, заводы, парки, службы.
+- Ранги города (Хутор → Мегаполис) открывают новые здания; задания советника с наградами.
+- Службы с радиусом действия: полиция (преступность), пожарные (пожары), школы, больницы.
+- Слои карты: вода, свет, смог, покрытие служб, стоимость земли.
+- Экономика: налоги, содержание, кредит, разбивка бюджета в мэрии; казна может уйти в минус.
+- Сезоны по реальному календарю; зимний ивент с 1 декабря по 7 января (снег, ёлка, бонусы).
+- Звук и музыка (WebAudio, без файлов), фото-режим, настройки качества графики, отмена действия.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Проверить сезон или событие вне календаря: `?season=winter|spring|summer|autumn`, `?event=winter`.
 
-## Expanding the Oxlint configuration
+## Управление
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+| | Компьютер | Телефон |
+|---|---|---|
+| Двигать карту | правая / средняя кнопка мыши | один палец |
+| Масштаб | колесо | щипок или кнопки +/− |
+| Повернуть | Q / E или ⟲ ⟳ | кнопки ⟲ ⟳ |
+| Категории построек | 1, U, H, S, I, V, P, X | нижняя панель |
+| Повернуть здание | R | кнопка в подсказке |
+| Пауза / отмена | Пробел / Ctrl+Z | кнопка ↶ |
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+## Разработка
+
+```bash
+npm install
+npm run dev          # локальный сервер
+npm run dev -- --host  # открыть с телефона в той же Wi-Fi сети
+npm run build        # проверка типов и сборка
+npm run test:sim     # автотесты симуляции
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
-# GameWeb-
+Структура:
+
+- `src/hooks/useCitySimulation.ts` — вся симуляция (reducer, экономика, жители, пожары, сохранение).
+- `src/lib/` — каталог-независимая логика: события, сезоны, покрытие служб, ранги и задания, звук, качество.
+- `src/store/buildingCatalog.ts` — каталог зданий (цена, доход, потребление, размер).
+- `src/components/3d/` — сцена three.js / react-three-fiber.
+- `src/components/ui/` — интерфейс.
+- `public/sw.js`, `public/manifest.webmanifest` — PWA.
+
+Деплой: каждый push в `main` собирается Vercel автоматически.

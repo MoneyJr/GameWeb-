@@ -16,3 +16,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(() => { /* Игра работает и без service worker. */ })
   })
 }
+
+// Запоминаем предложение установки (Android/Chrome), чтобы показать кнопку в настройках.
+window.addEventListener('beforeinstallprompt', (event) => {
+  event.preventDefault()
+  ;(window as unknown as { __inkInstallPrompt?: Event }).__inkInstallPrompt = event
+})
