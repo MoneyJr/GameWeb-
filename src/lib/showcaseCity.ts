@@ -19,7 +19,12 @@ export function buildShowcaseGrid(): Grid {
   // Сети: вода и солнечные панели на окраине.
   for (let y = 21; y <= 25; y += 1) put(39, y, 'SOLAR_PANEL', 'utl_solar')
   for (let y = 21; y <= 24; y += 1) put(37, y, 'WIND', 'utl_wind')
-  put(21, 27, 'WATER_PUMP', 'utl_water'); put(21, 28, 'WATER_PUMP', 'utl_water'); put(21, 33, 'WATER_PUMP', 'utl_water')
+  for (let y = 27; y <= 37; y += 1) put(39, y, 'SOLAR_PANEL', 'utl_solar')
+  for (let y = 39; y <= 44; y += 1) put(39, y, 'SOLAR_PANEL', 'utl_solar')
+  for (const y of [27, 28, 29, 30, 31, 37, 39, 40, 41, 42, 43, 44]) put(21, y, 'WATER_PUMP', 'utl_water')
+
+  // Склад на окраине снабжает магазины (без дыма).
+  put(41, 25, 'INDUSTRIAL', 'ind_warehouse'); put(42, 27, 'INDUSTRIAL', 'ind_warehouse')
 
   // Уютный европейский квартал.
   const cozy = ['res_townhouse', 'res_half_timbered', 'com_bakery', 'res_cottage', 'res_townhouse', 'com_wine_tavern', 'res_half_timbered']
@@ -28,8 +33,9 @@ export function buildShowcaseGrid(): Grid {
   put(23, 29, 'PARK', 'lnd_park'); put(29, 28, 'PARK', 'lnd_church'); put(24, 29, 'PARK', 'park_rose_garden')
 
   // Современный центр.
-  put(31, 30, 'COMMERCIAL', 'com_office_tower')
-  put(36, 30, 'COMMERCIAL', 'com_glass_skyscraper')
+  put(31, 28, 'COMMERCIAL', 'com_office_tower')
+  put(31, 30, 'COMMERCIAL', 'com_glass_skyscraper')
+  put(37, 30, 'RESIDENTIAL', 'res_modern_block'); put(37, 31, 'RESIDENTIAL', 'res_modern_block')
   ;[33, 34, 35].forEach((x) => put(x, 31, 'RESIDENTIAL', 'res_modern_block'))
   for (let x = 31; x <= 37; x += 1) put(x, 27, 'RESIDENTIAL', x % 3 === 0 ? 'res_modern_block' : 'res_brick_loft')
 
