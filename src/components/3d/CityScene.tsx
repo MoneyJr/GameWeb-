@@ -581,7 +581,7 @@ function isRoadJunctionAt(grid: Grid, x: number, y: number, north: boolean, sout
   return !parallelLane
 }
 
-const World = memo(function World({ grid }: { grid: Grid }) {
+export const World = memo(function World({ grid }: { grid: Grid }) {
   return (
     <group>
       {grid[0].map((cell) => {
