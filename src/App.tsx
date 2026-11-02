@@ -198,7 +198,6 @@ function App() {
         coverage={sim.coverage}
         overlay={photoMode ? 'none' : overlay}
         quality={quality}
-        hideControls={photoMode}
       />
 
       {photoMode && <PhotoMode caption={photoCaption} subtitle={t('photo.day', sim.day, sim.population.toLocaleString())} onExit={() => setPhotoMode(false)} />}

@@ -20,7 +20,7 @@ export function NoWaterMarker({ height = 1.05 }: { height?: number }) {
   })
 
   return (
-    <Billboard position={[0, height, 0]}>
+    <Billboard position={[0, height, 0]} userData={{ hideInPhoto: true }}>
       <group ref={bob}>
         {/* чёрная обводка + белый значок */}
         <mesh renderOrder={20}>
@@ -57,7 +57,7 @@ export function NoWaterMarker({ height = 1.05 }: { height?: number }) {
 }
 
 export function SupplyShortageMarker() {
-  return <Billboard position={[0, 1.2, 0]}>
+  return <Billboard position={[0, 1.2, 0]} userData={{ hideInPhoto: true }}>
     <mesh><circleGeometry args={[0.2, 24]} /><meshBasicMaterial color="#8b352b" depthTest={false} /></mesh>
     <mesh position={[0, 0, 0.01]}><boxGeometry args={[0.19, 0.055, 0.02]} /><meshBasicMaterial color="#fff4dc" depthTest={false} /></mesh>
   </Billboard>

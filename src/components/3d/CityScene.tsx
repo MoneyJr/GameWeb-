@@ -702,6 +702,10 @@ function materialDeficit(catalogId: string | undefined, materials: { bricks: num
   return null
 }
 
+function isLineTool(tool: ToolId, footprint: [number, number]) {
+  return tool === ToolId.ROAD || (tool !== ToolId.CURSOR && tool !== ToolId.BULLDOZE && footprint[0] === 1 && footprint[1] === 1)
+}
+
 function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string, orientation = 0, materials = { bricks: 0, concrete: 0, steel: 0 }): string | null {
   const [width, depth] = placementFootprint(tool, catalogId, style, orientation)
   if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'ghost.outOfBounds'
@@ -811,6 +815,8 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
     [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, orientation, setHovered, materials],
   )
   const footprint = placementFootprint(activeTool, catalogId, placementStyle, orientation)
+  // Дороги и здания 1×1 можно протягивать линией (на телефоне — от выбранной клетки).
+  const lineTool = isLineTool(activeTool, footprint)
 
   useEffect(() => {
     const clearHover = () => { setHovered(null); onPlacementTooltip(null) }
@@ -930,7 +936,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
         return
       }
       if (
-        activeTool === ToolId.ROAD && ghost &&
+        lineTool && ghost &&
         cell.x === ghost.cells[0]?.x && cell.y === ghost.cells[0]?.y
       ) {
         event.stopPropagation()
@@ -1010,13 +1016,14 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
       )}
       {(isTouchDevice ? ghost?.cells[0] : hovered) && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (() => {
         const anchor = (isTouchDevice ? ghost?.cells[0] : hovered)!
-        const roadCells = activeTool === ToolId.ROAD ? (isTouchDevice ? ghost?.cells ?? [] : [anchor]) : []
+        const roadCells = lineTool ? (isTouchDevice ? ghost?.cells ?? [] : [anchor]) : []
+        const isValid = (item: Cell) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation, materials) === null
         const valid = activeTool === ToolId.ROAD
-          ? roadCells.every((item) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation, materials) === null)
-          : validatePlacement(grid, anchor, activeTool, catalogId, placementStyle, orientation, materials) === null
+          ? roadCells.every(isValid)
+          : lineTool ? roadCells.some(isValid) : isValid(anchor)
         const tint = valid ? '#10b981' : '#ef4444'
-        const cells = activeTool === ToolId.ROAD ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
-        const modelCells = activeTool === ToolId.ROAD ? roadCells : [anchor]
+        const cells = lineTool ? roadCells : Array.from({ length: footprint[0] * footprint[1] }, (_, i) => ({ x: anchor.x + i % footprint[0], y: anchor.y + Math.floor(i / footprint[0]) }))
+        const modelCells = activeTool === ToolId.ROAD ? roadCells : lineTool ? roadCells.filter(isValid) : [anchor]
         return <group>
           {cells.map((item) => <FootprintCell key={`footprint-${item.x}-${item.y}`} cell={item} tint={tint} />)}
           {modelCells.map((item) => {
@@ -1283,9 +1290,18 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     controls.update()
   }
   const unitCost = catalogId ? BUILDING_BY_ID[catalogId]?.cost ?? TOOL_DEFINITIONS[activeTool].cost : TOOL_DEFINITIONS[activeTool].cost
-  const ghostCost = unitCost * (activeTool === ToolId.ROAD ? touchGhost?.cells.length ?? 1 : 1)
+  const ghostLineTool = isLineTool(activeTool, placementFootprint(activeTool, catalogId, placementStyle, orientation))
+  // Ряд зданий: ставим только в подходящие клетки, остальные пропускаем.
+  const ghostBuildCells = touchGhost
+    ? activeTool === ToolId.ROAD || !ghostLineTool || touchGhost.cells.length === 1
+      ? touchGhost.cells
+      : touchGhost.cells.filter((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials) === null)
+    : []
+  const ghostCost = unitCost * Math.max(1, ghostBuildCells.length)
   const ghostPlacementError = touchGhost
-    ? activeTool === ToolId.ROAD
+    ? ghostLineTool && activeTool !== ToolId.ROAD && touchGhost.cells.length > 1
+      ? ghostBuildCells.length > 0 ? null : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials)
+      : activeTool === ToolId.ROAD
       ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials)).find(Boolean) ?? null
       : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials)
     : null
@@ -1400,7 +1416,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
               disabled={!ghostCanPlace}
               onClick={() => {
                 if (!ghostCanPlace) return
-                touchGhost.cells.forEach((cell) => onPlace(cell.x, cell.y, catalogId, orientation))
+                ghostBuildCells.forEach((cell) => onPlace(cell.x, cell.y, catalogId, orientation))
                 setTouchGhost(null)
               }}
               className={`pointer-events-auto flex h-11 items-center justify-center gap-1.5 rounded-full border px-4 text-sm font-bold text-white shadow-lg active:scale-95 disabled:cursor-not-allowed disabled:opacity-45 ${ghostCanPlace ? 'border-emerald-900/30 bg-emerald-600' : 'border-red-900/30 bg-red-600'}`}

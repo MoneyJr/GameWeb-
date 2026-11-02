@@ -40,8 +40,14 @@ export function PhotoCapture() {
   useEffect(() => {
     const onCapture = (event: Event) => {
       const detail = (event as CustomEvent<{ caption: string; subtitle: string }>).detail
+      // Значки состояния (нет света, воды, товаров) в кадр не попадают.
+      const hidden: { visible: boolean }[] = []
+      scene.traverse((object) => {
+        if (object.userData.hideInPhoto && object.visible) { object.visible = false; hidden.push(object) }
+      })
       gl.render(scene, camera)
       const source = gl.domElement.toDataURL('image/png')
+      hidden.forEach((object) => { object.visible = true })
       void composePhoto(source, detail?.caption ?? 'Inkville', detail?.subtitle ?? '').then((blob) => {
         if (blob) window.dispatchEvent(new CustomEvent('INK_PHOTO', { detail: blob }))
       })

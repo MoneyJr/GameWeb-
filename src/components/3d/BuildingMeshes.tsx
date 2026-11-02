@@ -1279,7 +1279,7 @@ export function NoPowerMarker() {
     }
   })
   return (
-    <Billboard position={[0, 1.32, 0]} follow lockY={false} lockX={false} lockZ={false}>
+    <Billboard position={[0, 1.32, 0]} follow lockY={false} lockX={false} lockZ={false} userData={{ hideInPhoto: true }}>
       <group ref={ref}>
         <mesh renderOrder={20}><circleGeometry args={[0.19, 24]} /><meshBasicMaterial color="#fffaf0" transparent opacity={0.72} depthTest={false} /></mesh>
         <mesh geometry={lightning} position={[0, 0, 0.01]} renderOrder={21}>
@@ -1298,7 +1298,7 @@ export function SmogMarker() {
     }
   })
   return (
-    <group ref={ref} position={[0, 1.3, 0]}>
+    <group ref={ref} position={[0, 1.3, 0]} userData={{ hideInPhoto: true }}>
       <Billboard follow lockY={false} lockX={false} lockZ={false}>
         <mesh>
           <planeGeometry args={[0.3, 0.3]} />
