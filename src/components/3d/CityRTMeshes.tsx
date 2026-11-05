@@ -25,11 +25,9 @@ import { BlobTree } from './ModernMeshes'
 /*  Водоёмы, мосты и железные дороги в рисованном стиле CityRT                */
 /* -------------------------------------------------------------------------- */
 
-const WATER_COLOR_DEEP = '#4e91bd'
-const WATER_COLOR_RIPPLE = '#6ba9cf'
-const WATER_FOAM = '#dceef7'
-const BANK_EARTH = '#98886f'
-const BANK_GRASS = '#7aa457'
+const WATER_COLOR_DEEP = '#5a9ec8'
+const BANK_EARTH = '#b8aa90'
+const BANK_GRASS = '#7ea35a'
 
 export interface TileNeighborFlags {
   north?: boolean
@@ -39,8 +37,8 @@ export interface TileNeighborFlags {
 }
 
 /**
- * Клетка реки / озера (TileType.WATER):
- * рисованная голубая гладь воды с лёгкой рябью, береговой кромкой и камышами/камнями у берега.
+ * Клетка реки / водоёма (TileType.WATER):
+ * чистая рисованная голубая гладь в стиле CityRT с аккуратной береговой кромкой на границе с сушей.
  */
 export function WaterTileMesh({
   north = false,
@@ -54,67 +52,45 @@ export function WaterTileMesh({
 
   return (
     <group>
-      {/* Основная водная гладь чуть ниже уровня травы */}
+      {/* Единая бесшовная водная гладь */}
       <Box
-        size={[1.005, 0.036, 1.005]}
+        size={[1.01, 0.034, 1.01]}
         position={[0, 0.014, 0]}
         color={WATER_COLOR_DEEP}
         outline={false}
         castShadow={false}
       />
 
-      {/* Светлые штрихи-блики на воде, как на иллюстрации CityRT */}
-      <Box
-        size={[0.36, 0.004, 0.045]}
-        position={[(seed - 0.5) * 0.28, 0.034, (seed - 0.3) * 0.25]}
-        color={WATER_COLOR_RIPPLE}
-        outline={false}
-        castShadow={false}
-      />
-      <Box
-        size={[0.24, 0.004, 0.035]}
-        position={[(0.5 - seed) * 0.26, 0.034, (0.4 - seed) * 0.3]}
-        color={WATER_FOAM}
-        outline={false}
-        castShadow={false}
-      />
-
-      {/* Береговые откосы и белая пенная линия там, где вода граничит с сушей */}
+      {/* Аккуратная береговая кромка только там, где вода граничит с сушей */}
       {!north && (
         <group>
-          <Box size={[1.02, 0.048, 0.08]} position={[0, 0.024, -0.46]} color={BANK_EARTH} outline={false} />
-          <Box size={[1.02, 0.022, 0.05]} position={[0, 0.052, -0.475]} color={BANK_GRASS} outline={false} />
-          <Box size={[0.96, 0.006, 0.035]} position={[0, 0.035, -0.405]} color={WATER_FOAM} outline={false} castShadow={false} />
+          <Box size={[1.01, 0.044, 0.065]} position={[0, 0.022, -0.47]} color={BANK_EARTH} />
+          <Box size={[1.01, 0.018, 0.04]} position={[0, 0.046, -0.482]} color={BANK_GRASS} outline={false} />
         </group>
       )}
       {!south && (
         <group>
-          <Box size={[1.02, 0.048, 0.08]} position={[0, 0.024, 0.46]} color={BANK_EARTH} outline={false} />
-          <Box size={[1.02, 0.022, 0.05]} position={[0, 0.052, 0.475]} color={BANK_GRASS} outline={false} />
-          <Box size={[0.96, 0.006, 0.035]} position={[0, 0.035, 0.405]} color={WATER_FOAM} outline={false} castShadow={false} />
+          <Box size={[1.01, 0.044, 0.065]} position={[0, 0.022, 0.47]} color={BANK_EARTH} />
+          <Box size={[1.01, 0.018, 0.04]} position={[0, 0.046, 0.482]} color={BANK_GRASS} outline={false} />
         </group>
       )}
       {!east && (
         <group>
-          <Box size={[0.08, 0.048, 1.02]} position={[0.46, 0.024, 0]} color={BANK_EARTH} outline={false} />
-          <Box size={[0.05, 0.022, 1.02]} position={[0.475, 0.052, 0]} color={BANK_GRASS} outline={false} />
-          <Box size={[0.035, 0.006, 0.96]} position={[0.405, 0.035, 0]} color={WATER_FOAM} outline={false} castShadow={false} />
+          <Box size={[0.065, 0.044, 1.01]} position={[0.47, 0.022, 0]} color={BANK_EARTH} />
+          <Box size={[0.04, 0.018, 1.01]} position={[0.482, 0.046, 0]} color={BANK_GRASS} outline={false} />
         </group>
       )}
       {!west && (
         <group>
-          <Box size={[0.08, 0.048, 1.02]} position={[-0.46, 0.024, 0]} color={BANK_EARTH} outline={false} />
-          <Box size={[0.05, 0.022, 1.02]} position={[-0.475, 0.052, 0]} color={BANK_GRASS} outline={false} />
-          <Box size={[0.035, 0.006, 0.96]} position={[-0.405, 0.035, 0]} color={WATER_FOAM} outline={false} castShadow={false} />
+          <Box size={[0.065, 0.044, 1.01]} position={[-0.47, 0.022, 0]} color={BANK_EARTH} />
+          <Box size={[0.04, 0.018, 1.01]} position={[-0.482, 0.046, 0]} color={BANK_GRASS} outline={false} />
         </group>
       )}
 
-      {/* Камыши и прибрежные валуны у некоторых береговых клеток */}
-      {hasBorderLand && seed > 0.45 && (
-        <group position={[!west ? -0.34 : !east ? 0.34 : 0.24, 0.03, !north ? -0.34 : !south ? 0.34 : -0.22]}>
-          <Cylinder radius={0.045} radiusTop={0.032} height={0.05} segments={6} position={[0, 0.02, 0]} color="#8b857a" />
-          <Cylinder radius={0.008} height={0.16} segments={5} position={[0.04, 0.08, 0.02]} color="#4e7c3e" outline={false} />
-          <Cylinder radius={0.008} height={0.14} segments={5} position={[0.06, 0.07, -0.02]} color="#5f8f49" outline={false} />
+      {/* Редкие прибрежные валуны у кромки берега */}
+      {hasBorderLand && seed > 0.72 && (
+        <group position={[!west ? -0.37 : !east ? 0.37 : 0.26, 0.026, !north ? -0.37 : !south ? 0.37 : -0.26]}>
+          <Cylinder radius={0.04} radiusTop={0.028} height={0.04} segments={6} position={[0, 0.018, 0]} color="#8f887c" />
         </group>
       )}
     </group>
@@ -143,16 +119,9 @@ export function BridgeTileMesh({
     <group>
       {/* Вода под мостом */}
       <Box
-        size={[1.005, 0.036, 1.005]}
+        size={[1.01, 0.034, 1.01]}
         position={[0, 0.014, 0]}
         color={WATER_COLOR_DEEP}
-        outline={false}
-        castShadow={false}
-      />
-      <Box
-        size={[0.32, 0.004, 0.04]}
-        position={[0.14, 0.034, -0.18]}
-        color={WATER_FOAM}
         outline={false}
         castShadow={false}
       />

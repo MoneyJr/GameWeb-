@@ -27,7 +27,7 @@ import { currentSeason, SEASON_PALETTES, type SeasonPalette } from '../../lib/se
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
 const ISO_POLAR_ANGLE = Math.acos(CAMERA_POSITION[1] / Math.hypot(...CAMERA_POSITION))
-const PAN_LIMIT = GRID_SIZE / 2 + 4
+const PAN_LIMIT = GRID_SIZE / 2
 const CAMERA_UP = new THREE.Vector3(0, 1, 0)
 
 type Cell = { x: number; y: number }
@@ -46,12 +46,8 @@ interface PannableControls {
 /** Значение "кнопка ничего не делает" для OrbitControls (в типах drei null не допускается). */
 const MOUSE_NONE = -1 as THREE.MOUSE
 
-function terrainHeightAt(x: number, z: number): number {
-  const distance = Math.hypot(x, z)
-  const t = THREE.MathUtils.clamp((distance - 80) / 520, 0, 1)
-  const rise = t * t * (3 - 2 * t)
-  const distantRidges = Math.max(0, Math.sin(distance * 0.035 + Math.atan2(z, x) * 3))
-  return rise * (8 + distantRidges * 8)
+function terrainHeightAt(_x: number, _z: number): number {
+  return 0
 }
 
 function SceneCompiler({ onReady }: { onReady: () => void }) {
@@ -100,7 +96,7 @@ function StableMapControls({
     // equivalent zoom bounds as well as the perspective-camera bounds.
     controls.minDistance = 18
     controls.maxDistance = 110
-    controls.minZoom = 16
+    controls.minZoom = 26
     controls.maxZoom = 160
     controls.minPolarAngle = ISO_POLAR_ANGLE
     controls.maxPolarAngle = Math.PI / 2.25
@@ -249,26 +245,15 @@ export const GroundSlab = memo(function GroundSlab({ minutes, palette, showGrid 
   const terrainMaterial = useRef<THREE.MeshToonMaterial>(null)
   const displayedNight = useRef(0)
   const dayTerrainColor = useMemo(() => new THREE.Color(palette.ground), [palette])
-  const nightTerrainColor = useMemo(() => new THREE.Color('#1b2432'), [])
+  const nightTerrainColor = useMemo(() => new THREE.Color('#4d5b49'), [])
   const terrainColor = useMemo(() => new THREE.Color(), [])
   useFrame((_, delta) => {
     const targetNight = calcNightLevel(minutes)
     displayedNight.current += (targetNight - displayedNight.current) * (1 - Math.exp(-delta * 2.2))
-    terrainColor.copy(dayTerrainColor).lerp(nightTerrainColor, displayedNight.current)
+    terrainColor.copy(dayTerrainColor).lerp(nightTerrainColor, displayedNight.current * 0.65)
     terrainMaterial.current?.color.copy(terrainColor)
   })
-  const terrain = useMemo(() => {
-    const segments = 240
-    const geometry = new THREE.PlaneGeometry(1200, 1200, segments, segments)
-    const positions = geometry.attributes.position as THREE.BufferAttribute
-    for (let i = 0; i < positions.count; i += 1) {
-      const x = positions.getX(i)
-      const z = positions.getY(i)
-      positions.setZ(i, terrainHeightAt(x, z))
-    }
-    geometry.computeVertexNormals()
-    return geometry
-  }, [])
+  const terrain = useMemo(() => new THREE.PlaneGeometry(2400, 2400, 1, 1), [])
   const gridLines = useMemo(() => {
     const helper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, '#2a3420', '#2a3420')
     if (helper.material instanceof THREE.Material) {
@@ -286,7 +271,7 @@ export const GroundSlab = memo(function GroundSlab({ minutes, palette, showGrid 
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} visible={showGrid} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[350, 350]} />
+        <planeGeometry args={[480, 480]} />
         <shadowMaterial color="#24366b" transparent opacity={0.3} />
       </mesh>
     </group>
@@ -316,51 +301,30 @@ export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palett
   }, [])
   const scenery = useMemo(() => {
     const root = new THREE.Group()
-    const treeCapacity = 6000
+    const treeCapacity = 6500
     const treeInstances = treeParts.map((part) => {
       const material = Array.isArray(part.material) ? part.material.map((item) => item.clone()) : part.material.clone()
       const mesh = new THREE.InstancedMesh(part.geometry, material, treeCapacity)
       mesh.castShadow = true
       mesh.receiveShadow = true
-      // The forest spans many distant clusters beyond the default local bounds.
       mesh.frustumCulled = false
       return mesh
     })
     const transform = new THREE.Object3D()
-    const hillSpecs: [number, number, number, number, number][] = [
-      [-48, -78, 12, 3.4, 9], [-24, -84, 15, 4.8, 12], [18, -88, 17, 4.1, 13], [52, -76, 13, 3.5, 10],
-      [-78, -12, 14, 4.2, 11], [80, 20, 15, 4.8, 12], [-65, 68, 18, 5, 13], [8, 82, 20, 4.5, 14], [70, 64, 16, 4.1, 12],
-    ]
-    // Natural tree belts follow the feet of individual hills rather than
-    // forming a circular wall around the city.
-    const clusters: [number, number][] = hillSpecs.map(([x, z]) => [x, z])
-    const riverCenter = (x: number) => -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
-    const riverWidth = 3.35 * 2
-    const distanceToRiver = (x: number, z: number) => {
-      let minDistanceSquared = Number.POSITIVE_INFINITY
-      // Sample the river spline around the point's X coordinate to estimate
-      // the nearest point on its curved centerline.
-      for (let sample = -6; sample <= 6; sample += 1) {
-        const riverX = x + sample
-        const dx = riverX - x
-        const dz = riverCenter(riverX) - z
-        minDistanceSquared = Math.min(minDistanceSquared, dx * dx + dz * dz)
-      }
-      return Math.sqrt(minDistanceSquared)
-    }
     const foliagePalette = palette.foliage
     let seed = 81273
     const random = () => {
       seed = (seed * 1664525 + 1013904223) >>> 0
       return seed / 4294967296
     }
+    const halfBoard = GRID_SIZE / 2 + 1.2
     let treeCount = 0
     const addTree = (x: number, z: number) => {
-      if (treeCount >= treeCapacity || Math.hypot(x, z) < 18 || distanceToRiver(x, z) < riverWidth / 2 + 2.5) return
-      const scale = 0.85 + random() * 0.4
+      if (treeCount >= treeCapacity) return
+      if (Math.abs(x) < halfBoard && Math.abs(z) < halfBoard) return
+      const scale = 0.85 + random() * 0.42
       const yaw = random() * Math.PI * 2
-      const groundY = terrainHeightAt(x, z)
-      transform.position.set(x, groundY, z)
+      transform.position.set(x, terrainHeightAt(x, z), z)
       transform.rotation.set(0, yaw, 0)
       transform.scale.set(scale, scale * (0.82 + random() * 0.45), scale)
       transform.updateMatrix()
@@ -376,23 +340,18 @@ export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palett
       }
       treeCount += 1
     }
-    // A jittered grid supplies enough candidate points for visible woodland.
-    // Acceptance rises smoothly outwards, and accepted edge points are emitted
-    // as small 2–4 tree groups to preserve an open woodland-to-city transition.
-    for (let candidate = 0; candidate < 42000 && treeCount < treeCapacity; candidate += 1) {
-      const px = (random() * 2 - 1) * 112
-      const pz = (random() * 2 - 1) * 112
-      const distance = Math.hypot(px, pz)
-      if (distance < 18 || distanceToRiver(px, pz) < riverWidth / 2 + 2.5) continue
-      // Broad, overlapping sine fields create woodland patches and visible
-      // clearings instead of a uniform scatter of isolated trees.
-      const noise = Math.sin(px * 0.08) * Math.cos(pz * 0.08) + Math.sin((px + pz) * 0.04)
-      if (noise < 0.25) continue
-      const density = distance < 42
-        ? THREE.MathUtils.lerp(0.1, 0.4, (distance - 18) / 24)
-        : 0.75 + random() * 0.15
+    for (let candidate = 0; candidate < 52000 && treeCount < treeCapacity; candidate += 1) {
+      const px = (random() * 2 - 1) * 145
+      const pz = (random() * 2 - 1) * 145
+      if (Math.abs(px) < halfBoard && Math.abs(pz) < halfBoard) continue
+      const distance = Math.max(Math.abs(px), Math.abs(pz))
+      const noise = Math.sin(px * 0.075) * Math.cos(pz * 0.075) + Math.sin((px + pz) * 0.038)
+      if (noise < 0.2) continue
+      const density = distance < 46
+        ? THREE.MathUtils.lerp(0.18, 0.5, (distance - halfBoard) / (46 - halfBoard))
+        : 0.72 + random() * 0.16
       if (random() >= density) continue
-      if (distance < 42) {
+      if (distance < 48) {
         const groupSize = 2 + Math.floor(random() * 3)
         for (let member = 0; member < groupSize; member += 1) {
           const offsetX = member === 0 ? 0 : (random() + random() - 1) * 1.8
@@ -410,160 +369,6 @@ export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palett
       instance.computeBoundingSphere()
       root.add(instance)
     })
-
-    const leafColors = foliagePalette
-    const leaves = new THREE.InstancedMesh(new THREE.PlaneGeometry(0.16, 0.1), new THREE.MeshBasicMaterial({ color: '#ffffff', side: THREE.DoubleSide }), 420)
-    leaves.frustumCulled = false
-    for (let i = 0; i < leaves.count; i += 1) {
-      const cluster = clusters[i % clusters.length]
-      const leafX = cluster[0] + (random() - 0.5) * 16
-      const leafZ = cluster[1] + (random() - 0.5) * 16
-      transform.position.set(leafX, terrainHeightAt(leafX, leafZ) + 0.008, leafZ)
-      transform.rotation.set(-Math.PI / 2, random() * Math.PI, random() * Math.PI)
-      transform.scale.setScalar(0.4 + random() * 1.1)
-      transform.updateMatrix()
-      leaves.setMatrixAt(i, transform.matrix)
-      leaves.setColorAt(i, new THREE.Color(leafColors[Math.floor(random() * leafColors.length)]))
-    }
-    leaves.instanceMatrix.needsUpdate = true
-    if (leaves.instanceColor) leaves.instanceColor.needsUpdate = true
-    root.add(leaves)
-
-    const hillColors = palette.hills
-    hillSpecs.forEach(([x, z, sx, sy, sz], index) => {
-      const hillMaterial = new THREE.MeshToonMaterial({ color: hillColors[index % hillColors.length] })
-      ;(hillMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
-      const hill = new THREE.Mesh(new THREE.SphereGeometry(1, 10, 7), hillMaterial)
-      hill.position.set(x, sy * 0.65 - 0.3, z)
-      hill.scale.set(sx, sy, sz)
-      hill.castShadow = true
-      hill.receiveShadow = true
-      const hillOutline = new THREE.LineSegments(
-        new THREE.EdgesGeometry(hill.geometry, 28),
-        new THREE.LineBasicMaterial({ color: '#261c14', transparent: true, opacity: 0.75 }),
-      )
-      hill.add(hillOutline)
-      root.add(hill)
-      const lowerRidgeMaterial = new THREE.MeshToonMaterial({ color: hillColors[(index + 1) % hillColors.length] })
-      ;(lowerRidgeMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
-      const lowerRidge = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 1), lowerRidgeMaterial)
-      lowerRidge.position.set(x + (index % 2 ? -sx * 0.58 : sx * 0.58), 0.02, z + sz * 0.22)
-      lowerRidge.scale.set(sx * 0.9, sy * 0.46, sz * 0.78)
-      lowerRidge.castShadow = true
-      lowerRidge.receiveShadow = true
-      root.add(lowerRidge)
-    })
-    // Draw vineyard terraces as two instanced layers so the distant slopes read
-    // as cultivated land without adding hundreds of separate draw calls.
-    const vineColors = palette.vines
-    const rowMesh = new THREE.InstancedMesh(
-      new THREE.BoxGeometry(1, 0.045, 0.1),
-      new THREE.MeshToonMaterial({ color: '#795b36' }),
-      hillSpecs.length * 5,
-    )
-    const vineLeafMaterial = new THREE.MeshToonMaterial({ color: '#ffffff' })
-    ;(vineLeafMaterial as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
-    const leafMesh = new THREE.InstancedMesh(
-      new THREE.IcosahedronGeometry(0.16, 0),
-      vineLeafMaterial,
-      hillSpecs.length * 5 * 9,
-    )
-    let rowIndex = 0
-    let leafIndex = 0
-    hillSpecs.forEach(([x, z, sx, sy, sz], hillIndex) => {
-      for (let row = 0; row < 5; row += 1) {
-        const localZ = (row - 2) * sz * 0.19
-        const profile = Math.sqrt(Math.max(0.12, 1 - (localZ * localZ) / (sz * sz)))
-        const y = sy * 0.65 - 0.3 + sy * profile * 0.54 + 0.05
-        transform.position.set(x, y, z + localZ)
-        transform.rotation.set(0, (hillIndex % 2) * Math.PI / 2, 0)
-        transform.scale.set(sx * 1.7, 1, 1)
-        transform.updateMatrix()
-        rowMesh.setMatrixAt(rowIndex, transform.matrix)
-        for (let vine = 0; vine < 9; vine += 1) {
-          const t = vine / 8 - 0.5
-          const vx = x + t * sx * 1.35
-          const vz = z + localZ
-          transform.position.set(vx, y + 0.08 + random() * 0.05, vz + (random() - 0.5) * 0.13)
-          transform.rotation.set(random() * 0.3, random() * Math.PI, random() * 0.3)
-          transform.scale.setScalar(0.65 + random() * 0.55)
-          transform.updateMatrix()
-          leafMesh.setMatrixAt(leafIndex, transform.matrix)
-          leafMesh.setColorAt(leafIndex, new THREE.Color(vineColors[(vine + row + hillIndex) % vineColors.length]))
-          leafIndex += 1
-        }
-        rowIndex += 1
-      }
-    })
-    rowMesh.instanceMatrix.needsUpdate = true
-    leafMesh.instanceMatrix.needsUpdate = true
-    if (leafMesh.instanceColor) leafMesh.instanceColor.needsUpdate = true
-    rowMesh.castShadow = true
-    leafMesh.castShadow = true
-    root.add(rowMesh, leafMesh)
-    const ribbon = (halfWidth: number, baseY = 0, edgeOffset = 0) => {
-      const positions: number[] = []
-      const indices: number[] = []
-      const samples = 180
-      for (let i = 0; i <= samples; i += 1) {
-        const x = -105 + (210 * i) / samples
-        const z = riverCenter(x)
-        positions.push(x, baseY, z + edgeOffset - halfWidth, x, baseY, z + edgeOffset + halfWidth)
-        if (i < samples) {
-          const a = i * 2
-          indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2)
-        }
-      }
-      const geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-      geometry.setIndex(indices)
-      geometry.computeVertexNormals()
-      return geometry
-    }
-    const riverBanks = new THREE.Mesh(ribbon(4.05, 0.012), new THREE.MeshToonMaterial({ color: palette.riverBank, side: THREE.DoubleSide }))
-    // The backdrop ground is now continuous; keep the river surface just above
-    // the terrain so the blue channel cannot be hidden beneath the 1200-unit plane.
-    const river = new THREE.Mesh(ribbon(3.35, 0.026), new THREE.MeshToonMaterial({ color: palette.river, side: THREE.DoubleSide }))
-    riverBanks.receiveShadow = true
-    river.receiveShadow = true
-    root.add(riverBanks, river)
-    for (const side of [-1, 1]) {
-      const foam = new THREE.Mesh(ribbon(0.18, 0.032, side * 3.43), new THREE.MeshBasicMaterial({ color: '#e2e8f0', transparent: true, opacity: 0.78, side: THREE.DoubleSide }))
-      // Pale ribbons mark the waterline with a soft illustrated foam edge.
-      root.add(foam)
-    }
-    // Sparse low-poly stones and golden reeds articulate the bank and make
-    // the lowered channel read as a riverbed instead of a flat blue stripe.
-    const stoneCount = 180
-    const stones = new THREE.InstancedMesh(
-      new THREE.IcosahedronGeometry(0.23, 0),
-      new THREE.MeshToonMaterial({ color: '#77766f' }),
-      stoneCount,
-    )
-    const reeds = new THREE.InstancedMesh(
-      new THREE.ConeGeometry(0.045, 0.46, 5),
-      new THREE.MeshToonMaterial({ color: '#c89a35' }),
-      stoneCount,
-    )
-    for (let i = 0; i < stoneCount; i += 1) {
-      const x = -102 + random() * 204
-      const side = i % 2 ? -1 : 1
-      const bankZ = riverCenter(x) + side * (3.9 + random() * 2.2)
-      transform.position.set(x, 0.08 + random() * 0.08, bankZ)
-      transform.rotation.set(random(), random() * Math.PI, random())
-      transform.scale.set(0.5 + random() * 0.8, 0.4 + random() * 0.6, 0.6 + random() * 0.7)
-      transform.updateMatrix()
-      stones.setMatrixAt(i, transform.matrix)
-      transform.position.set(x + (random() - 0.5) * 0.3, 0.2, bankZ + side * 0.45)
-      transform.rotation.set(0.08, random() * Math.PI, 0.1 + random() * 0.25)
-      transform.scale.setScalar(0.55 + random() * 0.8)
-      transform.updateMatrix()
-      reeds.setMatrixAt(i, transform.matrix)
-    }
-    stones.instanceMatrix.needsUpdate = true
-    reeds.instanceMatrix.needsUpdate = true
-    stones.castShadow = true
-    root.add(stones, reeds)
     return root
   }, [treeParts, palette])
 
@@ -599,13 +404,6 @@ function isRoadJunctionAt(grid: Grid, x: number, y: number, north: boolean, sout
 export const World = memo(function World({ grid }: { grid: Grid }) {
   return (
     <group>
-      {grid[0].map((cell) => {
-        const crossesNorthEdge = isRoadLikeTile(cell.type) && isRoadLikeTile(grid[1][cell.x]?.type)
-        if (!crossesNorthEdge) return null
-        const x = cell.x - (GRID_SIZE - 1) / 2
-        const riverZ = -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
-        return <StoneArchBridge key={`bridge-${cell.x}`} x={x} riverZ={riverZ} />
-      })}
       {grid.flat().map((cell) => {
         if (cell.type === TileType.EMPTY) return null
         const orientation = cell.orientation ?? 0
@@ -660,29 +458,6 @@ export const World = memo(function World({ grid }: { grid: Grid }) {
     </group>
   )
 })
-
-function StoneArchBridge({ x, riverZ }: { x: number; riverZ: number }) {
-  const boundaryZ = -(GRID_SIZE - 1) / 2 - 0.5
-  const length = Math.max(8.5, boundaryZ - riverZ + 4)
-  const centerZ = (boundaryZ + riverZ) / 2
-  const postCount = Math.max(6, Math.floor(length / 1.15))
-  const archGeometry = useMemo(() => {
-    const points = Array.from({ length: 13 }, (_, i) => {
-      const z = -length / 2 + (length * i) / 12
-      const t = i / 12
-      return new THREE.Vector3(0, 0.08 + Math.sin(t * Math.PI) * 0.2, z)
-    })
-    return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 40, 0.12, 6, false)
-  }, [length])
-  return <group position={[x, 0, centerZ]}>
-    <mesh position={[0, 0.35, 0]} castShadow receiveShadow><boxGeometry args={[2.05, 0.28, length]} /><meshToonMaterial color="#b6aa95" /><Edges color="#261c14" threshold={28} /></mesh>
-    {[-0.94, 0.94].map(side => <group key={side}>
-      <mesh geometry={archGeometry} position={[side, 0, 0]} castShadow><meshToonMaterial color="#9d907d" /><Edges color="#261c14" threshold={28} /></mesh>
-      <mesh position={[side, 0.62, 0]} castShadow><boxGeometry args={[0.16, 0.42, length]} /><meshToonMaterial color="#c8bca7" /><Edges color="#261c14" threshold={28} /></mesh>
-      {Array.from({ length: postCount }, (_, i) => <mesh key={i} position={[side, 0.92, -length / 2 + (length * i) / (postCount - 1)]} castShadow><boxGeometry args={[0.22, 0.2, 0.2]} /><meshToonMaterial color="#d2c5af" /><Edges color="#261c14" threshold={28} /></mesh>)}
-    </group>)}
-  </group>
-}
 
 /* -------------------------------------------------------------------------- */
 /*  Интерактивный слой: Hover Plane + подсветка тайла + "рисование" мышью         */
@@ -1376,7 +1151,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     const controls = controlsRef.current
     if (!controls || !(controls.object instanceof THREE.OrthographicCamera)) return
     const camera = controls.object
-    camera.zoom = THREE.MathUtils.clamp(camera.zoom * (direction === 'in' ? 1.25 : 1 / 1.25), 20, 250)
+    camera.zoom = THREE.MathUtils.clamp(camera.zoom * (direction === 'in' ? 1.25 : 1 / 1.25), 26, 160)
     camera.updateProjectionMatrix()
     controls.update()
   }
@@ -1426,7 +1201,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <fogExp2 attach="fog" args={[palette.sky, 0.002]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
 
-      <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={0.5} far={1500} />
+      <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={-500} far={2000} />
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 

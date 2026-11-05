@@ -44,14 +44,21 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
     }
   }, [])
 
-  // Деревья зависят только от того, какие клетки застроены, а не от числа жителей.
-  const builtKey = useMemo(() => grid.flat().filter((cell) => cell.type !== TileType.EMPTY).map((cell) => cell.y * GRID_SIZE + cell.x).join(','), [grid])
+  // Деревья зависят только от того, какие клетки застроены зданиями, а не от природных рек или дорог.
+  const isUrbanTile = (type: TileType) =>
+    type !== TileType.EMPTY &&
+    type !== TileType.ROAD &&
+    type !== TileType.WATER &&
+    type !== TileType.BRIDGE &&
+    type !== TileType.RAIL &&
+    type !== TileType.RAIL_BRIDGE
+  const builtKey = useMemo(() => grid.flat().filter((cell) => isUrbanTile(cell.type)).map((cell) => cell.y * GRID_SIZE + cell.x).join(','), [grid])
   const gridRef = useRef(grid)
   gridRef.current = grid
   const trees = useMemo(() => {
     const grid = gridRef.current
     const built = new Uint8Array(GRID_SIZE * GRID_SIZE)
-    for (const row of grid) for (const cell of row) if (cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD) built[cell.y * GRID_SIZE + cell.x] = 1
+    for (const row of grid) for (const cell of row) if (isUrbanTile(cell.type)) built[cell.y * GRID_SIZE + cell.x] = 1
     const result: Tree[] = []
     for (const row of grid) for (const cell of row) {
       if (cell.type !== TileType.EMPTY) continue

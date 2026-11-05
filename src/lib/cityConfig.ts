@@ -12,18 +12,19 @@ export interface ToolDefinition {
 }
 
 /** Центральная линия судоходной реки (в координатах сетки 0..GRID_SIZE-1). */
-export function riverCenterGridY(x: number): number {
-  return 7.5 + Math.sin(x * 0.11) * 1.8 + Math.cos(x * 0.06) * 0.8
+export function riverCenterGridY(_x: number): number {
+  return 7.5
 }
 
-/** Природное русло реки и лесное озеро на стартовой карте. */
+/** Природное русло реки и лесная заводь на стартовой карте (без ступенчатых зазубрин на сетке). */
 export function isNaturalWaterCell(x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return false
-  const riverY = riverCenterGridY(x)
-  if (Math.abs(y - riverY) <= 2.1) return true
-  const pondDx = (x - 53) / 4.2
-  const pondDy = (y - 48) / 2.8
-  return pondDx * pondDx + pondDy * pondDy <= 1
+  if (y >= 6 && y <= 9) return true
+  if (x >= 50 && x <= 56 && y >= 46 && y <= 50) {
+    const isCorner = (x === 50 || x === 56) && (y === 46 || y === 50)
+    return !isCorner
+  }
+  return false
 }
 
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {

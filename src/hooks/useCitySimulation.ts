@@ -1314,6 +1314,9 @@ function createInitialState(): SimState {
         if (cell.type === TileType.EMPTY && isNaturalWaterCell(cell.x, cell.y)) {
           return { ...cell, type: TileType.WATER, naturalWater: true }
         }
+        if (cell.type === TileType.WATER && cell.naturalWater && !isNaturalWaterCell(cell.x, cell.y)) {
+          return { ...cell, type: TileType.EMPTY, naturalWater: false }
+        }
         const normalizedCell = catalogId === cell.catalogId ? cell : { ...cell, catalogId }
         if (cell.type !== TileType.RESIDENTIAL) return normalizedCell
         const profile = residenceProfile(cell.x, cell.y, day, minute)
