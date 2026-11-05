@@ -31,7 +31,7 @@ export function buildShowcaseGrid(): Grid {
   put(31, 16, 'RESIDENTIAL', 'res_stalinka_pink')
   put(33, 16, 'RESIDENTIAL', 'res_streamline_curve')
   put(31, 14, 'RESIDENTIAL', 'res_highrise_slab')
-  put(27, 21, 'COMMERCIAL', 'com_glass_podium_tower')
+  put(27, 21, 'RESIDENTIAL', 'com_glass_podium_tower')
   put(31, 21, 'COMMERCIAL', 'com_diagrid_skyscraper')
   put(26, 33, 'PARK', 'lnd_clock_tower')
 

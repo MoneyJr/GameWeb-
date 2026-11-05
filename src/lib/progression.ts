@@ -22,7 +22,7 @@ export function rankForPopulation(population: number): number {
 /** С какого ранга доступна постройка (по catalogId или инструменту). Всё, чего нет в списке, открыто сразу (Ранг 0 — Хутор). */
 const UNLOCK_RANK: Record<string, number> = {
   // Ранг 1 — Деревня (50+)
-  res_cozy_estate: 1, res_townhouse: 1, res_half_timbered: 1, res_villa_conservatory: 1,
+  res_cozy_estate: 1, res_townhouse: 1, res_half_timbered: 1, res_villa_conservatory: 1, res_courtyard_east: 1,
   com_wine_tavern: 1, com_grocery: 1,
   ind_warehouse: 1,
   civ_fire: 1, civ_school: 1,
@@ -33,7 +33,7 @@ const UNLOCK_RANK: Record<string, number> = {
   [ToolId.FIRE_STATION]: 1,
 
   // Ранг 2 — Посёлок (200+)
-  res_apartment: 2, res_brick_loft: 2, res_balcony_block: 2, res_brick_walkup: 2,
+  res_apartment: 2, res_brownstone_us: 2, res_brick_loft: 2, res_balcony_block: 2, res_brick_walkup: 2,
   com_market_hall: 2, com_dept_store: 2,
   ind_winery: 2, ind_brickworks: 2,
   civ_hospital: 2, civ_college_hall: 2, civ_train_station: 2,
@@ -115,10 +115,10 @@ export const QUESTS: readonly Quest[] = [
   { id: 'cityrt_district', reward: 950, check: (c) => (c.catalog.res_stalinka_pink ?? 0) + (c.catalog.res_streamline_curve ?? 0) + (c.catalog.res_color_block ?? 0) >= 2, text: { en: 'Build 2 architectural ensembles (Spire House, Streamline Liner or Colour Block)', ru: 'Возведите 2 ансамбля: Розовый дом со шпилем, Дом-лайнер или Дом с эркерами', de: 'Baue 2 Stadtensembles', fr: 'Construisez 2 ensembles architecturaux' } },
   { id: 'concrete', reward: 900, check: (c) => (c.catalog.ind_concrete_plant ?? 0) >= 1 && c.materials.concrete >= 10, text: { en: 'Build a concrete plant and produce 10 concrete', ru: 'Постройте бетонный комбинат и накопите 10 бетона', de: 'Betonwerk bauen und 10 Beton lagern', fr: 'Construisez une centrale à béton (10 béton)' } },
   { id: 'freight_rail', reward: 1100, check: (c) => (c.catalog.ind_freight_station ?? 0) >= 1 && c.rails >= 12, text: { en: 'Build a freight rail terminal and expand tracks to 12 tiles', ru: 'Постройте грузовой ж/д терминал и доведите пути до 12 клеток', de: 'Güterbahnhof und 12 Gleise bauen', fr: 'Construisez un terminal de fret et 12 rails' } },
-  { id: 'office_district', reward: 1200, check: (c) => (c.catalog.com_office_tower ?? 0) + (c.catalog.com_grid_tower ?? 0) >= 2, text: { en: 'Create a business district with 2 office towers', ru: 'Создайте деловой квартал из 2 офисных башен', de: 'Baue 2 Bürotürme im Geschäftsviertel', fr: 'Créez un quartier d’affaires avec 2 tours de bureaux' } },
+  { id: 'office_district', reward: 1200, check: (c) => (c.catalog.com_office_tower ?? 0) + (c.catalog.com_grid_tower ?? 0) + (c.catalog.com_glass_skyscraper ?? 0) >= 2, text: { en: 'Create a business or high-rise district with 2 towers', ru: 'Возведите 2 высотные башни (Офисная или Белая решетчатая башня)', de: 'Baue 2 Hochhaustürme im Zentrum', fr: 'Érigez 2 tours dans le centre-ville' } },
   { id: 'pop1200', reward: 2000, check: (c) => c.population >= 1200, text: { en: 'Reach 1,200 residents', ru: 'Население 1 200 жителей', de: 'Erreiche 1.200 Einwohner', fr: 'Atteignez 1 200 habitants' } },
   { id: 'steel', reward: 1500, check: (c) => (c.catalog.ind_steel_foundry ?? 0) >= 1 && c.materials.steel >= 10, text: { en: 'Open a steel foundry and stockpile 10 steel', ru: 'Откройте стальной литейный цех и накопите 10 стали', de: 'Stahlgießerei bauen und 10 Stahl lagern', fr: 'Ouvrez une fonderie et stockez 10 aciers' } },
-  { id: 'highrise', reward: 1800, check: (c) => (c.catalog.res_highrise_slab ?? 0) + (c.catalog.res_bay_towers ?? 0) + (c.catalog.res_modern_glass_tower ?? 0) >= 2, text: { en: 'Build 2 residential high-rises (City Slab, Bay Tower or Glass Tower)', ru: 'Постройте 2 высотных жилых комплекса', de: 'Baue 2 Wohnhochhäuser', fr: 'Construisez 2 tours résidentielles' } },
+  { id: 'highrise', reward: 1800, check: (c) => (c.catalog.res_highrise_slab ?? 0) + (c.catalog.res_bay_towers ?? 0) + (c.catalog.res_modern_glass_tower ?? 0) + (c.catalog.com_glass_podium_tower ?? 0) >= 2, text: { en: 'Build 2 residential high-rises (City Slab, Bay Tower, Emerald or Glass Tower)', ru: 'Постройте 2 высотных жилых комплекса', de: 'Baue 2 Wohnhochhäuser', fr: 'Construisez 2 tours résidentielles' } },
   { id: 'arena', reward: 2200, check: (c) => (c.catalog.civ_diamond_arena ?? 0) >= 1 || (c.catalog.civ_university ?? 0) >= 1, text: { en: 'Build the Crystal Arena or University Campus', ru: 'Постройте арену «Кристалл» или Университет', de: 'Kristall-Arena oder Universität bauen', fr: 'Construisez l’Aréna Cristal ou l’Université' } },
   { id: 'pop3000', reward: 5000, check: (c) => c.population >= 3000, text: { en: 'Grow into a metropolis: 3,000 residents', ru: 'Станьте мегаполисом: 3 000 жителей', de: 'Werde Metropole: 3.000 Einwohner', fr: 'Devenez une métropole : 3 000 habitants' } },
   { id: 'diagrid', reward: 6500, check: (c) => (c.catalog.com_diagrid_skyscraper ?? 0) >= 1 || (c.catalog.res_megapolis_complex ?? 0) >= 1, text: { en: 'Crown your skyline with the Diagrid Skyscraper or Megapolis Complex', ru: 'Увенчайте силуэт города небоскрёбом «Диагрид» или «Мегаполисом»', de: 'Kröne die Skyline mit dem Diagrid-Wolkenkratzer', fr: 'Érigez le gratte-ciel Diagrid ou le complexe Megapolis' } },

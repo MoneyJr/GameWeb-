@@ -1392,6 +1392,12 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
+      } else if (catalogId === 'com_grid_tower') {
+        model = <GridOfficeTowerMesh />
+        w = 1; h = 1
+      } else if (catalogId === 'com_glass_podium_tower') {
+        model = <GlassPodiumTowerMesh />
+        w = 2; h = 2
       } else if (catalogId === 'res_villa_conservatory') {
         model = <VillaConservatoryMesh />
       } else if (catalogId === 'res_balcony_block') {
@@ -1418,11 +1424,17 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
         model = <ModernBlockMesh />
       } else if (catalogId === 'res_brick_loft') {
         model = <BrickLoftMesh />
-      } else if (catalogId === 'res_panel_block' || catalogId === 'res_apartment') {
+      } else if (catalogId === 'res_brownstone_us') {
+        model = <Residential variant={variant} style="US" catalogId={catalogId} />
+      } else if (catalogId === 'res_courtyard_east') {
+        model = <Residential variant={variant} style="EAST" catalogId={catalogId} />
+      } else if (catalogId === 'res_panel_block') {
+        model = <group scale={[1.82, 1.35, 1.82]}><Residential variant={variant} catalogId="res_apartment" /></group>
+        w = 2; h = 2
+      } else if (catalogId === 'res_apartment') {
         model = <Residential variant={variant} catalogId="res_apartment" />
-        if (catalogId === 'res_panel_block') { w = 2; h = 2 }
       } else if (catalogId === 'res_townhouse' || catalogId === 'res_half_timbered') {
-        model = <Residential variant={variant} catalogId="res_townhouse" />
+        model = <Residential variant={catalogId === 'res_half_timbered' ? 2 : variant} catalogId={catalogId} />
       } else {
         model = <Residential variant={variant} catalogId={catalogId} />
       }

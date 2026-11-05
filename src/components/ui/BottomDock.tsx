@@ -80,7 +80,7 @@ const sortByUnlockAndCost = (options: DockOption[]): DockOption[] =>
 
 const catalogIcons: Record<string, LucideIcon> = {
   res_cottage: House, res_townhouse: House, res_apartment: Building2, res_panel_block: Building2, res_modern_glass_tower: Building2, res_half_timbered: House, res_cozy_estate: House, res_modern_block: Building2, res_brick_loft: Building2,
-  res_villa_conservatory: House, res_balcony_block: Building2, res_brick_walkup: Building2, res_stalinka_pink: Landmark, res_streamline_curve: Building2, res_color_block: Building2, res_highrise_slab: Building2, res_bay_towers: Building2, res_megapolis_complex: Building2,
+  res_villa_conservatory: House, res_courtyard_east: House, res_brownstone_us: Building2, res_balcony_block: Building2, res_brick_walkup: Building2, res_stalinka_pink: Building2, res_streamline_curve: Building2, res_color_block: Building2, res_highrise_slab: Building2, res_bay_towers: Building2, res_megapolis_complex: Building2,
   com_bakery: Store, com_grocery: ShoppingBag, com_mall: Building2, com_cinema_cosmos: Film, com_wine_tavern: Grape, com_market_hall: Store, com_office_tower: Building2, com_glass_skyscraper: Building2,
   com_dept_store: ShoppingBag, com_grid_tower: Building2, com_glass_podium_tower: Building2, com_diagrid_skyscraper: Building2,
   ind_workshop: Factory, ind_factory: Factory, ind_warehouse: Warehouse, ind_winery: Grape, ind_brickworks: Factory, ind_concrete_plant: Warehouse, ind_steel_foundry: Factory,
@@ -203,13 +203,13 @@ export function BottomDock({ activeTool, onSelect, selectedCatalogId, onCatalogS
         .dock-item-button[aria-pressed="true"] { border-color:#6c5847; background:#edd9c0; }
         .dock-category-button:hover,.dock-item-button:not(:disabled):hover { background:#eee5d7; }
         .dock-category-button span { white-space:nowrap; font-size:11.5px; font-weight:700; letter-spacing:0.01em; }
-        .dock-submenu { position:absolute; bottom:calc(100% + 14px); left:50%; display:flex; width:max-content; max-width:calc(100vw - 24px); transform:translateX(-50%); gap:12px; overflow-x:auto; overflow-y:visible; overscroll-behavior-x:contain; touch-action:pan-x; scrollbar-width:thin; scrollbar-color:#a99b88 transparent; border:1.5px solid #cfcac2; border-radius:18px; background:rgba(250,248,245,.98); padding:12px 16px; box-shadow:0 12px 28px rgba(20,16,12,.22); backdrop-filter:blur(12px); animation:dock-menu-in .18s ease-out; }
-        .dock-submenu::-webkit-scrollbar { height:6px; }
+        .dock-submenu { position:absolute; bottom:calc(100% + 14px); left:50%; display:flex; flex-wrap:wrap; justify-content:center; width:max-content; max-width:min(calc(100vw - 24px), 1180px); max-height:min(56vh, 360px); transform:translateX(-50%); gap:12px; overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:#a99b88 transparent; border:1.5px solid #cfcac2; border-radius:18px; background:rgba(250,248,245,.98); padding:14px 18px; box-shadow:0 12px 28px rgba(20,16,12,.22); backdrop-filter:blur(12px); animation:dock-menu-in .18s ease-out; }
+        .dock-submenu::-webkit-scrollbar { width:6px; height:6px; }
         .dock-submenu::-webkit-scrollbar-thumb { border-radius:6px; background:#a99b88; }
         .dock-item-button { display:flex; width:180px; min-width:180px; height:74px; align-items:center; gap:11px; border:1px solid #d6d3d1; border-radius:14px; background:#faf8f5; padding:10px 12px; text-align:left; transition:background .15s,border-color .15s; }
         .dock-item-button.dock-item-locked { border-color:#c4c0b8; background:#dedbd4; color:#6b665e; filter:grayscale(1); cursor:not-allowed; }
         @keyframes dock-menu-in { from { opacity:0; transform:translate(-50%,6px) } to { opacity:1; transform:translate(-50%,0) } }
-        @media(max-width:767px) { .dock-category-bar { justify-content:flex-start; gap:6px; padding:7px 10px; } .dock-category-button { min-width:70px; height:54px; gap:4px; padding:6px 10px; } .dock-category-button svg { width:20px; height:20px; } .dock-category-button span { font-size:10px; } .dock-submenu { max-width:calc(100vw - 16px); gap:10px; padding:10px 12px; } .dock-item-button { width:160px; min-width:160px; height:68px; padding:8px 10px; } }
+        @media(max-width:767px) { .dock-category-bar { justify-content:flex-start; gap:6px; padding:7px 10px; } .dock-category-button { min-width:70px; height:54px; gap:4px; padding:6px 10px; } .dock-category-button svg { width:20px; height:20px; } .dock-category-button span { font-size:10px; } .dock-submenu { max-width:calc(100vw - 16px); max-height:48vh; gap:10px; padding:10px 12px; } .dock-item-button { width:160px; min-width:160px; height:68px; padding:8px 10px; } }
       `}</style>
       <div className="pointer-events-auto relative flex flex-col items-center">
         {selectedCategory && <div className="dock-submenu" aria-label={`${t('category.construction')}: ${t(selectedCategory.labelKey)}`} onWheel={(event) => {
