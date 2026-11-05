@@ -1,5 +1,5 @@
 import { Billboard, Edges } from '@react-three/drei'
-import { Fragment, memo, useEffect, useMemo, useRef, useState, useContext, type ReactNode } from 'react'
+import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { TileType } from '../../types/city'
@@ -7,36 +7,59 @@ import { NoWaterMarker, SupplyShortageMarker } from './StatusMarkers'
 import { ChristmasTreeMesh } from './SeasonalMeshes'
 import { ParkingLotMesh, PlazaMesh, TownSquareMesh, TrafficLight, UniversityMesh } from './CivicMeshes'
 import { BrickLoftMesh, GlassSkyscraperMesh, ModernBlockMesh, OfficeTowerMesh, StreetTree } from './ModernMeshes'
+import {
+  Box,
+  Cone,
+  Cylinder,
+  Dome,
+  OUTLINE_COLOR,
+  PAD_HEIGHT,
+  Pad,
+  ROAD_ASPHALT_WIDTH,
+  ROAD_CURB_OFFSET,
+  ROAD_CURB_WIDTH,
+  ROAD_TILE_LENGTH,
+  Smoke,
+  Window,
+  cinemaSignMaterial,
+  getFacadeMaterial,
+  getGradientMap,
+  getPaverMaterial,
+  hash01,
+  lampBulbMaterial,
+  lampGlowInnerMaterial,
+  lampGlowOuterMaterial,
+  nightSignMaterial,
+  townHallClockMaterial,
+  type Vec3,
+} from './primitives'
+import {
+  BalconyBlockMesh,
+  BayTowersMesh,
+  BrickWalkupMesh,
+  BridgeTileMesh,
+  ClockTowerMesh,
+  CollegeHallMesh,
+  ColorBlockMesh,
+  DeptStoreMesh,
+  DiagridSkyscraperMesh,
+  DiamondArenaMesh,
+  FreightStationMesh,
+  GlassPodiumTowerMesh,
+  GridOfficeTowerMesh,
+  HighriseSlabMesh,
+  RailTileMesh,
+  StalinkaPinkMesh,
+  StreamlineCurveMesh,
+  TrainStationMesh,
+  VillaConservatoryMesh,
+  WaterIntakeMesh,
+  WaterTileMesh,
+  WaterfrontPromenadeMesh,
+} from './CityRTMeshes'
 
-/* -------------------------------------------------------------------------- */
-/*  Общие ресурсы: геометрии, материалы и контуры кэшируются и переиспользуются  */
-/* -------------------------------------------------------------------------- */
+export { Smoke }
 
-type Vec3 = [number, number, number]
-
-type Shape =
-  | { kind: 'box'; size: Vec3 }
-  | { kind: 'cylinder'; radiusTop: number; radiusBottom: number; height: number; segments: number }
-  | { kind: 'cone'; radius: number; height: number; segments: number }
-
-const OUTLINE_COLOR = '#261c14'
-
-let gradientMap: THREE.DataTexture | null = null
-
-/** 3-ступенчатая градиентная карта для "мультяшного" ступенчатого освещения. */
-function getGradientMap(): THREE.DataTexture {
-  if (gradientMap === null) {
-    const texture = new THREE.DataTexture(new Uint8Array([105, 180, 255]), 3, 1, THREE.RedFormat)
-    texture.minFilter = THREE.NearestFilter
-    texture.magFilter = THREE.NearestFilter
-    texture.generateMipmaps = false
-    texture.needsUpdate = true
-    gradientMap = texture
-  }
-  return gradientMap
-}
-
-const materialCache = new Map<string, THREE.MeshToonMaterial>()
 const foliageMaterialCache = new Map<string, THREE.MeshToonMaterial>()
 
 function getFoliageMaterial(color: string): THREE.MeshToonMaterial {
@@ -46,22 +69,6 @@ function getFoliageMaterial(color: string): THREE.MeshToonMaterial {
     ;(material as THREE.MeshToonMaterial & { flatShading: boolean }).flatShading = true
     material.needsUpdate = true
     foliageMaterialCache.set(color, material)
-  }
-  return material
-}
-
-function getToonMaterial(color: string): THREE.MeshToonMaterial {
-  let material = materialCache.get(color)
-  if (material === undefined) {
-    material = new THREE.MeshToonMaterial({
-      color,
-      gradientMap: getGradientMap(),
-      // Сдвигаем грани назад, чтобы линии контура не мерцали (z-fighting).
-      polygonOffset: true,
-      polygonOffsetFactor: 1,
-      polygonOffsetUnits: 1,
-    })
-    materialCache.set(color, material)
   }
   return material
 }
@@ -78,120 +85,6 @@ const roadMarkingMaterial = new THREE.MeshToonMaterial({
 const outlineMaterial = new THREE.LineBasicMaterial({ color: OUTLINE_COLOR, transparent: true, opacity: 0.92 })
 const bushGeometry = new THREE.IcosahedronGeometry(1, 0)
 const bushEdges = new THREE.EdgesGeometry(bushGeometry)
-
-const geometryCache = new Map<string, THREE.BufferGeometry>()
-const edgesCache = new Map<string, THREE.EdgesGeometry>()
-
-function shapeKey(shape: Shape): string {
-  return JSON.stringify(shape)
-}
-
-function getGeometry(shape: Shape): THREE.BufferGeometry {
-  const key = shapeKey(shape)
-  let geometry = geometryCache.get(key)
-  if (geometry === undefined) {
-    switch (shape.kind) {
-      case 'box':
-        geometry = new THREE.BoxGeometry(shape.size[0], shape.size[1], shape.size[2])
-        break
-      case 'cylinder':
-        geometry = new THREE.CylinderGeometry(
-          shape.radiusTop,
-          shape.radiusBottom,
-          shape.height,
-          shape.segments,
-        )
-        break
-      case 'cone':
-        geometry = new THREE.ConeGeometry(shape.radius, shape.height, shape.segments)
-        break
-    }
-    geometryCache.set(key, geometry)
-  }
-  return geometry
-}
-
-function getEdges(shape: Shape): THREE.EdgesGeometry {
-  const key = shapeKey(shape)
-  let edges = edgesCache.get(key)
-  if (edges === undefined) {
-    // Для гладких тел (цилиндры, конусы) рисуем только обод, для граней — все рёбра.
-    const smooth =
-      shape.kind === 'cylinder' || (shape.kind === 'cone' && shape.segments > 4)
-    edges = new THREE.EdgesGeometry(getGeometry(shape), smooth ? 35 : 30)
-    edgesCache.set(key, edges)
-  }
-  return edges
-}
-
-/* -------------------------------------------------------------------------- */
-/*  Примитив: Mesh + MeshToonMaterial + чёрный контур рёбер (EdgesGeometry)      */
-/* -------------------------------------------------------------------------- */
-
-interface PartProps {
-  shape: Shape
-  color: string
-  position: Vec3
-  rotation?: Vec3
-  outline?: boolean
-  castShadow?: boolean
-  material?: THREE.Material
-  raycast?: THREE.Object3D['raycast']
-}
-
-function Part({ shape, color, position, rotation, outline = true, castShadow = true, material, raycast }: PartProps) {
-  return (
-    <mesh
-      geometry={getGeometry(shape)}
-      material={material || getToonMaterial(color)}
-      position={position}
-      rotation={rotation}
-      castShadow={castShadow}
-      receiveShadow
-      raycast={raycast}
-    >
-      {outline && <lineSegments geometry={getEdges(shape)} material={outlineMaterial} />}
-    </mesh>
-  )
-}
-
-function Box({
-  size,
-  ...rest
-}: { size: Vec3 } & Omit<PartProps, 'shape'>) {
-  return <Part shape={{ kind: 'box', size }} {...rest} />
-}
-
-function Cylinder({
-  radius,
-  radiusTop,
-  height,
-  segments = 16,
-  ...rest
-}: { radius: number; radiusTop?: number; height: number; segments?: number } & Omit<PartProps, 'shape'>) {
-  return (
-    <Part
-      shape={{ kind: 'cylinder', radiusTop: radiusTop ?? radius, radiusBottom: radius, height, segments }}
-      {...rest}
-    />
-  )
-}
-
-function Cone({
-  radius,
-  height,
-  segments = 16,
-  ...rest
-}: { radius: number; height: number; segments?: number } & Omit<PartProps, 'shape'>) {
-  return <Part shape={{ kind: 'cone', radius, height, segments }} {...rest} />
-}
-
-/** Цоколь под зданием. */
-const PAD_HEIGHT = 0.06
-
-function Pad() {
-  return <Box size={[0.94, PAD_HEIGHT, 0.94]} position={[0, PAD_HEIGHT / 2, 0]} color="#dcd5c3" />
-}
 
 function ResidentialBase() {
   return <group>
@@ -339,94 +232,6 @@ function SmallTree({ position, scale = 1 }: { position: Vec3, scale?: number }) 
         </mesh>
       ))}
     </group>
-  )
-}
-
-
-type Facing = 'z' | 'x' | '-z' | '-x'
-
-const FACING_ROTATION: Record<Facing, number> = { z: 0, x: Math.PI / 2, '-z': Math.PI, '-x': -Math.PI / 2 }
-
-interface WindowProps {
-  /** Точка на поверхности стены. */
-  position: Vec3
-  facing?: Facing
-  width?: number
-  height?: number
-  glass?: string
-  nightLight?: string
-  frame?: string
-  cross?: boolean
-  sill?: boolean
-}
-
-import { getFacadeMaterial, getPaverMaterial, getGlassMaterial, WindowSeedContext, hash01, lampBulbMaterial, lampGlowInnerMaterial, lampGlowOuterMaterial, nightSignMaterial, cinemaSignMaterial, townHallClockMaterial, ROAD_TILE_LENGTH, ROAD_ASPHALT_WIDTH, ROAD_CURB_WIDTH, ROAD_CURB_OFFSET } from './primitives'
-
-/** Окно: рама, стекло, переплёт-крест и подоконник. Смотрит по локальной оси +Z (поворачивается через facing). */
-function Window({
-  position,
-  facing = 'z',
-  width = 0.1,
-  height = 0.12,
-  glass = '#8fd3ff',
-  nightLight,
-  frame = '#fff8ea',
-  cross = true,
-  sill = true,
-}: WindowProps) {
-  const seed = useContext(WindowSeedContext)
-  const lit = hash01(seed * 3.17 + position[0] * 91.3 + position[1] * 57.9 + position[2] * 33.1) > 0.22
-
-  return (
-    <group position={position} rotation={[0, FACING_ROTATION[facing], 0]}>
-      <Box size={[width + 0.04, height + 0.04, 0.012]} position={[0, 0, 0]} color={frame} />
-      <mesh
-        position={[0, 0, 0.005]}
-        geometry={getGeometry({ kind: 'box', size: [width, height, 0.024] })}
-        material={getGlassMaterial(glass, lit, nightLight)}
-        castShadow={false}
-        receiveShadow
-      />
-      {cross && (
-        <>
-          <Box
-            size={[0.012, height, 0.03]}
-            position={[0, 0, 0.007]}
-            color={frame}
-            outline={false}
-            castShadow={false}
-          />
-          <Box
-            size={[width, 0.012, 0.03]}
-            position={[0, 0, 0.007]}
-            color={frame}
-            outline={false}
-            castShadow={false}
-          />
-        </>
-      )}
-      {sill && (
-        <Box size={[width + 0.07, 0.02, 0.05]} position={[0, -height / 2 - 0.03, 0.016]} color="#c9b99a" />
-      )}
-    </group>
-  )
-}
-
-
-const domeCache = new Map<number, { geometry: THREE.SphereGeometry; edges: THREE.EdgesGeometry }>()
-
-/** Купол — полусфера радиуса radius, стоящая на плоскости y = 0. */
-function Dome({ radius, color, position }: { radius: number; color: string; position: Vec3 }) {
-  let entry = domeCache.get(radius)
-  if (entry === undefined) {
-    const geometry = new THREE.SphereGeometry(radius, 22, 10, 0, Math.PI * 2, 0, Math.PI / 2)
-    entry = { geometry, edges: new THREE.EdgesGeometry(geometry, 35) }
-    domeCache.set(radius, entry)
-  }
-  return (
-    <mesh geometry={entry.geometry} material={getToonMaterial(color)} position={position} castShadow receiveShadow>
-      <lineSegments geometry={entry.edges} material={outlineMaterial} />
-    </mesh>
   )
 }
 
@@ -1546,6 +1351,34 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       model = <Road north={north} south={south} east={east} west={west} junction={junction} variant={variant} />
       dust = 4
       break
+    case TileType.WATER:
+      model = <WaterTileMesh north={north} south={south} east={east} west={west} variant={variant} />
+      dust = 0
+      break
+    case TileType.BRIDGE:
+      model = <BridgeTileMesh catalogId={catalogId} north={north} south={south} east={east} west={west} />
+      dust = 6
+      break
+    case TileType.RAIL:
+      model = <RailTileMesh north={north} south={south} east={east} west={west} />
+      dust = 4
+      break
+    case TileType.RAIL_BRIDGE:
+      model = <RailTileMesh north={north} south={south} east={east} west={west} isBridge />
+      dust = 6
+      break
+    case TileType.STATION:
+      if (catalogId === 'ind_freight_station') {
+        model = <FreightStationMesh />
+      } else {
+        model = <TrainStationMesh />
+      }
+      w = 3; h = 1
+      dust = 12
+      needsWater = true
+      needsPower = true
+      useConstruction = true
+      break
     case TileType.FIELD_WHEAT:
       model = <CropField />
       break
@@ -1559,6 +1392,28 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       } else if (catalogId === 'res_megapolis_complex') {
         model = <MegapolisComplexMesh />
         w = 4; h = 2
+      } else if (catalogId === 'res_villa_conservatory') {
+        model = <VillaConservatoryMesh />
+      } else if (catalogId === 'res_balcony_block') {
+        model = <BalconyBlockMesh />
+      } else if (catalogId === 'res_brick_walkup') {
+        model = <BrickWalkupMesh />
+        w = 2; h = 1
+      } else if (catalogId === 'res_stalinka_pink') {
+        model = <StalinkaPinkMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'res_streamline_curve') {
+        model = <StreamlineCurveMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'res_color_block') {
+        model = <ColorBlockMesh />
+        w = 2; h = 1
+      } else if (catalogId === 'res_highrise_slab') {
+        model = <HighriseSlabMesh />
+        w = 2; h = 1
+      } else if (catalogId === 'res_bay_towers') {
+        model = <BayTowersMesh />
+        w = 2; h = 2
       } else if (catalogId === 'res_modern_block') {
         model = <ModernBlockMesh />
       } else if (catalogId === 'res_brick_loft') {
@@ -1580,6 +1435,18 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       if (catalogId === 'com_cinema_cosmos') {
         model = <CinemaCosmosMesh />
         w = 3; h = 2
+      } else if (catalogId === 'com_dept_store') {
+        model = <DeptStoreMesh />
+        w = 2; h = 1
+      } else if (catalogId === 'com_grid_tower') {
+        model = <GridOfficeTowerMesh />
+        w = 1; h = 1
+      } else if (catalogId === 'com_glass_podium_tower') {
+        model = <GlassPodiumTowerMesh />
+        w = 2; h = 2
+      } else if (catalogId === 'com_diagrid_skyscraper') {
+        model = <DiagridSkyscraperMesh />
+        w = 2; h = 2
       } else if (catalogId === 'com_office_tower') {
         model = <OfficeTowerMesh />
         w = 2; h = 2
@@ -1610,7 +1477,11 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       useConstruction = true
       break
     case TileType.WATER_PUMP:
-      model = <WaterPump />
+      if (catalogId === 'utl_water_intake') {
+        model = <WaterIntakeMesh />
+      } else {
+        model = <WaterPump />
+      }
       dust = 8
       break
     case TileType.CITY_HALL:
@@ -1623,6 +1494,10 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       if (catalogId === 'lnd_cathedral') {
         model = <CathedralMesh />
         w = 2; h = 2
+      } else if (catalogId === 'lnd_clock_tower') {
+        model = <ClockTowerMesh />
+      } else if (catalogId === 'park_waterfront') {
+        model = <WaterfrontPromenadeMesh />
       } else if (catalogId === 'lnd_church') model = <CatalogLandmarkMesh catalogId={catalogId} />
       else if (catalogId === 'lnd_park') model = <FountainSquareMesh />
       else if (catalogId === 'park_rose_garden') model = <RoseGardenMesh />
@@ -1655,6 +1530,12 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       if (catalogId === 'civ_stadium') {
         model = <StadiumMesh />
         w = 3; h = 3
+      } else if (catalogId === 'civ_diamond_arena') {
+        model = <DiamondArenaMesh />
+        w = 3; h = 3
+      } else if (catalogId === 'civ_college_hall') {
+        model = <CollegeHallMesh />
+        w = 3; h = 2
       } else if (catalogId === 'civ_university') {
         model = <UniversityMesh />
         w = 3; h = 3
@@ -1690,32 +1571,6 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
 }
 
 export const TileModel = memo(TileModelBase)
-
-
-export function Smoke({ position, active = true }: { position: [number, number, number], active?: boolean }) {
-  const ref = useRef<any>(null)
-  useFrame(({ clock }) => {
-    if (!ref.current || !active) return
-    const t = clock.elapsedTime
-    ref.current.children.forEach((child: any, i: number) => {
-      const p = (t * 0.5 + i / 3) % 1
-      child.position.y = p * 1.5
-      child.scale.setScalar(1 + p * 1.5)
-      child.material.opacity = (1 - p) * 0.5
-    })
-  })
-  return (
-    <group position={position} ref={ref}>
-      {[0, 1, 2].map(i => (
-        <mesh key={i}>
-          <sphereGeometry args={[0.06, 8, 8]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.5} depthWrite={false} />
-        </mesh>
-      ))}
-    </group>
-  )
-}
-
 
 export function SquareMesh() {
   return (

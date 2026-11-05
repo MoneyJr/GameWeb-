@@ -14,7 +14,14 @@ const COLORS = {
   police: new THREE.Color('#2563eb'), fire: new THREE.Color('#dc2626'), education: new THREE.Color('#7c3aed'), health: new THREE.Color('#db2777'),
 }
 
-const isBuilding = (cell: GridCell) => cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD && cell.type !== TileType.FOOTPRINT
+const isBuilding = (cell: GridCell) =>
+  cell.type !== TileType.EMPTY &&
+  cell.type !== TileType.ROAD &&
+  cell.type !== TileType.BRIDGE &&
+  cell.type !== TileType.WATER &&
+  cell.type !== TileType.RAIL &&
+  cell.type !== TileType.RAIL_BRIDGE &&
+  cell.type !== TileType.FOOTPRINT
 
 function origin(grid: Grid, cell: GridCell): GridCell {
   return cell.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined ? grid[cell.refY]?.[cell.refX] ?? cell : cell
@@ -27,7 +34,7 @@ function overlayColor(mode: OverlayMode, grid: Grid, cell: GridCell, coverage: C
     case 'water':
     case 'power': {
       const served = mode === 'water' ? base.hasWater : base.hasPower
-      if (cell.type === TileType.ROAD) return served ? out.copy(COLORS[mode]) : null
+      if (cell.type === TileType.ROAD || cell.type === TileType.BRIDGE) return served ? out.copy(COLORS[mode]) : null
       if (!isBuilding(base)) return null
       return out.copy(served ? GOOD : BAD)
     }

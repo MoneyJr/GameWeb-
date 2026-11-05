@@ -2,3 +2,14 @@ node_modules
 dist
 .DS_Store
 .sim-build
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.log
+.vercel
+coverage
+test-results
+playwright-report

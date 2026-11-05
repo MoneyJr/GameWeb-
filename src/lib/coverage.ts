@@ -1,25 +1,26 @@
 import { GRID_SIZE, TileType, type Grid, type GridCell } from '../types/city'
 
-/** Городские службы с радиусом действия. */
 export type ServiceKind = 'police' | 'fire' | 'education' | 'health'
-
-export const SERVICE_KINDS: readonly ServiceKind[] = ['police', 'fire', 'education', 'health']
-
-/** Радиус действия службы в клетках. */
-export const SERVICE_RADIUS: Record<ServiceKind, number> = { police: 10, fire: 10, education: 12, health: 14 }
 
 export type CoverageMaps = Record<ServiceKind, Uint8Array>
 
-export function serviceKindOf(cell: GridCell): ServiceKind | null {
-  if (cell.type === TileType.POLICE) return 'police'
-  if (cell.type !== TileType.FIRE_STATION) return null
-  if (!cell.catalogId || cell.catalogId === 'civ_fire') return 'fire'
-  if (cell.catalogId === 'civ_school' || cell.catalogId === 'civ_university') return 'education'
-  if (cell.catalogId === 'civ_hospital') return 'health'
-  return null
+export const SERVICE_RADIUS: Record<ServiceKind, number> = {
+  police: 8,
+  fire: 8,
+  education: 7,
+  health: 9,
 }
 
-/** Карта покрытия: 1 — клетка в радиусе хотя бы одной станции этой службы. */
+function stamp(map: Uint8Array, cx: number, cy: number, radius: number) {
+  for (let y = Math.max(0, cy - radius); y <= Math.min(GRID_SIZE - 1, cy + radius); y += 1) {
+    const span = radius - Math.abs(y - cy)
+    for (let x = Math.max(0, cx - span); x <= Math.min(GRID_SIZE - 1, cx + span); x += 1) {
+      map[y * GRID_SIZE + x] = 1
+    }
+  }
+}
+
+/** Строит карты покрытия служб (полиция, пожарные, школы, больницы) по манхэттенскому радиусу. */
 export function computeCoverage(grid: Grid): CoverageMaps {
   const maps: CoverageMaps = {
     police: new Uint8Array(GRID_SIZE * GRID_SIZE),
@@ -28,34 +29,33 @@ export function computeCoverage(grid: Grid): CoverageMaps {
     health: new Uint8Array(GRID_SIZE * GRID_SIZE),
   }
   for (const row of grid) for (const cell of row) {
-    const kind = serviceKindOf(cell)
-    if (!kind) continue
-    // Станция работает только с водой и электричеством.
-    if (!cell.hasPower || !cell.hasWater) continue
-    // Университет охватывает образованием почти весь город.
-    const radius = cell.catalogId === 'civ_university' ? 18 : SERVICE_RADIUS[kind]
-    const map = maps[kind]
-    for (let y = Math.max(0, cell.y - radius); y <= Math.min(GRID_SIZE - 1, cell.y + radius); y += 1) {
-      for (let x = Math.max(0, cell.x - radius); x <= Math.min(GRID_SIZE - 1, cell.x + radius); x += 1) {
-        const dx = x - cell.x, dy = y - cell.y
-        if (dx * dx + dy * dy <= radius * radius) map[y * GRID_SIZE + x] = 1
-      }
+    if (!cell.hasWater || !cell.hasPower) continue
+    if (cell.type === TileType.POLICE) stamp(maps.police, cell.x, cell.y, SERVICE_RADIUS.police)
+    if (cell.type === TileType.FIRE_STATION && (!cell.catalogId || cell.catalogId === 'civ_fire')) {
+      stamp(maps.fire, cell.x, cell.y, SERVICE_RADIUS.fire)
     }
+    if (cell.catalogId === 'civ_school') stamp(maps.education, cell.x, cell.y, SERVICE_RADIUS.education)
+    if (cell.catalogId === 'civ_college_hall') stamp(maps.education, cell.x, cell.y, 10)
+    if (cell.catalogId === 'civ_university') stamp(maps.education, cell.x, cell.y, 14)
+    if (cell.catalogId === 'civ_hospital') stamp(maps.health, cell.x, cell.y, SERVICE_RADIUS.health)
   }
   return maps
 }
 
-export const isCovered = (maps: CoverageMaps, kind: ServiceKind, x: number, y: number) => maps[kind][y * GRID_SIZE + x] === 1
+export function isCovered(maps: CoverageMaps, kind: ServiceKind, x: number, y: number): boolean {
+  return x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE && maps[kind][y * GRID_SIZE + x] === 1
+}
 
-/** Стоимость земли 0–100: парки и службы повышают, смог снижает. */
+/** Оценка стоимости земли клетки (0–100): вода, свет, парки, службы и отсутствие смога. */
 export function landValueAt(cell: GridCell, maps: CoverageMaps): number {
-  let value = 45
-  if (cell.parked) value += 18
-  if (cell.smog) value -= 30
+  let value = 20
+  if (cell.hasWater) value += 15
+  if (cell.hasPower) value += 15
+  if (cell.parked) value += 25
+  if (isCovered(maps, 'police', cell.x, cell.y)) value += 8
+  if (isCovered(maps, 'fire', cell.x, cell.y)) value += 7
   if (isCovered(maps, 'education', cell.x, cell.y)) value += 10
   if (isCovered(maps, 'health', cell.x, cell.y)) value += 10
-  if (isCovered(maps, 'police', cell.x, cell.y)) value += 8
-  if (cell.hasWater) value += 5
-  if (cell.hasPower) value += 4
+  if (cell.smog) value -= 35
   return Math.max(0, Math.min(100, value))
 }

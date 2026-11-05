@@ -1,4 +1,5 @@
 import { TrafficSystem } from './TrafficSystem'
+import { TrainSystem } from './TrainSystem'
 import { LivingCityParticles } from './LivingCityParticles'
 import { memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
 import { Canvas, useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
@@ -6,6 +7,7 @@ import { Edges, OrthographicCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import { MapControls as ThreeMapControls } from 'three-stdlib'
 import { TOOL_DEFINITIONS } from '../../lib/cityConfig'
+import { unlockRankOf } from '../../lib/progression'
 import { BUILDING_BY_ID } from '../../store/buildingCatalog'
 import { GRID_SIZE, TileType, ToolId, type Grid } from '../../types/city'
 import { TileModel } from './BuildingMeshes'
@@ -568,15 +570,27 @@ export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palett
   return <primitive object={scenery} />
 })
 
+function isRoadLikeTile(type: TileType | undefined): boolean {
+  return type === TileType.ROAD || type === TileType.BRIDGE
+}
+
+function isWaterNeighborTile(type: TileType | undefined): boolean {
+  return type === TileType.WATER || type === TileType.BRIDGE || type === TileType.RAIL_BRIDGE
+}
+
+function isRailNeighborTile(type: TileType | undefined): boolean {
+  return type === TileType.RAIL || type === TileType.RAIL_BRIDGE || type === TileType.STATION
+}
+
 function isRoadJunctionAt(grid: Grid, x: number, y: number, north: boolean, south: boolean, east: boolean, west: boolean) {
   if (!((north || south) && (east || west))) return false
   if ([north, south, east, west].filter(Boolean).length === 4) return true
   // A road on the side is often simply the neighboring lane of a 2-wide avenue.
   // Treat it as a junction only when that side road does not continue alongside us.
-  const continuesAcrossNorth = north && (grid[y - 1]?.[x - 1]?.type === TileType.ROAD || grid[y - 1]?.[x + 1]?.type === TileType.ROAD)
-  const continuesAcrossSouth = south && (grid[y + 1]?.[x - 1]?.type === TileType.ROAD || grid[y + 1]?.[x + 1]?.type === TileType.ROAD)
-  const continuesAcrossEast = east && (grid[y - 1]?.[x + 1]?.type === TileType.ROAD || grid[y + 1]?.[x + 1]?.type === TileType.ROAD)
-  const continuesAcrossWest = west && (grid[y - 1]?.[x - 1]?.type === TileType.ROAD || grid[y + 1]?.[x - 1]?.type === TileType.ROAD)
+  const continuesAcrossNorth = north && (isRoadLikeTile(grid[y - 1]?.[x - 1]?.type) || isRoadLikeTile(grid[y - 1]?.[x + 1]?.type))
+  const continuesAcrossSouth = south && (isRoadLikeTile(grid[y + 1]?.[x - 1]?.type) || isRoadLikeTile(grid[y + 1]?.[x + 1]?.type))
+  const continuesAcrossEast = east && (isRoadLikeTile(grid[y - 1]?.[x + 1]?.type) || isRoadLikeTile(grid[y + 1]?.[x + 1]?.type))
+  const continuesAcrossWest = west && (isRoadLikeTile(grid[y - 1]?.[x - 1]?.type) || isRoadLikeTile(grid[y + 1]?.[x - 1]?.type))
   const parallelLane = ((east || west) && (continuesAcrossNorth || continuesAcrossSouth)) ||
     ((north || south) && (continuesAcrossEast || continuesAcrossWest))
   return !parallelLane
@@ -586,7 +600,7 @@ export const World = memo(function World({ grid }: { grid: Grid }) {
   return (
     <group>
       {grid[0].map((cell) => {
-        const crossesNorthEdge = cell.type === TileType.ROAD && grid[1][cell.x]?.type === TileType.ROAD
+        const crossesNorthEdge = isRoadLikeTile(cell.type) && isRoadLikeTile(grid[1][cell.x]?.type)
         if (!crossesNorthEdge) return null
         const x = cell.x - (GRID_SIZE - 1) / 2
         const riverZ = -39 + Math.sin(x * 0.045) * 5.6 + Math.sin(x * 0.105) * 1.4
@@ -596,10 +610,28 @@ export const World = memo(function World({ grid }: { grid: Grid }) {
         if (cell.type === TileType.EMPTY) return null
         const orientation = cell.orientation ?? 0
         const [offsetX, offsetZ] = catalogCenterOffset(cell.catalogId, orientation)
-        const north = grid[cell.y - 1]?.[cell.x]?.type === TileType.ROAD
-        const south = grid[cell.y + 1]?.[cell.x]?.type === TileType.ROAD
-        const east = grid[cell.y]?.[cell.x + 1]?.type === TileType.ROAD
-        const west = grid[cell.y]?.[cell.x - 1]?.type === TileType.ROAD
+        const nType = grid[cell.y - 1]?.[cell.x]?.type
+        const sType = grid[cell.y + 1]?.[cell.x]?.type
+        const eType = grid[cell.y]?.[cell.x + 1]?.type
+        const wType = grid[cell.y]?.[cell.x - 1]?.type
+
+        let north = isRoadLikeTile(nType)
+        let south = isRoadLikeTile(sType)
+        let east = isRoadLikeTile(eType)
+        let west = isRoadLikeTile(wType)
+
+        if (cell.type === TileType.WATER) {
+          north = isWaterNeighborTile(nType)
+          south = isWaterNeighborTile(sType)
+          east = cell.x === GRID_SIZE - 1 || isWaterNeighborTile(eType)
+          west = cell.x === 0 || isWaterNeighborTile(wType)
+        } else if (cell.type === TileType.RAIL || cell.type === TileType.RAIL_BRIDGE) {
+          north = isRailNeighborTile(nType)
+          south = isRailNeighborTile(sType)
+          east = isRailNeighborTile(eType)
+          west = isRailNeighborTile(wType)
+        }
+
         const junction = cell.type === TileType.ROAD && isRoadJunctionAt(grid, cell.x, cell.y, north, south, east, west)
         // Keep five homes in the CityRT visual reference strip.
         return (
@@ -672,6 +704,8 @@ interface InteractionLayerProps {
   catalogId?: string
   orientation: 0 | 1 | 2 | 3
   materials: { bricks: number; concrete: number; steel: number }
+  rank: number
+  sandbox: boolean
 }
 
 interface TouchGhost {
@@ -707,27 +741,58 @@ function materialDeficit(catalogId: string | undefined, materials: { bricks: num
 }
 
 function isLineTool(tool: ToolId, footprint: [number, number]) {
-  return tool === ToolId.ROAD || (tool !== ToolId.CURSOR && tool !== ToolId.BULLDOZE && footprint[0] === 1 && footprint[1] === 1)
+  return (
+    tool === ToolId.ROAD ||
+    tool === ToolId.BRIDGE ||
+    tool === ToolId.RAIL ||
+    tool === ToolId.WATER ||
+    (tool !== ToolId.CURSOR && tool !== ToolId.BULLDOZE && footprint[0] === 1 && footprint[1] === 1)
+  )
 }
 
-function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string, orientation = 0, materials = { bricks: 0, concrete: 0, steel: 0 }): string | null {
+function validatePlacement(grid: Grid, cell: Cell, tool: ToolId, catalogId?: string, style?: string, orientation = 0, materials = { bricks: 0, concrete: 0, steel: 0 }, rank = 0, sandbox = false): string | null {
+  const requiredRank = Math.max(unlockRankOf(catalogId), unlockRankOf(tool))
+  if (!sandbox && rank < requiredRank) return 'ghost.locked'
+
   const [width, depth] = placementFootprint(tool, catalogId, style, orientation)
   if (cell.x < 0 || cell.y < 0 || cell.x + width > GRID_SIZE || cell.y + depth > GRID_SIZE) return 'ghost.outOfBounds'
+
+  const deficit = materialDeficit(catalogId, materials)
+  if (deficit) return `ghost.material.${deficit.resource}`
+
+  if (tool === ToolId.BRIDGE) {
+    return grid[cell.y][cell.x].type === TileType.WATER ? null : 'ghost.water'
+  }
+  if (tool === ToolId.ROAD || tool === ToolId.RAIL) {
+    const t = grid[cell.y][cell.x].type
+    return t === TileType.EMPTY || t === TileType.WATER ? null : 'ghost.occupied'
+  }
+  if (tool === ToolId.WATER) {
+    return grid[cell.y][cell.x].type === TileType.EMPTY ? null : 'ghost.occupied'
+  }
+
   for (let y = cell.y; y < cell.y + depth; y += 1) {
     for (let x = cell.x; x < cell.x + width; x += 1) {
       if (grid[y][x].type !== TileType.EMPTY) return 'ghost.occupied'
     }
   }
-  const deficit = materialDeficit(catalogId, materials)
-  if (deficit) return `ghost.material.${deficit.resource}`
-  if (tool === ToolId.ROAD) return null
+
+  const checkNeighbor = (nx: number, ny: number): boolean => {
+    const nType = grid[ny]?.[nx]?.type
+    if (!nType) return false
+    if (isRoadLikeTile(nType)) return true
+    if (tool === ToolId.STATION && (nType === TileType.RAIL || nType === TileType.RAIL_BRIDGE)) return true
+    if ((catalogId === 'utl_water_intake' || catalogId === 'park_waterfront') && isWaterNeighborTile(nType)) return true
+    return false
+  }
+
   for (let x = cell.x; x < cell.x + width; x += 1) {
-    if (cell.y > 0 && grid[cell.y - 1][x].type === TileType.ROAD) return null
-    if (cell.y + depth < GRID_SIZE && grid[cell.y + depth][x].type === TileType.ROAD) return null
+    if (cell.y > 0 && checkNeighbor(x, cell.y - 1)) return null
+    if (cell.y + depth < GRID_SIZE && checkNeighbor(x, cell.y + depth)) return null
   }
   for (let y = cell.y; y < cell.y + depth; y += 1) {
-    if (cell.x > 0 && grid[y][cell.x - 1].type === TileType.ROAD) return null
-    if (cell.x + width < GRID_SIZE && grid[y][cell.x + width].type === TileType.ROAD) return null
+    if (cell.x > 0 && checkNeighbor(cell.x - 1, y)) return null
+    if (cell.x + width < GRID_SIZE && checkNeighbor(cell.x + width, y)) return null
   }
   return 'ghost.road'
 }
@@ -796,7 +861,7 @@ function GhostTilePreview({ tool, cell, style, catalogId, tint, roadLinks, orien
   )
 }
 
-function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, onPlacementTooltip, ghost, placementStyle, catalogId, orientation, materials }: InteractionLayerProps) {
+function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, isTouchDevice, onTouchPreview, onRoadLinePreview, onRoadDragState, onPlacementTooltip, ghost, placementStyle, catalogId, orientation, materials, rank, sandbox }: InteractionLayerProps) {
   const { gl } = useThree()
   const [hoverState, setHoverState] = useState<{ cell: Cell; tool: ToolId; catalogId?: string } | null>(null)
   const hovered = hoverState?.tool === activeTool && hoverState.catalogId === catalogId ? hoverState.cell : null
@@ -811,12 +876,12 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
       if (activeTool === ToolId.BULLDOZE) {
         if (grid[cell.y]?.[cell.x]?.type !== TileType.EMPTY) onRemove(cell.x, cell.y)
         setHovered(null)
-      } else if (activeTool !== ToolId.CURSOR && validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials) === null) {
+      } else if (activeTool !== ToolId.CURSOR && validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox) === null) {
         onPlace(cell.x, cell.y, catalogId, orientation)
         setHovered(null)
       }
     },
-    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, orientation, setHovered, materials],
+    [activeTool, catalogId, grid, onPlace, onRemove, placementStyle, orientation, setHovered, materials, rank, sandbox],
   )
   const footprint = placementFootprint(activeTool, catalogId, placementStyle, orientation)
   // Дороги и здания 1×1 можно протягивать линией (на телефоне — от выбранной клетки).
@@ -906,7 +971,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
     if (event.nativeEvent.pointerType === 'touch' || activeTool === ToolId.CURSOR || activeTool === ToolId.BULLDOZE) {
       onPlacementTooltip(null)
     } else {
-      const reason = validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials)
+      const reason = validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox)
       onPlacementTooltip({ x: clientX, y: clientY, valid: reason === null, reason, tool: activeTool, catalogId })
     }
     const drag = roadDrag.current
@@ -974,7 +1039,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
     if (activeTool === ToolId.BULLDOZE) {
       highlightColor = current === TileType.EMPTY ? '#c9c4b5' : '#ff5a4d'
     } else if (activeTool !== ToolId.CURSOR) {
-      highlightColor = validatePlacement(grid, hovered, activeTool, catalogId, placementStyle, orientation, materials) === null ? '#10b981' : '#ef4444'
+      highlightColor = validatePlacement(grid, hovered, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox) === null ? '#10b981' : '#ef4444'
     }
   }
 
@@ -1021,7 +1086,7 @@ function InteractionLayer({ grid, activeTool, onPlace, onRemove, onSelectCell, i
       {(isTouchDevice ? ghost?.cells[0] : hovered) && activeTool !== ToolId.CURSOR && activeTool !== ToolId.BULLDOZE && (() => {
         const anchor = (isTouchDevice ? ghost?.cells[0] : hovered)!
         const roadCells = lineTool ? (isTouchDevice ? ghost?.cells ?? [] : [anchor]) : []
-        const isValid = (item: Cell) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation, materials) === null
+        const isValid = (item: Cell) => validatePlacement(grid, item, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox) === null
         const valid = activeTool === ToolId.ROAD
           ? roadCells.every(isValid)
           : lineTool ? roadCells.some(isValid) : isValid(anchor)
@@ -1063,6 +1128,8 @@ export interface CitySceneProps {
   coverage: CoverageMaps
   overlay: OverlayMode
   quality: QualityProfile
+  rank?: number
+  sandbox?: boolean
   /** Фото-режим: прячем кнопки камеры. */
   hideControls?: boolean
 }
@@ -1144,13 +1211,16 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(DAY_SKY)
       ambientColor.copy(DAY_AMBIENT)
       sunColor.copy(SUN_COLOR)
-      ambient && (ambient.intensity = 0.6)
-      sun && sun.position.copy(DAY_SUN_POSITION) && (sun.intensity = 1.8)
+      if (ambient) ambient.intensity = 0.6
+      if (sun) {
+        sun.position.copy(DAY_SUN_POSITION)
+        sun.intensity = 1.8
+      }
     } else if (time >= 1080 && time < 1260) {
       background.copy(DAY_SKY).lerp(DUSK_SKY, dusk)
       ambientColor.copy(DAY_AMBIENT).lerp(DUSK_AMBIENT, dusk)
       sunColor.copy(SUN_COLOR).lerp(DUSK_SUN_COLOR, dusk)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.6, 0.38, dusk))
+      if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.6, 0.38, dusk)
       if (sun) {
         sun.position.copy(DAY_SUN_POSITION).lerp(DUSK_SUN_POSITION, dusk)
         sun.intensity = THREE.MathUtils.lerp(1.8, 0.05, dusk)
@@ -1162,7 +1232,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
         sunColor.lerp(MOON_COLOR, nightBlend)
         if (sun) {
           sun.position.lerp(MOON_POSITION, nightBlend)
-        sun.intensity = THREE.MathUtils.lerp(0.05, 0.55, nightBlend)
+          sun.intensity = THREE.MathUtils.lerp(0.05, 0.55, nightBlend)
         }
         if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.38, 0.7, nightBlend)
       }
@@ -1170,7 +1240,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(NIGHT_COLOR).lerp(DAY_SKY, dawn)
       ambientColor.copy(NIGHT_AMBIENT).lerp(DAY_AMBIENT, dawn)
       sunColor.copy(MOON_COLOR).lerp(SUN_COLOR, dawn)
-      ambient && (ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn))
+      if (ambient) ambient.intensity = THREE.MathUtils.lerp(0.7, 0.5, dawn)
       if (sun) {
         sun.position.copy(MOON_POSITION).lerp(DAY_SUN_POSITION, dawn)
         sun.intensity = THREE.MathUtils.lerp(0.55, 1.6, dawn)
@@ -1179,7 +1249,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
       background.copy(NIGHT_COLOR)
       ambientColor.copy(NIGHT_AMBIENT)
       sunColor.copy(MOON_COLOR)
-      ambient && (ambient.intensity = 0.7)
+      if (ambient) ambient.intensity = 0.7
       if (sun) {
         sun.position.copy(MOON_POSITION)
         sun.intensity = 0.55
@@ -1198,7 +1268,7 @@ function NightManager({ minutes, ambientRef, sunRef }: {
   return null
 }
 
-export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials, coverage, overlay, quality, hideControls = false }: CitySceneProps) {
+export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, minutes, budget = 0, placementStyle, catalogId, materials, coverage, overlay, quality, rank = 0, sandbox = false, hideControls = false }: CitySceneProps) {
   const { t } = useI18n()
   const [sceneReady, setSceneReady] = useState(false)
   const [touchGhost, setTouchGhost] = useState<TouchGhost | null>(null)
@@ -1316,15 +1386,15 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
   const ghostBuildCells = touchGhost
     ? activeTool === ToolId.ROAD || !ghostLineTool || touchGhost.cells.length === 1
       ? touchGhost.cells
-      : touchGhost.cells.filter((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials) === null)
+      : touchGhost.cells.filter((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox) === null)
     : []
   const ghostCost = unitCost * Math.max(1, ghostBuildCells.length)
   const ghostPlacementError = touchGhost
     ? ghostLineTool && activeTool !== ToolId.ROAD && touchGhost.cells.length > 1
-      ? ghostBuildCells.length > 0 ? null : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials)
+      ? ghostBuildCells.length > 0 ? null : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox)
       : activeTool === ToolId.ROAD
-      ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials)).find(Boolean) ?? null
-      : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials)
+      ? touchGhost.cells.map((cell) => validatePlacement(grid, cell, activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox)).find(Boolean) ?? null
+      : validatePlacement(grid, touchGhost.cells[0], activeTool, catalogId, placementStyle, orientation, materials, rank, sandbox)
     : null
   const ghostCanPlace = ghostPlacementError === null && budget >= ghostCost
   return (
@@ -1390,6 +1460,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <OverlayLayer grid={grid} coverage={coverage} mode={overlay} />
       <FireLayer grid={grid} />
       <TrafficSystem grid={grid} minutes={minutes} />
+      <TrainSystem grid={grid} minutes={minutes} />
       <InteractionLayer
         grid={grid}
         activeTool={activeTool}
@@ -1406,6 +1477,8 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
         catalogId={catalogId}
         orientation={orientation}
         materials={materials}
+        rank={rank}
+        sandbox={sandbox}
       />
       <ToonShadingSetup />
       </Suspense>

@@ -1,9 +1,9 @@
-import { TileType, ToolId } from '../types/city'
+import { GRID_SIZE, TileType, ToolId } from '../types/city'
 
 export interface ToolDefinition {
   id: ToolId
   label: string
-  /** Горячая клавиша (цифра). */
+  /** Горячая клавиша (цифра или буква). */
   hotkey: string
   /** Стоимость постройки одной клетки. */
   cost: number
@@ -11,9 +11,28 @@ export interface ToolDefinition {
   tile: TileType | null
 }
 
+/** Центральная линия судоходной реки (в координатах сетки 0..GRID_SIZE-1). */
+export function riverCenterGridY(x: number): number {
+  return 7.5 + Math.sin(x * 0.11) * 1.8 + Math.cos(x * 0.06) * 0.8
+}
+
+/** Природное русло реки и лесное озеро на стартовой карте. */
+export function isNaturalWaterCell(x: number, y: number): boolean {
+  if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return false
+  const riverY = riverCenterGridY(x)
+  if (Math.abs(y - riverY) <= 2.1) return true
+  const pondDx = (x - 53) / 4.2
+  const pondDy = (y - 48) / 2.8
+  return pondDx * pondDx + pondDy * pondDy <= 1
+}
+
 export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
   [ToolId.CURSOR]: { id: ToolId.CURSOR, label: 'Курсор', hotkey: '1', cost: 0, tile: null },
   [ToolId.ROAD]: { id: ToolId.ROAD, label: 'Дорога', hotkey: '2', cost: 10, tile: TileType.ROAD },
+  [ToolId.BRIDGE]: { id: ToolId.BRIDGE, label: 'Мост', hotkey: 'B', cost: 60, tile: TileType.BRIDGE },
+  [ToolId.RAIL]: { id: ToolId.RAIL, label: 'Железная дорога', hotkey: 'T', cost: 25, tile: TileType.RAIL },
+  [ToolId.STATION]: { id: ToolId.STATION, label: 'Вокзал', hotkey: 'T+S', cost: 550, tile: TileType.STATION },
+  [ToolId.WATER]: { id: ToolId.WATER, label: 'Водоём / Канал', hotkey: 'W', cost: 30, tile: TileType.WATER },
   [ToolId.RESIDENTIAL]: {
     id: ToolId.RESIDENTIAL,
     label: 'Жилая зона',
@@ -42,7 +61,7 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
     cost: 120,
     tile: TileType.WATER_PUMP,
   },
-    [ToolId.PARK]: { id: ToolId.PARK, label: 'Парк', hotkey: '7', cost: 80, tile: TileType.PARK },
+  [ToolId.PARK]: { id: ToolId.PARK, label: 'Парк', hotkey: '7', cost: 80, tile: TileType.PARK },
   [ToolId.WIND]: { id: ToolId.WIND, label: 'Ветряк', hotkey: '8', cost: 250, tile: TileType.WIND },
   [ToolId.SOLAR_PANEL]: { id: ToolId.SOLAR_PANEL, label: 'Солнечная панель', hotkey: 'V+S', cost: 300, tile: TileType.SOLAR_PANEL },
   [ToolId.COAL]: { id: ToolId.COAL, label: 'ТЭС', hotkey: '9', cost: 500, tile: TileType.COAL },
@@ -55,6 +74,10 @@ export const TOOL_DEFINITIONS: Record<ToolId, ToolDefinition> = {
 export const TOOL_ORDER: readonly ToolId[] = [
   ToolId.CURSOR,
   ToolId.ROAD,
+  ToolId.BRIDGE,
+  ToolId.RAIL,
+  ToolId.STATION,
+  ToolId.WATER,
   ToolId.RESIDENTIAL,
   ToolId.COMMERCIAL,
   ToolId.INDUSTRIAL,

@@ -97,10 +97,14 @@ function cellToWorld(x: number, y: number): [number, number, number] {
 // GRID_SIZE is fixed for this simulation; keeping the world conversion aligned with CityScene.
 const gridSize = GRID_SIZE
 
+function isRoadLike(type: TileType | undefined): boolean {
+  return type === TileType.ROAD || type === TileType.BRIDGE
+}
+
 function buildRoadRoutes(grid: Grid): CarRoute[] {
   const height = grid.length
   const width = grid[0]?.length ?? 0
-  const isRoad = (x: number, y: number) => y >= 0 && y < height && x >= 0 && x < width && grid[y][x].type === TileType.ROAD
+  const isRoad = (x: number, y: number) => y >= 0 && y < height && x >= 0 && x < width && isRoadLike(grid[y][x].type)
   const homes: RoadCell[] = []
   const destinations: { x: number; y: number; kind: 'passenger' | 'delivery' }[] = []
   const factories: RoadCell[] = []
@@ -289,7 +293,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         if (!carAhead || gap < carAhead.gap) carAhead = { state: otherState, gap }
       }
       const nextRoad = path[car.reverse ? Math.max(car.segment - 1, 0) : Math.min(car.segment + 1, path.length - 1)]
-      const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type === TileType.ROAD ? 1 : 0), 0) : 0
+      const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (isRoadLike(grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type) ? 1 : 0), 0) : 0
       const braking = nextDegree >= 3 && car.progress > 0.45 ? 0.34 : 1
       let speed = CAR_SPEED * braking
       if (carAhead) {
@@ -321,7 +325,10 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       // Right-hand traffic: +X shifts toward +Z; +Z shifts toward -X.
       const laneX = -dz * ROAD_LANE_OFFSET
       const laneZ = dx * ROAD_LANE_OFFSET
-      const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, 0.055, from[2] + dz * car.progress + laneZ)
+      const fromElevation = grid[fromCell.y]?.[fromCell.x]?.type === TileType.BRIDGE ? 0.21 : 0.055
+      const toElevation = grid[toCell.y]?.[toCell.x]?.type === TileType.BRIDGE ? 0.21 : 0.055
+      const carY = fromElevation + (toElevation - fromElevation) * car.progress
+      const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, carY, from[2] + dz * car.progress + laneZ)
       const isBlocked = group.children.some((other, otherIndex) => {
         if (otherIndex === i || !other.visible) return false
         const otherDirectionX = Math.sin(other.rotation.y)

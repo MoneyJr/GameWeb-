@@ -1,5 +1,5 @@
 /* Inkville service worker: игра открывается быстро и работает без сети после первого запуска. */
-const CACHE = 'inkville-v1'
+const CACHE = 'inkville-v3'
 const PRECACHE = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png']
 
 self.addEventListener('install', (event) => {
@@ -34,8 +34,8 @@ self.addEventListener('fetch', (event) => {
     return
   }
 
-  // Собранные файлы с хэшем в имени, модели и иконки не меняются — берём из кэша.
-  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/models/') || url.pathname.startsWith('/icons/')) {
+  // Собранные файлы с хэшем в имени и иконки не меняются — берём из кэша.
+  if (url.pathname.startsWith('/assets/') || url.pathname.startsWith('/icons/')) {
     event.respondWith(
       caches.match(request).then((cached) => cached ?? fetch(request).then((response) => {
         if (response.ok) {

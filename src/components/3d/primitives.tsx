@@ -426,6 +426,7 @@ interface PartProps {
   outline?: boolean
   castShadow?: boolean
   material?: THREE.Material
+  raycast?: THREE.Object3D['raycast']
 }
 
 function Part({
@@ -436,6 +437,7 @@ function Part({
   outline = true,
   castShadow = true,
   material,
+  raycast,
 }: PartProps) {
   return (
     <mesh
@@ -445,6 +447,7 @@ function Part({
       rotation={rotation}
       castShadow={castShadow}
       receiveShadow
+      raycast={raycast}
     >
       {outline && <lineSegments geometry={getEdges(shape)} material={outlineMaterial} />}
     </mesh>
@@ -598,6 +601,7 @@ interface WindowProps {
   width?: number
   height?: number
   glass?: string
+  nightLight?: string
   frame?: string
   cross?: boolean
   sill?: boolean
@@ -610,6 +614,7 @@ export function Window({
   width = 0.1,
   height = 0.12,
   glass = '#8fd3ff',
+  nightLight,
   frame = '#fff8ea',
   cross = true,
   sill = true,
@@ -623,7 +628,7 @@ export function Window({
         size={[width, height, 0.024]}
         position={[0, 0, 0.005]}
         color={glass}
-        material={getGlassMaterial(glass, lit)}
+        material={getGlassMaterial(glass, lit, nightLight)}
         castShadow={false}
       />
       {cross && (

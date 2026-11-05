@@ -4,7 +4,12 @@ export const GRID_SIZE = 64
 /** Типы тайлов. Используем объект + union вместо enum (совместимо с erasableSyntaxOnly). */
 export const TileType = {
   EMPTY: 'EMPTY',
+  WATER: 'WATER',
   ROAD: 'ROAD',
+  BRIDGE: 'BRIDGE',
+  RAIL: 'RAIL',
+  RAIL_BRIDGE: 'RAIL_BRIDGE',
+  STATION: 'STATION',
   RESIDENTIAL: 'RESIDENTIAL',
   COMMERCIAL: 'COMMERCIAL',
   INDUSTRIAL: 'INDUSTRIAL',
@@ -41,6 +46,8 @@ export interface GridCell {
   smog?: boolean
   parked?: boolean
   hasSupplies?: boolean
+  /** Естественное русло реки или озеро (при сносе моста возвращается вода). */
+  naturalWater?: boolean
   /** Resident count and capacity are stored per home so migration is persistent. */
   residents?: number
   maxResidents?: number
@@ -58,6 +65,10 @@ export type Grid = GridCell[][]
 export const ToolId = {
   CURSOR: 'CURSOR',
   ROAD: 'ROAD',
+  BRIDGE: 'BRIDGE',
+  RAIL: 'RAIL',
+  STATION: 'STATION',
+  WATER: 'WATER',
   RESIDENTIAL: 'RESIDENTIAL',
   COMMERCIAL: 'COMMERCIAL',
   INDUSTRIAL: 'INDUSTRIAL',

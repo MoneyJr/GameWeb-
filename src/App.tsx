@@ -9,6 +9,7 @@ import { TitleScreen } from './components/ui/TitleScreen'
 import type { CityProfile } from './components/ui/TitleScreen'
 import { useI18n } from './i18n/I18nProvider'
 import { addPlaySeconds } from './lib/cityProfile'
+import { safeJsonParse, sanitizeText } from './lib/saveSecurity'
 import { OverlayPicker } from './components/ui/OverlayPicker'
 import { QuestCard } from './components/ui/QuestCard'
 import { SettingsPanel } from './components/ui/SettingsPanel'
@@ -53,7 +54,21 @@ function App() {
     }
   }, [])
   useEffect(() => { setWinterMusic(currentSeason() === 'winter' || sim.events.includes('winter')) }, [sim.events])
-  const buildingCount = useMemo(() => sim.grid.reduce((total, row) => total + row.filter((cell) => cell.type !== TileType.EMPTY && cell.type !== TileType.FOOTPRINT).length, 0), [sim.grid])
+  const buildingCount = useMemo(
+    () =>
+      sim.grid.reduce(
+        (total, row) =>
+          total +
+          row.filter(
+            (cell) =>
+              cell.type !== TileType.EMPTY &&
+              cell.type !== TileType.FOOTPRINT &&
+              !(cell.type === TileType.WATER && cell.naturalWater),
+          ).length,
+        0,
+      ),
+    [sim.grid],
+  )
   const previousBuildingCount = useRef(buildingCount)
   useEffect(() => {
     if (buildingCount > previousBuildingCount.current) playSound('build')
@@ -62,7 +77,12 @@ function App() {
   }, [buildingCount])
   const photoCaption = useMemo(() => {
     if (!photoMode) return ''
-    try { return (JSON.parse(localStorage.getItem('inkville-city-profile') ?? 'null') as { cityName?: string } | null)?.cityName ?? 'Inkville' } catch { return 'Inkville' }
+    try {
+      const parsed = safeJsonParse(localStorage.getItem('inkville-city-profile') ?? 'null') as { cityName?: unknown } | null
+      return sanitizeText(parsed?.cityName, 40, 'Inkville')
+    } catch {
+      return 'Inkville'
+    }
   }, [photoMode])
   // A shareable visual fixture, enabled with ?preview=cityrt, keeps the simulation's normal empty start intact.
   const displayGrid = useMemo<Grid>(() => {
@@ -116,9 +136,25 @@ function App() {
     if (mode === 'sandbox') sim.enableSandbox()
     let savedProfile = profile
     if (mode === 'continue' && !savedProfile) {
-      try { savedProfile = JSON.parse(localStorage.getItem('inkville-city-profile') ?? 'null') as CityProfile | undefined } catch { savedProfile = undefined }
+      try {
+        const parsed = safeJsonParse(localStorage.getItem('inkville-city-profile') ?? 'null') as Partial<CityProfile> | null
+        if (parsed && typeof parsed === 'object') {
+          savedProfile = {
+            cityName: sanitizeText(parsed.cityName, 40, 'Inkville'),
+            mayorName: sanitizeText(parsed.mayorName, 32, 'Mayor'),
+            createdAt: sanitizeText(parsed.createdAt, 40, new Date().toISOString()),
+          }
+        }
+      } catch {
+        savedProfile = undefined
+      }
     }
     savedProfile ??= { cityName: 'Inkville', mayorName: 'Mayor', createdAt: new Date().toISOString() }
+    savedProfile = {
+      cityName: sanitizeText(savedProfile.cityName, 40, 'Inkville'),
+      mayorName: sanitizeText(savedProfile.mayorName, 32, 'Mayor'),
+      createdAt: sanitizeText(savedProfile.createdAt, 40, new Date().toISOString()),
+    }
     try { localStorage.setItem('inkville-city-profile', JSON.stringify(savedProfile)) } catch { /* City metadata is optional when storage is unavailable. */ }
     const returning = mode === 'continue'
     const greetingKeys = returning ? ['welcome.back1', 'welcome.back2', 'welcome.back3'] : ['welcome.new1', 'welcome.new2']
@@ -198,6 +234,8 @@ function App() {
         coverage={sim.coverage}
         overlay={photoMode ? 'none' : overlay}
         quality={quality}
+        rank={sim.rank}
+        sandbox={sim.sandbox}
       />
 
       {photoMode && <PhotoMode caption={photoCaption} subtitle={t('photo.day', sim.day, sim.population.toLocaleString())} onExit={() => setPhotoMode(false)} />}

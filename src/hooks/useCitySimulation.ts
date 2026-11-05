@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
-import { TOOL_DEFINITIONS } from '../lib/cityConfig'
+import { isNaturalWaterCell, TOOL_DEFINITIONS } from '../lib/cityConfig'
 import { BUILDING_BY_ID, canonicalCatalogId, DEFAULT_CATALOG_ID_BY_TILE } from '../store/buildingCatalog'
-import { QUESTS, rankForPopulation, unlockRankOf, type QuestContext } from '../lib/progression'
+import { QUESTS, RANKS, rankForPopulation, unlockRankOf, type QuestContext } from '../lib/progression'
 import { computeCoverage, isCovered, type CoverageMaps } from '../lib/coverage'
 import { activeEvents, eventModifiers, sameEvents, type CityEventId, type CityEventModifiers } from '../lib/cityEvents'
+import { clampInt, packSignedSave, sanitizeSavedGrid, unpackSignedSave } from '../lib/saveSecurity'
 import {
   GRID_SIZE,
   TileType,
@@ -44,11 +45,29 @@ function seededRandom(...parts: number[]): number {
 
 const zoningDistance = (a: GridCell, b: GridCell) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 
+export const isRoadTile = (type: TileType): boolean => type === TileType.ROAD || type === TileType.BRIDGE
+export const isRailTile = (type: TileType): boolean => type === TileType.RAIL || type === TileType.RAIL_BRIDGE
+export const isWaterLikeTile = (type: TileType): boolean =>
+  type === TileType.WATER || type === TileType.BRIDGE || type === TileType.RAIL_BRIDGE
+
+function isPlayerBuiltCell(cell: GridCell): boolean {
+  return cell.type !== TileType.EMPTY && !(cell.type === TileType.WATER && cell.naturalWater)
+}
+
 function hasNearbyCatalog(grid: Grid, cell: GridCell, predicate: (id: string | undefined) => boolean, radius = 2): boolean {
   for (let y = Math.max(0, cell.y - radius); y <= Math.min(GRID_SIZE - 1, cell.y + radius); y += 1) {
     for (let x = Math.max(0, cell.x - radius); x <= Math.min(GRID_SIZE - 1, cell.x + radius); x += 1) {
       const candidate = grid[y][x]
       if (zoningDistance(cell, candidate) <= radius && predicate(candidate.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[candidate.type])) return true
+    }
+  }
+  return false
+}
+
+function hasNearbyWater(grid: Grid, cx: number, cy: number, radius = 2): boolean {
+  for (let y = Math.max(0, cy - radius); y <= Math.min(GRID_SIZE - 1, cy + radius); y += 1) {
+    for (let x = Math.max(0, cx - radius); x <= Math.min(GRID_SIZE - 1, cx + radius); x += 1) {
+      if (Math.abs(cx - x) + Math.abs(cy - y) <= radius && isWaterLikeTile(grid[y][x].type)) return true
     }
   }
   return false
@@ -174,15 +193,13 @@ function reducerWithUndo(state: SimState, action: Action): SimState {
 }
 
 type Action =
-  | { type: 'PLACE'; x: number; y: number; tool: import('../types/city').ToolId; style?: string; catalogId?: string; orientation?: 0 | 1 | 2 | 3 }
+  | { type: 'PLACE'; x: number; y: number; tool: ToolId; style?: string; catalogId?: string; orientation?: 0 | 1 | 2 | 3 }
   | { type: 'REMOVE'; x: number; y: number }
   | { type: 'UPGRADE'; x: number; y: number }
   | { type: 'MERGE'; x: number; y: number }
   | { type: 'MERGE_TOWERS'; x: number; y: number }
   | { type: 'EXPAND_WAREHOUSE' }
   | { type: 'TICK'; now: number }
-  | { type: 'CHEAT_BUDGET'; amount: number }
-  | { type: 'CHEAT_TIME'; ticks: number }
   | { type: 'SET_TAX'; category: 'residential' | 'commercial' | 'industrial'; rate: number }
   | { type: 'TAKE_LOAN'; amount: number }
   | { type: 'REPAY_LOAN' }
@@ -192,14 +209,18 @@ type Action =
 
 function createEmptyGrid(): Grid {
   return Array.from({ length: GRID_SIZE }, (_, y) =>
-    Array.from({ length: GRID_SIZE }, (_, x): GridCell => ({
-      x,
-      y,
-      type: TileType.EMPTY,
-      hasWater: false,
-      hasPower: false,
-      level: 1,
-    })),
+    Array.from({ length: GRID_SIZE }, (_, x): GridCell => {
+      const naturalWater = isNaturalWaterCell(x, y)
+      return {
+        x,
+        y,
+        type: naturalWater ? TileType.WATER : TileType.EMPTY,
+        naturalWater: naturalWater || undefined,
+        hasWater: false,
+        hasPower: false,
+        level: 1,
+      }
+    }),
   )
 }
 
@@ -214,16 +235,28 @@ const NEIGHBOR_STEPS: ReadonlyArray<readonly [number, number]> = [
   [0, -1],
 ]
 
+function footprintDimensions(cell: GridCell): [number, number] {
+  const size = cell.catalogId ? BUILDING_BY_ID[cell.catalogId]?.footprint : undefined
+  let width = cell.type === TileType.CITY_HALL ? 2 : size?.[0] ?? 1
+  let height = cell.type === TileType.CITY_HALL ? 2 : size?.[1] ?? 1
+  if (cell.type === TileType.PARK && !cell.catalogId) {
+    if (cell.style === 'PARK') { width = 2; height = 2 }
+    if (cell.style === 'LARGE_PARK') { width = 3; height = 3 }
+  }
+  if ((cell.orientation ?? 0) % 2 === 1) [width, height] = [height, width]
+  return [width, height]
+}
+
 /**
  * Пересчитывает наличие воды и электричества.
  *
- * Источники подключают примыкающие дороги и питают всю связную дорожную сеть.
+ * Источники подключают примыкающие дороги и мосты, питая всю связную дорожную сеть.
  * Мульти-тайловое здание подключено, если дорога касается любой клетки периметра фундамента.
- *
- * Клетки, у которых ничего не изменилось, сохраняют ссылку (важно для React.memo в 3D-сцене).
+ * Вокзалы также могут получать питание через контакт с дорогой или ж/д линией, подключённой к станции у дороги.
  */
 function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
-  const isRoad = (x: number, y: number): boolean => inBounds(x, y) && grid[y][x].type === TileType.ROAD
+  const isRoad = (x: number, y: number): boolean => inBounds(x, y) && isRoadTile(grid[y][x].type)
+  const isRail = (x: number, y: number): boolean => inBounds(x, y) && isRailTile(grid[y][x].type)
 
   const roadDistance: number[][] = grid.map((r) => r.map(() => 0))
   const powerDistance: number[][] = grid.map((r) => r.map(() => 0))
@@ -232,6 +265,7 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
   const coals: [number, number][] = []
   const parks: [number, number][] = []
   const factories: [number, number][] = []
+  const stations: GridCell[] = []
   const powerSources: [number, number][] = []
   let powerCapacity = 0
   let waterCapacity = 0
@@ -240,7 +274,11 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
     for (const cell of row) {
       if (cell.type === TileType.WATER_PUMP) {
         const waterId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[TileType.WATER_PUMP]
-        waterCapacity += waterId ? BUILDING_BY_ID[waterId]?.givesWater ?? BUILDING_BY_ID[waterId]?.water ?? 15 : 15
+        let pumpOutput = waterId ? BUILDING_BY_ID[waterId]?.givesWater ?? BUILDING_BY_ID[waterId]?.water ?? 15 : 15
+        if (waterId === 'utl_water_intake' && hasNearbyWater(grid, cell.x, cell.y, 2)) {
+          pumpOutput = Math.round(pumpOutput * 1.5)
+        }
+        waterCapacity += pumpOutput
         for (const [dx, dy] of NEIGHBOR_STEPS) {
           const nx = cell.x + dx
           const ny = cell.y + dy
@@ -270,10 +308,11 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
         parks.push([cell.x, cell.y])
       }
       if (cell.type === TileType.INDUSTRIAL) factories.push([cell.x, cell.y])
+      if (cell.type === TileType.STATION) stations.push(cell)
     }
   }
 
-  // Water BFS across the complete connected road component.
+  // Water BFS across the complete connected road & bridge component.
   for (let head = 0; head < queue.length; head += 1) {
     const [x, y] = queue[head]
     const distance = roadDistance[y][x]
@@ -287,7 +326,7 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
     }
   }
 
-  // Electricity follows every road reachable from any connected generator.
+  // Electricity follows every road & bridge reachable from any connected generator.
   for (let head = 0; head < powerQueue.length; head += 1) {
     const [x, y] = powerQueue[head]
     const distance = powerDistance[y][x]
@@ -303,12 +342,9 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
 
   const isWateredRoad = (x: number, y: number): boolean => isRoad(x, y) && roadDistance[y][x] > 0
   const isPoweredRoad = (x: number, y: number): boolean => isRoad(x, y) && powerDistance[y][x] > 0
-  const buildingTouchesServedRoad = (cell: GridCell, service: (x: number, y: number) => boolean) => {
+  const buildingTouches = (cell: GridCell, service: (x: number, y: number) => boolean) => {
     if (cell.type === TileType.FOOTPRINT) return false
-    const size = cell.catalogId ? BUILDING_BY_ID[cell.catalogId]?.footprint : undefined
-    let width = cell.type === TileType.CITY_HALL ? 2 : size?.[0] ?? 1
-    let height = cell.type === TileType.CITY_HALL ? 2 : size?.[1] ?? 1
-    if ((cell.orientation ?? 0) % 2 === 1) [width, height] = [height, width]
+    const [width, height] = footprintDimensions(cell)
     for (let dx = 0; dx < width; dx += 1) {
       if (service(cell.x + dx, cell.y - 1) || service(cell.x + dx, cell.y + height)) return true
     }
@@ -320,7 +356,7 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
   const powerSourceKeys = new Set(powerSources.map(([sx, sy]) => sy * GRID_SIZE + sx))
   const isPoweredSource = (x: number, y: number) => powerSourceKeys.has(y * GRID_SIZE + x)
 
-  // Смог и близость к паркам считаем один раз «штампами», а не перебором для каждой клетки.
+  // Смог и близость к паркам/воде считаем один раз «штампами».
   const smogField = new Int16Array(GRID_SIZE * GRID_SIZE)
   const parkField = new Int16Array(GRID_SIZE * GRID_SIZE)
   for (const [cx, cy] of coals) stampRadius(smogField, cx, cy, 2, 1)
@@ -345,31 +381,47 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
     componentId += 1
   }
   const factoryComponents = new Set<number>()
-  for (const [x, y] of factories) for (const [dx, dy] of NEIGHBOR_STEPS) {
-    const nx = x + dx, ny = y + dy
-    if (isRoad(nx, ny)) factoryComponents.add(component[ny][nx])
+  for (const [x, y] of factories) {
+    const cell = grid[y][x]
+    const [w, h] = footprintDimensions(cell)
+    for (let dy = 0; dy < h; dy += 1) for (let dx = 0; dx < w; dx += 1) {
+      for (const [sx, sy] of NEIGHBOR_STEPS) {
+        const nx = x + dx + sx, ny = y + dy + sy
+        if (isRoad(nx, ny)) factoryComponents.add(component[ny][nx])
+      }
+    }
+  }
+  // Вокзалы у железной дороги также доставляют товары в дорожные сети, к которым примыкают.
+  for (const station of stations) {
+    if (buildingTouches(station, isRail)) {
+      const [w, h] = footprintDimensions(station)
+      for (let dy = 0; dy < h; dy += 1) for (let dx = 0; dx < w; dx += 1) {
+        for (const [sx, sy] of NEIGHBOR_STEPS) {
+          const nx = station.x + dx + sx, ny = station.y + dy + sy
+          if (isRoad(nx, ny)) factoryComponents.add(component[ny][nx])
+        }
+      }
+    }
   }
 
   let waterUsed = 0
   let powerUsed = 0
   return grid.map((row) =>
     row.map((cell) => {
-      const occupied = cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD
+      const isInfra = cell.type === TileType.EMPTY || cell.type === TileType.WATER || isRoadTile(cell.type) || isRailTile(cell.type)
+      const occupied = !isInfra
       let hasWater = false
       if (cell.type === TileType.WATER_PUMP) hasWater = true
-      else if (cell.type === TileType.ROAD) hasWater = isWateredRoad(cell.x, cell.y)
-      else if (occupied) hasWater = buildingTouchesServedRoad(cell, isWateredRoad)
-      
+      else if (isRoadTile(cell.type)) hasWater = isWateredRoad(cell.x, cell.y)
+      else if (occupied) hasWater = buildingTouches(cell, isWateredRoad)
+
       const smog = smogField[cell.y * GRID_SIZE + cell.x] > 0
       const parked = parkField[cell.y * GRID_SIZE + cell.x] > 0
-      const hasSupplies = cell.type === TileType.COMMERCIAL && NEIGHBOR_STEPS.some(([dx, dy]) => {
-        const nx = cell.x + dx, ny = cell.y + dy
-        return isRoad(nx, ny) && factoryComponents.has(component[ny][nx])
-      })
+      const hasSupplies = cell.type === TileType.COMMERCIAL && buildingTouches(cell, (nx, ny) => isRoad(nx, ny) && factoryComponents.has(component[ny][nx]))
 
       let hasPower = false
       if (cell.type === TileType.WIND || cell.type === TileType.SOLAR_PANEL || cell.type === TileType.COAL) hasPower = true
-      else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || buildingTouchesServedRoad(cell, isPoweredRoad)
+      else if (occupied) hasPower = isPoweredSource(cell.x, cell.y) || buildingTouches(cell, isPoweredRoad)
 
       const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
       const catalogEntry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
@@ -382,7 +434,6 @@ function recomputeServices(grid: Grid, energyMultiplier = 1): Grid {
         if (hasWater) waterUsed += requiredWater
         if (hasPower) powerUsed += requiredPower
       }
-
 
       let residents = cell.residents
       const maxResidents = cell.type === TileType.RESIDENTIAL ? getHomeCapacity(cell) : cell.maxResidents
@@ -408,6 +459,9 @@ export interface CityCounts {
   waterProduced: number
   waterConsumed: number
   roads: number
+  bridges: number
+  rails: number
+  stations: number
   houses: number
   houseCapacity: number
   wateredCapacity: number
@@ -441,13 +495,16 @@ export interface CityCounts {
 }
 
 function countTiles(grid: Grid): CityCounts {
-  let parkValue = 0;
+  let parkValue = 0
   const counts: CityCounts = {
     energyProduced: 0,
     energyConsumed: 0,
     waterProduced: 0,
     waterConsumed: 0,
     roads: 0,
+    bridges: 0,
+    rails: 0,
+    stations: 0,
     houses: 0,
     houseCapacity: 0,
     wateredCapacity: 0,
@@ -462,7 +519,7 @@ function countTiles(grid: Grid): CityCounts {
     wateredFactories: 0,
     poweredFactories: 0,
     servicedFactories: 0,
-        pumps: 0,
+    pumps: 0,
     parks: 0,
     wind: 0,
     solarPanels: 0,
@@ -480,12 +537,21 @@ function countTiles(grid: Grid): CityCounts {
   }
   for (const row of grid) {
     for (const cell of row) {
-      if (cell.type !== TileType.EMPTY && cell.type !== TileType.ROAD && cell.type !== TileType.FOOTPRINT) {
+      if (
+        cell.type !== TileType.EMPTY &&
+        cell.type !== TileType.WATER &&
+        !isRoadTile(cell.type) &&
+        !isRailTile(cell.type) &&
+        cell.type !== TileType.FOOTPRINT
+      ) {
         const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
         const entry = id ? BUILDING_BY_ID[id] : undefined
         if (entry?.category === 'utilities' || cell.type === TileType.COAL) {
           counts.energyProduced += entry?.givesEnergy ?? entry?.energy ?? (cell.type === TileType.COAL ? 60 : 0)
-          counts.waterProduced += entry?.givesWater ?? 0
+          let waterOut = entry?.givesWater ?? 0
+          if (id === 'utl_water_intake' && hasNearbyWater(grid, cell.x, cell.y, 2)) waterOut = Math.round(waterOut * 1.5)
+          counts.waterProduced += waterOut
+          if (id === 'utl_water_intake') counts.energyConsumed += entry?.energy ?? 0
         } else {
           counts.energyConsumed += entry?.energy ?? 0
           counts.waterConsumed += entry?.water ?? 0
@@ -495,6 +561,20 @@ function countTiles(grid: Grid): CityCounts {
         case TileType.ROAD:
           counts.roads += 1
           continue
+        case TileType.BRIDGE:
+          counts.roads += 1
+          counts.bridges += 1
+          continue
+        case TileType.RAIL:
+          counts.rails += 1
+          continue
+        case TileType.RAIL_BRIDGE:
+          counts.rails += 1
+          counts.bridges += 1
+          continue
+        case TileType.STATION:
+          counts.stations += 1
+          break
         case TileType.WATER_PUMP:
           counts.pumps += 1
           continue
@@ -565,11 +645,21 @@ export interface IncomeBreakdown {
   net: number
 }
 
+function isStationCatalog(id: string | undefined): boolean {
+  return id === 'civ_train_station' || id === 'ind_freight_station'
+}
+
 /** Доходы по категориям и расходы на содержание за один такт (10 игровых минут). */
 function computeIncomeBreakdown(grid: Grid, taxRates: SimState['taxRates'], modifiers: CityEventModifiers): IncomeBreakdown {
   const result: IncomeBreakdown = { residential: 0, commercial: 0, industrial: 0, other: 0, maintenance: 0, net: 0 }
   for (const row of grid) for (const cell of row) {
-    if (cell.type === TileType.EMPTY || cell.type === TileType.ROAD || cell.type === TileType.FOOTPRINT) continue
+    if (
+      cell.type === TileType.EMPTY ||
+      cell.type === TileType.WATER ||
+      isRoadTile(cell.type) ||
+      isRailTile(cell.type) ||
+      cell.type === TileType.FOOTPRINT
+    ) continue
     const catalogId = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
     const entry = catalogId ? BUILDING_BY_ID[catalogId] : undefined
     if (!entry) continue
@@ -578,13 +668,23 @@ function computeIncomeBreakdown(grid: Grid, taxRates: SimState['taxRates'], modi
         : entry.category === 'industrial' ? 'industrial' : undefined
     // Жилые дома, магазины и заводы без воды или света не работают и налогов не платят.
     const serviced = !taxGroup || (cell.hasWater && cell.hasPower && !cell.fire)
-    const taxableIncome = serviced ? entry.income ?? Math.max(0, entry.tickNet) : 0
+    let taxableIncome = serviced ? entry.income ?? Math.max(0, entry.tickNet) : 0
+    if (serviced && cell.type === TileType.RESIDENTIAL) {
+      const cap = Math.max(1, getHomeCapacity(cell))
+      const occupancy = Math.min(1, Math.max(0, (cell.residents ?? 0) / cap))
+      taxableIncome *= 0.65 + 0.35 * occupancy
+    }
     let taxMultiplier = taxGroup && taxableIncome > 0 ? taxRates[taxGroup] / 10 : 1
     if (cell.type === TileType.RESIDENTIAL && cell.level > 1) taxMultiplier *= 1 + (cell.level - 1) * 0.4
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)) taxMultiplier *= 1.3
+    if (cell.type === TileType.RESIDENTIAL && hasNearbyWater(grid, cell.x, cell.y, 2)) taxMultiplier *= 1.12
     if (cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isPollutingBuilding)) taxMultiplier *= 0.8
-    // Магазинам без поставок с заводов (через дорожную сеть) не хватает товара.
+    // Магазинам без поставок с заводов (через дорожную сеть или ж/д) не хватает товара.
     if (cell.type === TileType.COMMERCIAL && !cell.hasSupplies) taxMultiplier *= 0.8
+    // Близость к вокзалу повышает оборот магазинов и заводов.
+    if ((cell.type === TileType.COMMERCIAL || cell.type === TileType.INDUSTRIAL) && hasNearbyCatalog(grid, cell, isStationCatalog, 5)) {
+      taxMultiplier *= 1.25
+    }
     taxMultiplier *= modifiers.incomeMultiplier[catalogId!] ?? 1
     result[taxGroup ?? 'other'] += taxableIncome * taxMultiplier
     result.maintenance += entry.maintenance ?? Math.max(0, -entry.tickNet)
@@ -604,15 +704,24 @@ const BASE_HAPPINESS = 70
 
 /**
  * Целевое счастье: база 70, плюс до +20 за обеспеченность досугом и услугами
- * (относительно населения), бонус уютных домов у парков и события; минус смог и преступность.
+ * (относительно населения), бонус уютных домов у парков и рек, влияние налогов и события; минус смог и преступность.
  */
-function targetHappiness(counts: CityCounts, crimeRate: number, grid: Grid, population: number, modifiers: CityEventModifiers): number {
+function targetHappiness(
+  counts: CityCounts,
+  crimeRate: number,
+  grid: Grid,
+  population: number,
+  modifiers: CityEventModifiers,
+  taxRates: SimState['taxRates'],
+): number {
   if (counts.consumers === 0) return 100
-  let h = BASE_HAPPINESS - crimeRate * 0.5 + modifiers.happinessBonus
+  const avgTax = (taxRates.residential + taxRates.commercial + taxRates.industrial) / 3
+  const taxMood = avgTax < 10 ? (10 - avgTax) * 1.1 : avgTax > 11 ? -(avgTax - 11) * 1.8 : 0
+  let h = BASE_HAPPINESS - crimeRate * 0.5 + modifiers.happinessBonus + taxMood
   if (counts.houses > 0) {
     h -= (counts.smogHouses / counts.houses) * 25
-    const cozyHomes = grid.flat().filter((cell) => cell.type === TileType.RESIDENTIAL && hasNearbyCatalog(grid, cell, isGreenAmenity)).length
-    h += (cozyHomes / counts.houses) * 5
+    const cozyHomes = grid.flat().filter((cell) => cell.type === TileType.RESIDENTIAL && (hasNearbyCatalog(grid, cell, isGreenAmenity) || hasNearbyWater(grid, cell.x, cell.y, 2))).length
+    h += (cozyHomes / counts.houses) * 6
   }
   h += counts.parkValue
   let amenityPoints = 0
@@ -674,18 +783,35 @@ function crimeRateFor(grid: Grid, coverage: CoverageMaps, population: number): n
   return Math.min(100, Math.round((uncovered / population) * 100))
 }
 
-function buildQuestContext(grid: Grid, counts: CityCounts, population: number, happiness: number): QuestContext {
+function buildQuestContext(
+  grid: Grid,
+  counts: CityCounts,
+  population: number,
+  happiness: number,
+  materials: SimState['materials'],
+): QuestContext {
   const catalog: Record<string, number> = {}
   for (const row of grid) for (const cell of row) {
     const id = cell.catalogId ?? DEFAULT_CATALOG_ID_BY_TILE[cell.type]
     if (id && cell.type !== TileType.FOOTPRINT) catalog[id] = (catalog[id] ?? 0) + 1
   }
   return {
-    population, happiness,
-    roads: counts.roads, houses: counts.houses, pumps: counts.pumps,
+    population,
+    happiness,
+    roads: counts.roads,
+    bridges: counts.bridges,
+    rails: counts.rails,
+    stations: counts.stations,
+    houses: counts.houses,
+    pumps: counts.pumps,
     generators: counts.wind + counts.solarPanels + counts.coal,
-    unservicedHouses: counts.unservicedHouses, shops: counts.shops, suppliedShops: counts.suppliedShops,
-    parks: counts.parks, policeStations: counts.policeStations, fireStations: counts.fireStations,
+    unservicedHouses: counts.unservicedHouses,
+    shops: counts.shops,
+    suppliedShops: counts.suppliedShops,
+    parks: counts.parks,
+    policeStations: counts.policeStations,
+    fireStations: counts.fireStations,
+    materials,
     catalog,
   }
 }
@@ -695,40 +821,121 @@ function reducer(state: SimState, action: Action): SimState {
     case 'RESET':
       return createFreshState()
     case 'SET_SANDBOX':
-      return { ...state, sandbox: true, budget: Math.max(state.budget, 50_000), debt: 0, rank: Math.max(state.rank, 4), materials: { bricks: state.warehouseCapacity, concrete: state.warehouseCapacity, steel: state.warehouseCapacity } }
+      return {
+        ...state,
+        sandbox: true,
+        budget: Math.max(state.budget, 50_000),
+        debt: 0,
+        rank: Math.max(state.rank, 5),
+        materials: {
+          bricks: state.warehouseCapacity,
+          concrete: state.warehouseCapacity,
+          steel: state.warehouseCapacity,
+        },
+      }
     case 'SET_TAX':
-      return { ...state, taxRates: { ...state.taxRates, [action.category]: Math.min(20, Math.max(1, action.rate)) } }
+      return { ...state, taxRates: { ...state.taxRates, [action.category]: clampInt(action.rate, 1, 20, 10) } }
     case 'TAKE_LOAN':
       if (state.debt > 0) return { ...state, notice: { id: Date.now(), text: 'Погасите текущий займ перед новым.' } }
-      return { ...state, budget: state.budget + action.amount, debt: action.amount }
+      return { ...state, budget: state.budget + clampInt(action.amount, 100, 10_000, 2000), debt: clampInt(action.amount, 100, 10_000, 2000) }
     case 'REPAY_LOAN':
       if (state.debt <= 0 || state.budget < state.debt) return state
       return { ...state, budget: state.budget - state.debt, debt: 0 }
-    
+
     case 'PLACE': {
       const { x, y, tool, style } = action
       if (!inBounds(x, y)) return state
-      
-      const requiredRank = unlockRankOf(action.catalogId ?? tool)
+
+      const requiredRank = Math.max(unlockRankOf(action.catalogId), unlockRankOf(tool))
       if (!state.sandbox && state.rank < requiredRank) {
-        return { ...state, notice: { id: Date.now(), text: 'Эта постройка откроется на следующем ранге города. Растите население!' } }
+        const rankInfo = RANKS[requiredRank]
+        const rankText = rankInfo ? `уровне ${requiredRank + 1} «${rankInfo.name.ru}» (${rankInfo.population}+ жителей)` : `ранге ${requiredRank + 1}`
+        return { ...state, notice: { id: Date.now(), text: `🔒 Эта постройка откроется на ${rankText}.` } }
       }
+
+      const targetCell = state.grid[y][x]
+
+      // 1. Инструмент водоёма/канала: создаёт воду на пустой земле.
+      if (tool === ToolId.WATER) {
+        if (targetCell.type !== TileType.EMPTY) {
+          return { ...state, notice: { id: Date.now(), text: 'Водоём можно выкопать только на свободной земле.' } }
+        }
+        const cost = TOOL_DEFINITIONS[ToolId.WATER].cost
+        if (state.budget < cost) return { ...state, notice: { id: Date.now(), text: 'Недостаточно средств!' } }
+        const nextGrid = state.grid.map((row, r) =>
+          row.map((cell, c) => (r === y && c === x ? { ...cell, type: TileType.WATER, naturalWater: false, animate: true } : cell)),
+        )
+        return {
+          ...state,
+          grid: recomputeServices(nextGrid, eventModifiers(state.events).energyMultiplier),
+          budget: state.budget - cost,
+        }
+      }
+
+      // 2. Инструмент дороги или моста по воде строит мост.
+      if (tool === ToolId.BRIDGE || (tool === ToolId.ROAD && targetCell.type === TileType.WATER)) {
+        if (targetCell.type !== TileType.WATER) {
+          return { ...state, notice: { id: Date.now(), text: 'Мост строится только над рекой или водоёмом.' } }
+        }
+        const bridgeId = action.catalogId === 'bridge_suspension' ? 'bridge_suspension' : 'bridge_stone'
+        const cost = bridgeId === 'bridge_suspension' ? 140 : 60
+        if (state.budget < cost) return { ...state, notice: { id: Date.now(), text: 'Недостаточно средств!' } }
+        const nextGrid = state.grid.map((row, r) =>
+          row.map((cell, c) => (r === y && c === x
+            ? { ...cell, type: TileType.BRIDGE, catalogId: bridgeId, style: bridgeId, naturalWater: cell.naturalWater ?? true, animate: true }
+            : cell)),
+        )
+        return {
+          ...state,
+          grid: recomputeServices(nextGrid, eventModifiers(state.events).energyMultiplier),
+          budget: state.budget - cost,
+        }
+      }
+
+      // 3. Инструмент железной дороги: по земле — рельсы ($25), по воде — ж/д мост ($75).
+      if (tool === ToolId.RAIL) {
+        if (targetCell.type !== TileType.EMPTY && targetCell.type !== TileType.WATER) {
+          return { ...state, notice: { id: Date.now(), text: 'Место занято.' } }
+        }
+        const isOverWater = targetCell.type === TileType.WATER
+        const cost = isOverWater ? 75 : TOOL_DEFINITIONS[ToolId.RAIL].cost
+        if (state.budget < cost) return { ...state, notice: { id: Date.now(), text: 'Недостаточно средств!' } }
+        const nextGrid = state.grid.map((row, r) =>
+          row.map((cell, c) => (r === y && c === x
+            ? {
+              ...cell,
+              type: isOverWater ? TileType.RAIL_BRIDGE : TileType.RAIL,
+              naturalWater: isOverWater ? (cell.naturalWater ?? true) : cell.naturalWater,
+              animate: true,
+            }
+            : cell)),
+        )
+        return {
+          ...state,
+          grid: recomputeServices(nextGrid, eventModifiers(state.events).energyMultiplier),
+          budget: state.budget - cost,
+        }
+      }
+
       const baseDef = TOOL_DEFINITIONS[tool]
       const catalogEntry = action.catalogId ? BUILDING_BY_ID[action.catalogId] : undefined
       const def = catalogEntry ? { ...baseDef, tile: catalogEntry.tile, cost: catalogEntry.cost } : baseDef
-      
-      let cost = def.cost;
-      if (tool === ToolId.PARK) {
-        if (style === 'SQUARE') cost = 50;
-        else if (style === 'PARK') cost = 100;
-        else if (style === 'LARGE_PARK') cost = 150;
+
+      let cost = def.cost
+      if (tool === ToolId.PARK && !catalogEntry) {
+        if (style === 'SQUARE') cost = 50
+        else if (style === 'PARK') cost = 100
+        else if (style === 'LARGE_PARK') cost = 150
       }
       if (state.budget < cost) {
-
         return { ...state, notice: { id: Date.now(), text: 'Недостаточно средств!' } }
       }
       const materialCost = catalogEntry?.materialCost ?? {}
-      if (state.materials.bricks < (materialCost.bricks ?? 0) || state.materials.concrete < (materialCost.concrete ?? 0) || state.materials.steel < (materialCost.steel ?? 0)) {
+      if (
+        state.materials.bricks < (materialCost.bricks ?? 0) ||
+        state.materials.concrete < (materialCost.concrete ?? 0) ||
+        state.materials.steel < (materialCost.steel ?? 0)
+      ) {
         const missing = state.materials.concrete < (materialCost.concrete ?? 0)
           ? `Недостаточно бетона (Имеется: ${state.materials.concrete} / Требуется: ${materialCost.concrete})`
           : state.materials.bricks < (materialCost.bricks ?? 0)
@@ -736,39 +943,51 @@ function reducer(state: SimState, action: Action): SimState {
             : `Недостаточно стали (Имеется: ${state.materials.steel} / Требуется: ${materialCost.steel})`
         return { ...state, notice: { id: Date.now(), text: missing } }
       }
-      
+
       // Determine size
       let w = catalogEntry?.footprint?.[0] ?? 1
       let h = catalogEntry?.footprint?.[1] ?? 1
       if ((action.orientation ?? 0) % 2 === 1) [w, h] = [h, w]
       if (tool === ToolId.CITY_HALL) {
-        if (state.grid.some(row => row.some(c => c.type === TileType.CITY_HALL))) return state;
-        w = 2; h = 2;
+        if (state.grid.some((row) => row.some((c) => c.type === TileType.CITY_HALL))) return state
+        w = 2; h = 2
       }
       if (tool === ToolId.PARK && !catalogEntry) {
-        if (style === 'PARK') { w = 2; h = 2; }
-        if (style === 'LARGE_PARK') { w = 3; h = 3; }
+        if (style === 'PARK') { w = 2; h = 2 }
+        if (style === 'LARGE_PARK') { w = 3; h = 3 }
       }
-      
+
       // Check space
-      for (let dy = 0; dy < h; dy++) {
-        for (let dx = 0; dx < w; dx++) {
-          if (!inBounds(x+dx, y+dy)) return { ...state, notice: { id: Date.now(), text: 'Фундамент выходит за пределы карты.' } }
-          if (state.grid[y+dy][x+dx].type !== TileType.EMPTY) return { ...state, notice: { id: Date.now(), text: 'Место занято.' } }
+      for (let dy = 0; dy < h; dy += 1) {
+        for (let dx = 0; dx < w; dx += 1) {
+          if (!inBounds(x + dx, y + dy)) return { ...state, notice: { id: Date.now(), text: 'Фундамент выходит за пределы карты.' } }
+          if (state.grid[y + dy][x + dx].type !== TileType.EMPTY) return { ...state, notice: { id: Date.now(), text: 'Место занято.' } }
         }
       }
 
       if (tool !== ToolId.ROAD) {
-        let roadAccess = false
+        let access = false
+        const canTouchRail = tool === ToolId.STATION || def.tile === TileType.STATION
+        const isAccessTile = (tx: number, ty: number) => {
+          if (!inBounds(tx, ty)) return false
+          const t = state.grid[ty][tx].type
+          return isRoadTile(t) || (canTouchRail && isRailTile(t))
+        }
         for (let dx = 0; dx < w; dx += 1) {
-          roadAccess ||= (inBounds(x + dx, y - 1) && state.grid[y - 1][x + dx].type === TileType.ROAD)
-          roadAccess ||= (inBounds(x + dx, y + h) && state.grid[y + h][x + dx].type === TileType.ROAD)
+          access ||= isAccessTile(x + dx, y - 1) || isAccessTile(x + dx, y + h)
         }
         for (let dy = 0; dy < h; dy += 1) {
-          roadAccess ||= (inBounds(x - 1, y + dy) && state.grid[y + dy][x - 1].type === TileType.ROAD)
-          roadAccess ||= (inBounds(x + w, y + dy) && state.grid[y + dy][x + w].type === TileType.ROAD)
+          access ||= isAccessTile(x - 1, y + dy) || isAccessTile(x + w, y + dy)
         }
-        if (!roadAccess) return { ...state, notice: { id: Date.now(), text: 'Нужна дорога у края фундамента.' } }
+        if (!access) {
+          return {
+            ...state,
+            notice: {
+              id: Date.now(),
+              text: canTouchRail ? 'Вокзал должен примыкать к дороге или железной дороге.' : 'Нужна дорога у края фундамента.',
+            },
+          }
+        }
       }
 
       let newGrid = state.grid.map((row, r) =>
@@ -792,47 +1011,95 @@ function reducer(state: SimState, action: Action): SimState {
                 ...(home ? { residentialFloors: home.floors, maxResidents: home.maxResidents, residents: 0 } : {}),
               }
             }
-            return { ...cell, type: TileType.FOOTPRINT, refX: x, refY: y, animate: true };
+            return { ...cell, type: TileType.FOOTPRINT, refX: x, refY: y, animate: true }
           }
-          return cell;
-        })
+          return cell
+        }),
       )
-      
+
       newGrid = recomputeServices(newGrid, eventModifiers(state.events).energyMultiplier)
-      return { ...state, grid: newGrid, budget: state.budget - cost, materials: { bricks: state.materials.bricks - (materialCost.bricks ?? 0), concrete: state.materials.concrete - (materialCost.concrete ?? 0), steel: state.materials.steel - (materialCost.steel ?? 0) } }
+      return {
+        ...state,
+        grid: newGrid,
+        budget: state.budget - cost,
+        materials: {
+          bricks: state.materials.bricks - (materialCost.bricks ?? 0),
+          concrete: state.materials.concrete - (materialCost.concrete ?? 0),
+          steel: state.materials.steel - (materialCost.steel ?? 0),
+        },
+      }
     }
     case 'REMOVE': {
       const { x, y } = action
       if (!inBounds(x, y)) return state
-      
+
       let targetX = x, targetY = y
       if (state.grid[y][x].type === TileType.FOOTPRINT) {
-        targetX = state.grid[y][x].refX!;
-        targetY = state.grid[y][x].refY!;
+        targetX = state.grid[y][x].refX!
+        targetY = state.grid[y][x].refY!
       }
-      
+
       const targetCell = state.grid[targetY][targetX]
       if (targetCell.type === TileType.EMPTY) return state
-      
-      // Determine bounds
-      let w = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[0] ?? 1 : 1
-      let h = targetCell.catalogId ? BUILDING_BY_ID[targetCell.catalogId]?.footprint?.[1] ?? 1 : 1
-      if ((targetCell.orientation ?? 0) % 2 === 1) [w, h] = [h, w]
-      if (targetCell.type === TileType.CITY_HALL) { w = 2; h = 2; }
-      if (targetCell.type === TileType.PARK && !targetCell.catalogId) {
-        if (targetCell.style === 'PARK') { w = 2; h = 2; }
-        if (targetCell.style === 'LARGE_PARK') { w = 3; h = 3; }
+
+      // Снос моста возвращает под ним воду.
+      if (targetCell.type === TileType.BRIDGE || targetCell.type === TileType.RAIL_BRIDGE) {
+        const restored = state.grid.map((row, r) =>
+          row.map((cell, c) => (r === targetY && c === targetX
+            ? {
+              ...cell,
+              type: TileType.WATER,
+              naturalWater: cell.naturalWater ?? true,
+              style: undefined,
+              catalogId: undefined,
+              hasWater: false,
+              hasPower: false,
+              animate: undefined,
+            }
+            : cell)),
+        )
+        return { ...state, grid: recomputeServices(restored, eventModifiers(state.events).energyMultiplier) }
       }
-      
+
+      // Снос клетки воды осушает её в обычную землю.
+      if (targetCell.type === TileType.WATER) {
+        const dried = state.grid.map((row, r) =>
+          row.map((cell, c) => (r === targetY && c === targetX
+            ? { ...cell, type: TileType.EMPTY, naturalWater: false, animate: undefined }
+            : cell)),
+        )
+        return { ...state, grid: recomputeServices(dried, eventModifiers(state.events).energyMultiplier) }
+      }
+
+      const [w, h] = footprintDimensions(targetCell)
+
       let newGrid = state.grid.map((row, r) =>
         row.map((cell, c) => {
           if (r >= targetY && r < targetY + h && c >= targetX && c < targetX + w) {
-            return { ...cell, type: TileType.EMPTY, style: undefined, level: 1, orientation: undefined, hasWater: false, hasPower: false, smog: false, parked: false, fire: undefined, residents: undefined, maxResidents: undefined, residentialFloors: undefined, refX: undefined, refY: undefined, animate: undefined };
+            return {
+              ...cell,
+              type: TileType.EMPTY,
+              style: undefined,
+              catalogId: undefined,
+              level: 1,
+              orientation: undefined,
+              hasWater: false,
+              hasPower: false,
+              smog: false,
+              parked: false,
+              fire: undefined,
+              residents: undefined,
+              maxResidents: undefined,
+              residentialFloors: undefined,
+              refX: undefined,
+              refY: undefined,
+              animate: undefined,
+            }
           }
-          return cell;
-        })
+          return cell
+        }),
       )
-      
+
       newGrid = recomputeServices(newGrid, eventModifiers(state.events).energyMultiplier)
       return { ...state, grid: newGrid }
     }
@@ -849,7 +1116,15 @@ function reducer(state: SimState, action: Action): SimState {
       const grid = state.grid.map((row, rowIndex) => row.map((entry, columnIndex) => rowIndex === y && columnIndex === x
         ? { ...entry, level: entry.level + 1, maxResidents: Math.round((entry.maxResidents ?? 70) * 1.4), residents: Math.min(Math.round((entry.maxResidents ?? 70) * 1.4), Math.round((entry.residents ?? 0) * 1.4)) }
         : entry))
-      return { ...state, grid, budget: state.budget - cost, materials: { bricks: state.materials.bricks - materialCost.bricks, concrete: state.materials.concrete - materialCost.concrete, steel: state.materials.steel - materialCost.steel } }
+      const population = grid.reduce((total, row) => total + row.reduce((sum, item) => sum + (item.type === TileType.RESIDENTIAL ? item.residents ?? 0 : 0), 0), 0)
+      return {
+        ...state,
+        grid,
+        population,
+        rank: Math.max(state.rank, rankForPopulation(population)),
+        budget: state.budget - cost,
+        materials: { bricks: state.materials.bricks - materialCost.bricks, concrete: state.materials.concrete - materialCost.concrete, steel: state.materials.steel - materialCost.steel },
+      }
     }
     case 'MERGE': {
       const { x, y } = action
@@ -866,7 +1141,14 @@ function reducer(state: SimState, action: Action): SimState {
       for (const [dx, dy] of [[1, 0], [0, 1], [1, 1]] as const) grid[y + dy][x + dx] = { ...grid[y + dy][x + dx], type: TileType.FOOTPRINT, refX: x, refY: y }
       const recomputed = recomputeServices(grid, eventModifiers(state.events).energyMultiplier)
       const population = recomputed.reduce((total, row) => total + row.reduce((sum, cell) => sum + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
-      return { ...state, grid: recomputed, population, budget: state.budget - 1000, materials: { ...state.materials, concrete: state.materials.concrete - 10, steel: state.materials.steel - 5 } }
+      return {
+        ...state,
+        grid: recomputed,
+        population,
+        rank: Math.max(state.rank, rankForPopulation(population)),
+        budget: state.budget - 1000,
+        materials: { ...state.materials, concrete: state.materials.concrete - 10, steel: state.materials.steel - 5 },
+      }
     }
     case 'MERGE_TOWERS': {
       const { x, y } = action
@@ -895,7 +1177,7 @@ function reducer(state: SimState, action: Action): SimState {
     case 'EXPAND_WAREHOUSE':
       if (state.budget < 500) return { ...state, notice: { id: Date.now(), text: 'Для расширения склада нужно $500.' } }
       return { ...state, budget: state.budget - 500, warehouseCapacity: state.warehouseCapacity + 50 }
-case 'TICK': {
+    case 'TICK': {
       const nextMinutes = state.minutes + MINUTES_PER_TICK
       const nextDay = state.day + Math.floor(nextMinutes / MINUTES_PER_DAY)
       const gameMinute = nextMinutes % MINUTES_PER_DAY
@@ -906,9 +1188,8 @@ case 'TICK': {
       const events = activeEvents({ day: nextDay, now: action.now })
       const eventsChanged = !sameEvents(events, state.events)
       const modifiers = eventModifiers(events)
-      // При смене сезона (например, зимнее отопление) пересчитываем распределение энергии.
       const baseGrid = eventsChanged ? recomputeServices(state.grid, modifiers.energyMultiplier) : state.grid
-      const cityGrid = baseGrid.map(row => row.map(cell => {
+      const cityGrid = baseGrid.map((row) => row.map((cell) => {
         if (cell.type !== TileType.RESIDENTIAL) return cell
         const capacity = getHomeCapacity(cell)
         const residents = cell.residents ?? 0
@@ -948,25 +1229,23 @@ case 'TICK': {
           : '🔥 Пожар! Рядом нет пожарного депо — здание горит долго.' }
         : state.notice
       const unservicedHouseShare = counts.houses > 0 ? counts.unservicedHouses / counts.houses : 0
-      const happinessDrift = (targetHappiness(counts, crimeRate, finalGrid, population, modifiers) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
-      // Пустая казна: службы недополучают денег, жители недовольны.
+      const happinessDrift = (targetHappiness(counts, crimeRate, finalGrid, population, modifiers, state.taxRates) - state.happiness) * MINUTES_PER_TICK / MINUTES_PER_DAY
       const bankruptLoss = state.budget < 0 ? 15 : 0
       const dailyServiceLoss = (unservicedHouseShare * 25 + bankruptLoss) * MINUTES_PER_TICK / MINUTES_PER_DAY
-      // Ежедневный платёж по кредиту действительно уменьшает долг.
       const loanPayment = state.debt > 0 && isMidnight ? Math.min(DAILY_LOAN_PAYMENT, state.debt) : 0
       const netTickIncome = net - loanPayment
       const materials = { ...state.materials }
+      const freightBonus = counts.stations > 0 && counts.rails >= 6 && state.ticks % 2 === 0 ? 1 : 0
       for (const row of finalGrid) for (const cell of row) if (cell.type === TileType.INDUSTRIAL && !cell.fire) {
-        if (cell.catalogId === 'ind_brickworks') materials.bricks = Math.min(state.warehouseCapacity, materials.bricks + 1)
-        if (cell.catalogId === 'ind_concrete_plant') materials.concrete = Math.min(state.warehouseCapacity, materials.concrete + 1)
-        if (cell.catalogId === 'ind_steel_foundry') materials.steel = Math.min(state.warehouseCapacity, materials.steel + 1)
+        if (cell.catalogId === 'ind_brickworks') materials.bricks = Math.min(state.warehouseCapacity, materials.bricks + 1 + freightBonus)
+        if (cell.catalogId === 'ind_concrete_plant') materials.concrete = Math.min(state.warehouseCapacity, materials.concrete + 1 + freightBonus)
+        if (cell.catalogId === 'ind_steel_foundry') materials.steel = Math.min(state.warehouseCapacity, materials.steel + 1 + freightBonus)
       }
       const rank = Math.max(state.rank, rankForPopulation(population))
-      // Задания советника: награда сразу на счёт, затем следующее задание.
       let questIndex = state.questIndex
       let questReward = 0
       const quest = QUESTS[questIndex]
-      if (!state.sandbox && quest && quest.check(buildQuestContext(finalGrid, counts, population, state.happiness))) {
+      if (!state.sandbox && quest && quest.check(buildQuestContext(finalGrid, counts, population, state.happiness, materials))) {
         questReward = quest.reward
         questIndex += 1
       }
@@ -1022,45 +1301,70 @@ function createFreshState(): SimState {
 
 function createInitialState(): SimState {
   try {
-    const raw = localStorage.getItem(SAVE_KEY)
-    if (raw) {
-      const save = JSON.parse(raw) as SimState
-      if (save.grid?.length === GRID_SIZE && save.grid.every(row => row.length === GRID_SIZE) && save.taxRates) {
-        let legacyResidents = Math.max(0, Math.floor(Number.isFinite(save.population) ? save.population : 0))
-        const day = save.day ?? 1
-        const minute = save.minutes ?? 840
-        const grid = save.grid.map(row => row.map(cell => {
-          const catalogId = canonicalCatalogId(cell.catalogId)
-          const normalizedCell = catalogId === cell.catalogId ? cell : { ...cell, catalogId }
-          if (cell.type !== TileType.RESIDENTIAL) return normalizedCell
-          const profile = residenceProfile(cell.x, cell.y, day, minute)
-          const maxResidents = cell.maxResidents ?? profile.maxResidents
-          let residents = cell.residents
-          if (residents == null) {
-            residents = Math.min(maxResidents, legacyResidents)
-            legacyResidents = Math.max(0, legacyResidents - residents)
-            if (residents === 0 && cell.hasWater && cell.hasPower) {
-              residents = Math.floor(maxResidents * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
-            }
-          }
-          // Уровень 4 был доступен только через старый бесплатный авто-рост — приводим к максимуму 3.
-          return { ...normalizedCell, level: Math.min(3, cell.level ?? 1), residentialFloors: cell.residentialFloors ?? profile.floors, maxResidents, residents: Math.min(maxResidents, residents) }
-        }))
-        const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
-        return {
-          ...save,
-          // Сохранённые здания уже достроены — не проигрываем анимацию стройки при каждом запуске.
-          grid: grid.map((row) => row.map((cell) => (cell.animate ? { ...cell, animate: false } : cell))),
-          population,
-          budget: Math.max(0, Math.floor(Number.isFinite(save.budget) ? save.budget : START_BUDGET)),
-          materials: save.materials ?? { bricks: 0, concrete: 0, steel: 0 },
-          warehouseCapacity: save.warehouseCapacity ?? 100,
-          events: activeEvents({ day, now: Date.now() }),
-          rank: Math.max(save.rank ?? 0, rankForPopulation(population)),
-          questIndex: save.questIndex ?? 0,
-          sandbox: save.sandbox ?? false,
-          undo: [],
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SAVE_KEY) : null
+    const save = unpackSignedSave<Partial<SimState>>(raw)
+    const sanitizedGrid = save ? sanitizeSavedGrid(save.grid) : null
+    if (save && sanitizedGrid && save.taxRates && typeof save.taxRates === 'object') {
+      let legacyResidents = clampInt(save.population, 0, 5_000_000, 0)
+      const day = clampInt(save.day, 1, 100_000, 1)
+      const minute = clampInt(save.minutes, 0, 1439, 840)
+      const grid = sanitizedGrid.map((row) => row.map((cell) => {
+        const catalogId = canonicalCatalogId(cell.catalogId)
+        // Если в старом сохранении на месте природной реки было пусто, восстанавливаем природную воду.
+        if (cell.type === TileType.EMPTY && isNaturalWaterCell(cell.x, cell.y)) {
+          return { ...cell, type: TileType.WATER, naturalWater: true }
         }
+        const normalizedCell = catalogId === cell.catalogId ? cell : { ...cell, catalogId }
+        if (cell.type !== TileType.RESIDENTIAL) return normalizedCell
+        const profile = residenceProfile(cell.x, cell.y, day, minute)
+        const maxResidents = cell.maxResidents ?? profile.maxResidents
+        let residents = cell.residents
+        if (residents == null) {
+          residents = Math.min(maxResidents, legacyResidents)
+          legacyResidents = Math.max(0, legacyResidents - residents)
+          if (residents === 0 && cell.hasWater && cell.hasPower) {
+            residents = Math.floor(maxResidents * (0.4 + seededRandom(cell.x, cell.y, 73) * 0.1))
+          }
+        }
+        return {
+          ...normalizedCell,
+          level: Math.min(3, cell.level ?? 1),
+          residentialFloors: cell.residentialFloors ?? profile.floors,
+          maxResidents,
+          residents: Math.min(maxResidents, residents),
+          animate: false,
+        }
+      }))
+      const population = grid.reduce((total, row) => total + row.reduce((rowTotal, cell) => rowTotal + (cell.type === TileType.RESIDENTIAL ? cell.residents ?? 0 : 0), 0), 0)
+      const warehouseCapacity = clampInt(save.warehouseCapacity, 50, 100_000, 100)
+      return {
+        grid,
+        population,
+        budget: clampInt(save.budget, -1_000_000, 100_000_000, START_BUDGET),
+        lastNet: clampInt(save.lastNet, -1_000_000, 1_000_000, 0),
+        happiness: clampInt(save.happiness, 0, 100, 100),
+        taxRates: {
+          residential: clampInt(save.taxRates.residential, 1, 20, 10),
+          commercial: clampInt(save.taxRates.commercial, 1, 20, 10),
+          industrial: clampInt(save.taxRates.industrial, 1, 20, 10),
+        },
+        debt: clampInt(save.debt, 0, 1_000_000, 0),
+        minutes: minute,
+        ticks: clampInt(save.ticks, 0, 1_000_000_000, 0),
+        day,
+        notice: null,
+        noticeSeq: 0,
+        materials: {
+          bricks: clampInt(save.materials?.bricks, 0, warehouseCapacity, 0),
+          concrete: clampInt(save.materials?.concrete, 0, warehouseCapacity, 0),
+          steel: clampInt(save.materials?.steel, 0, warehouseCapacity, 0),
+        },
+        warehouseCapacity,
+        events: activeEvents({ day, now: Date.now() }),
+        rank: Math.max(clampInt(save.rank, 0, 5, 0), rankForPopulation(population)),
+        questIndex: clampInt(save.questIndex, 0, QUESTS.length, 0),
+        sandbox: Boolean(save.sandbox),
+        undo: [],
       }
     }
   } catch { /* Ignore malformed or unavailable browser storage and start a fresh city. */ }
@@ -1072,8 +1376,8 @@ const SAVE_INTERVAL_MS = 10_000
 
 function persistState(state: SimState) {
   try {
-    const hasCity = state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
-    if (hasCity) localStorage.setItem(SAVE_KEY, JSON.stringify({ ...state, undo: undefined }))
+    const hasCity = state.grid.some((row) => row.some(isPlayerBuiltCell))
+    if (hasCity) localStorage.setItem(SAVE_KEY, packSignedSave({ ...state, undo: undefined, notice: null }))
     else localStorage.removeItem(SAVE_KEY)
   } catch { /* Storage can be unavailable in private browsing. */ }
 }
@@ -1081,7 +1385,6 @@ function persistState(state: SimState) {
 /** Чистое состояние симуляции города: сетка, инструмент, экономика и игровой таймер. */
 export function useCitySimulation() {
   const [state, dispatch] = useReducer(reducerWithUndo, undefined, createInitialState)
-  if (typeof window !== "undefined") { (window as any).__SIM_DISPATCH = dispatch; (window as any).__SIM_STATE = state; }
   const [activeTool, setActiveTool] = useState<ToolId>(ToolId.CURSOR)
   const [paused, setPaused] = useState(true)
   const [speed, setSpeed] = useState<SimSpeed>(1)
@@ -1097,7 +1400,7 @@ export function useCitySimulation() {
   const lastSavedAt = useRef(0)
   useEffect(() => {
     latestState.current = state
-    const isEmpty = !state.grid.some(row => row.some(cell => cell.type !== TileType.EMPTY))
+    const isEmpty = !state.grid.some((row) => row.some(isPlayerBuiltCell))
     if (isEmpty || Date.now() - lastSavedAt.current >= SAVE_INTERVAL_MS) {
       persistState(state)
       lastSavedAt.current = Date.now()
@@ -1136,19 +1439,17 @@ export function useCitySimulation() {
 
   const togglePause = useCallback(() => setPaused((value) => !value), [])
 
-  
-  // Один подсчёт клеток на изменение сетки вместо пяти отдельных.
   const counts = useMemo(() => countTiles(state.grid), [state.grid])
   const modifiers = useMemo(() => eventModifiers(state.events), [state.events])
 
   const demands = useMemo(() => {
-    const jobs = counts.servicedShops * 6 + counts.servicedFactories * 12
+    const jobs = counts.servicedShops * 8 + counts.servicedFactories * 14 + counts.stations * 10
     const unemployed = Math.max(0, state.population - jobs)
     const freeJobs = Math.max(0, jobs - state.population)
-    const resDemand = Math.min(100, (freeJobs / 20) * 100)
-    const shopsNeeded = Math.floor(state.population / 20)
-    const comDemand = Math.min(100, Math.max(0, (shopsNeeded - counts.shops) / 5) * 100)
-    const indDemand = Math.min(100, (unemployed / 20) * 100)
+    const resDemand = Math.min(100, Math.round((freeJobs / 20) * 100))
+    const shopsNeeded = Math.floor(state.population / 22)
+    const comDemand = Math.min(100, Math.round(Math.max(0, (shopsNeeded - counts.shops) / 5) * 100))
+    const indDemand = Math.min(100, Math.round((unemployed / 20) * 100))
     return { residential: resDemand, commercial: comDemand, industrial: indDemand }
   }, [counts, state.population])
 
@@ -1162,7 +1463,6 @@ export function useCitySimulation() {
 
   const coverage = useMemo(() => computeCoverage(state.grid), [state.grid])
   const capacityStats = useMemo(() => {
-    // Доля зданий в радиусе полиции и пожарных (в процентах).
     let buildings = 0, police = 0, fire = 0
     for (const row of state.grid) for (const cell of row) {
       if (cell.type !== TileType.RESIDENTIAL && cell.type !== TileType.COMMERCIAL && cell.type !== TileType.INDUSTRIAL) continue
@@ -1175,9 +1475,9 @@ export function useCitySimulation() {
   }, [coverage, state.grid, state.population])
 
   const prestige = useMemo(() => {
-    const developed = counts.houses + counts.shops + counts.factories + counts.parks
+    const developed = counts.houses + counts.shops + counts.factories + counts.parks + counts.stations
     if (developed === 0) return 0
-    return Math.min(5, Math.round((state.happiness / 25 + counts.parks * 0.22 + counts.shops * 0.06 + counts.houses * 0.01) * 10) / 10)
+    return Math.min(5, Math.round((state.happiness / 25 + counts.parks * 0.22 + counts.shops * 0.06 + counts.houses * 0.01 + counts.stations * 0.18 + counts.bridges * 0.08) * 10) / 10)
   }, [counts, state.happiness])
 
   return {
@@ -1191,7 +1491,7 @@ export function useCitySimulation() {
     rank: state.rank,
     questIndex: state.questIndex,
     sandbox: state.sandbox,
-    questContext: useMemo(() => buildQuestContext(state.grid, counts, state.population, state.happiness), [counts, state.grid, state.population, state.happiness]),
+    questContext: useMemo(() => buildQuestContext(state.grid, counts, state.population, state.happiness, state.materials), [counts, state.grid, state.population, state.happiness, state.materials]),
     enableSandbox,
     undo,
     canUndo: state.undo.length > 0,

@@ -16,6 +16,25 @@ export function buildShowcaseGrid(): Grid {
   for (const y of [26, 32, 38]) for (let x = 20; x <= 44; x += 1) road(x, y)
   for (const x of [22, 30, 38]) for (let y = 20; y <= 44; y += 1) road(x, y)
 
+  // Северный проспект к реке с красным вантовым мостом и ж/д веткой с вокзалом.
+  for (let y = 4; y < 20; y += 1) {
+    if (state.grid[y][30].type === 'WATER') {
+      run({ type: 'PLACE', x: 30, y, tool: 'BRIDGE', catalogId: 'bridge_suspension' })
+    } else {
+      road(30, y)
+    }
+  }
+  for (let x = 22; x <= 42; x += 1) {
+    if (x !== 30) run({ type: 'PLACE', x, y: 19, tool: 'RAIL' })
+  }
+  put(25, 20, 'STATION', 'civ_train_station')
+  put(31, 16, 'RESIDENTIAL', 'res_stalinka_pink')
+  put(33, 16, 'RESIDENTIAL', 'res_streamline_curve')
+  put(31, 14, 'RESIDENTIAL', 'res_highrise_slab')
+  put(27, 21, 'COMMERCIAL', 'com_glass_podium_tower')
+  put(31, 21, 'COMMERCIAL', 'com_diagrid_skyscraper')
+  put(26, 33, 'PARK', 'lnd_clock_tower')
+
   // Сети: вода и солнечные панели на окраине.
   for (let y = 21; y <= 25; y += 1) put(39, y, 'SOLAR_PANEL', 'utl_solar')
   for (let y = 21; y <= 24; y += 1) put(37, y, 'WIND', 'utl_wind')

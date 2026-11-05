@@ -14,9 +14,11 @@ import { GroundSlab, NaturalHorizon, World } from '../3d/CityScene'
 import { Greenery } from '../3d/Greenery'
 import { Pedestrians } from '../3d/Pedestrians'
 import { TrafficSystem } from '../3d/TrafficSystem'
+import { TrainSystem } from '../3d/TrainSystem'
 import { LivingCityParticles } from '../3d/LivingCityParticles'
 import { buildShowcaseGrid } from '../../lib/showcaseCity'
 import { CITY_PROFILE_KEY, MAYOR_NAME_KEY, readCityStats, registerFoundedCity } from '../../lib/cityProfile'
+import { safeJsonParse, sanitizeText } from '../../lib/saveSecurity'
 
 /** Сезонная палитра стартового экрана (зимой — снег, весной — цветение). */
 const TITLE_PALETTE = SEASON_PALETTES[currentSeason()]
@@ -83,6 +85,7 @@ function IllustratedShowcase({ transitioning, onFlightComplete }: { transitionin
       <Greenery grid={grid} foliage={TITLE_PALETTE.foliage} />
       <Pedestrians grid={grid} />
       <TrafficSystem grid={grid} minutes={720} />
+      <TrainSystem grid={grid} minutes={720} />
       <LivingCityParticles grid={grid} />
       {TITLE_PALETTE.snow > 0 && <Snowfall count={1400} />}
       <ToonShadingSetup />
@@ -117,8 +120,15 @@ function readCityProfile(): CityProfile | undefined {
   try {
     const value = localStorage.getItem(PROFILE_KEY)
     if (!value) return undefined
-    const profile = JSON.parse(value) as CityProfile
-    return typeof profile.cityName === 'string' ? profile : undefined
+    const profile = safeJsonParse(value) as Partial<CityProfile> | null
+    if (!profile || typeof profile !== 'object' || typeof profile.cityName !== 'string') return undefined
+    const cityName = sanitizeText(profile.cityName, 40)
+    if (!cityName) return undefined
+    return {
+      cityName,
+      mayorName: sanitizeText(profile.mayorName, 32, 'Mayor'),
+      createdAt: sanitizeText(profile.createdAt, 40, new Date().toISOString()),
+    }
   } catch { return undefined }
 }
 
@@ -187,7 +197,9 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     pendingStart.current = null
   }, [])
   const createCity = () => {
-    const profile = { cityName: cityName.trim(), mayorName: mayorName.trim() || t('title.mayorPlaceholder'), createdAt: new Date().toISOString() }
+    const safeCity = sanitizeText(cityName, 40)
+    const safeMayor = sanitizeText(mayorName, 32, t('title.mayorPlaceholder'))
+    const profile = { cityName: safeCity, mayorName: safeMayor, createdAt: new Date().toISOString() }
     if (!profile.cityName) return
     try { localStorage.setItem(PROFILE_KEY, JSON.stringify(profile)) } catch { /* City profile is optional when storage is unavailable. */ }
     try { localStorage.setItem(MAYOR_NAME_KEY, profile.mayorName) } catch { /* Mayor preference is optional when storage is unavailable. */ }
@@ -203,7 +215,7 @@ export function TitleScreen({ onStart, onResetProgress }: TitleScreenProps) {
     window.dispatchEvent(new CustomEvent('INKVILLE_AUDIO_SETTINGS_CHANGED', { detail: next }))
   }
   const saveMayorName = () => {
-    const nextName = profileName.trim() || t('title.mayorPlaceholder')
+    const nextName = sanitizeText(profileName, 32, t('title.mayorPlaceholder'))
     setProfileName(nextName)
     setMayorName(nextName)
     try {
