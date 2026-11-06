@@ -1,38 +1,61 @@
 import { simulationTesting } from '../hooks/useCitySimulation'
-import type { Grid, ToolId } from '../types/city'
+import { GRID_SIZE, type Grid, type ToolId } from '../types/city'
 
 /**
  * Город для стартового экрана, построенный самой симуляцией (с водой, светом и жителями),
  * чтобы фон всегда показывал актуальный стиль игры: уютный квартал, современный центр, кампус и площади.
+ * Все координаты центрируются относительно GRID_SIZE / 2, чтобы витрина всегда была в центре камеры.
  */
 export function buildShowcaseGrid(): Grid {
   const { reducer, createFreshState } = simulationTesting
+  const off = Math.floor(GRID_SIZE / 2) - 32
   let state = reducer(createFreshState(), { type: 'SET_SANDBOX' })
   state = { ...state, budget: 1_000_000 }
   const run = (action: Parameters<typeof reducer>[1]) => { state = reducer(state, action) }
-  const road = (x: number, y: number) => { if (state.grid[y][x].type === 'EMPTY') run({ type: 'PLACE', x, y, tool: 'ROAD' }) }
-  const put = (x: number, y: number, tool: ToolId, catalogId: string) => run({ type: 'PLACE', x, y, tool, catalogId })
+  const road = (x: number, y: number) => {
+    const gx = x + off
+    const gy = y + off
+    if (state.grid[gy]?.[gx]?.type === 'EMPTY') run({ type: 'PLACE', x: gx, y: gy, tool: 'ROAD' })
+  }
+  const put = (x: number, y: number, tool: ToolId, catalogId?: string) =>
+    run({ type: 'PLACE', x: x + off, y: y + off, tool, catalogId })
+
+  // Живописная река на севере витринного города (под красный вантовый мост и набережную)
+  for (let y = 11; y <= 13; y += 1) {
+    for (let x = 8; x <= 56; x += 1) {
+      put(x, y, 'WATER')
+    }
+  }
 
   for (const y of [26, 32, 38]) for (let x = 20; x <= 44; x += 1) road(x, y)
   for (const x of [22, 30, 38]) for (let y = 20; y <= 44; y += 1) road(x, y)
 
-  // Северный проспект к реке с красным вантовым мостом и ж/д веткой с вокзалом.
-  for (let y = 4; y < 20; y += 1) {
-    if (state.grid[y][30].type === 'WATER') {
-      run({ type: 'PLACE', x: 30, y, tool: 'BRIDGE', catalogId: 'bridge_suspension' })
+  // Северный проспект к реке с красным вантовым мостом и ж/д кольцом с вокзалом и остановкой.
+  for (let y = 6; y < 20; y += 1) {
+    if (state.grid[y + off][30 + off].type === 'WATER') {
+      put(30, y, 'BRIDGE', 'bridge_suspension')
     } else {
       road(30, y)
     }
   }
-  for (let x = 22; x <= 42; x += 1) {
-    if (x !== 30) run({ type: 'PLACE', x, y: 19, tool: 'RAIL' })
+  for (let x = 21; x <= 43; x += 1) {
+    if (x !== 30) put(x, 19, 'RAIL')
+    if (x !== 30) put(x, 45, 'RAIL')
+  }
+  for (let y = 19; y <= 45; y += 1) {
+    if (y !== 26 && y !== 32 && y !== 38) {
+      put(21, y, 'RAIL')
+      put(43, y, 'RAIL')
+    }
   }
   put(25, 20, 'STATION', 'civ_train_station')
+  put(35, 20, 'STATION', 'civ_rail_stop')
   put(31, 16, 'RESIDENTIAL', 'res_stalinka_pink')
   put(33, 16, 'RESIDENTIAL', 'res_streamline_curve')
   put(31, 14, 'RESIDENTIAL', 'res_highrise_slab')
   put(27, 21, 'RESIDENTIAL', 'com_glass_podium_tower')
   put(31, 21, 'COMMERCIAL', 'com_diagrid_skyscraper')
+  put(34, 21, 'COMMERCIAL', 'com_spiral_tower')
   put(26, 33, 'PARK', 'lnd_clock_tower')
 
   // Сети: вода и солнечные панели на окраине.
@@ -58,12 +81,14 @@ export function buildShowcaseGrid(): Grid {
   ;[33, 34, 35].forEach((x) => put(x, 31, 'RESIDENTIAL', 'res_modern_block'))
   for (let x = 31; x <= 37; x += 1) put(x, 27, 'RESIDENTIAL', x % 3 === 0 ? 'res_modern_block' : 'res_brick_loft')
 
-  // Кампус, площади, парковка.
+  // Кампус, площади, парковка и стадион «Алмаз-Арена».
   put(23, 33, 'FIRE_STATION', 'civ_university')
   put(27, 36, 'PARK', 'park_town_square')
   put(29, 33, 'PARK', 'park_plaza')
   put(31, 33, 'PARK', 'lnd_parking')
   put(36, 33, 'RESIDENTIAL', 'res_modern_glass_tower')
+  put(23, 40, 'PARK', 'civ_diamond_arena')
+  put(27, 40, 'PARK', 'civ_sports_complex')
   for (let x = 31; x <= 35; x += 1) put(x, 37, 'RESIDENTIAL', x % 2 ? 'res_apartment' : 'res_townhouse')
   put(33, 34, 'COMMERCIAL', 'com_grocery'); put(34, 34, 'FIRE_STATION', 'civ_school')
 

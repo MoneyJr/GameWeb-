@@ -1,5 +1,5 @@
 /** Размер квадратной сетки города (клеток по каждой стороне). */
-export const GRID_SIZE = 128
+export const GRID_SIZE = 192
 
 /** Типы тайлов. Используем объект + union вместо enum (совместимо с erasableSyntaxOnly). */
 export const TileType = {

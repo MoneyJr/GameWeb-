@@ -20,12 +20,12 @@ export function riverCenterGridY(_x: number): number {
 export function isNaturalWaterCell(x: number, y: number): boolean {
   if (x < 0 || y < 0 || x >= GRID_SIZE || y >= GRID_SIZE) return false
   if (y >= 6 && y <= 9) return true
-  if (x >= 50 && x <= 56 && y >= 46 && y <= 50) {
-    const isCorner = (x === 50 || x === 56) && (y === 46 || y === 50)
+  if (x >= 24 && x <= 32 && y >= 50 && y <= 56) {
+    const isCorner = (x === 24 || x === 32) && (y === 50 || y === 56)
     return !isCorner
   }
-  if (x >= 88 && x <= 98 && y >= 78 && y <= 86) {
-    const isCorner = (x === 88 || x === 98) && (y === 78 || y === 86)
+  if (x >= GRID_SIZE - 42 && x <= GRID_SIZE - 32 && y >= GRID_SIZE - 44 && y <= GRID_SIZE - 36) {
+    const isCorner = (x === GRID_SIZE - 42 || x === GRID_SIZE - 32) && (y === GRID_SIZE - 44 || y === GRID_SIZE - 36)
     return !isCorner
   }
   return false

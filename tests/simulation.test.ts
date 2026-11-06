@@ -3,13 +3,14 @@ import assert from 'node:assert/strict'
 import { simulationTesting } from '../src/hooks/useCitySimulation'
 import {
   clampInt,
+  compactGrid,
   packSignedSave,
   safeJsonParse,
   sanitizeSavedGrid,
   sanitizeText,
   unpackSignedSave,
 } from '../src/lib/saveSecurity'
-import { TileType } from '../src/types/city'
+import { GRID_SIZE, TileType } from '../src/types/city'
 
 const { reducer, createFreshState } = simulationTesting
 type State = ReturnType<typeof createFreshState>
@@ -212,4 +213,13 @@ test('save security signs payloads, blocks tampering, and strips prototype pollu
   assert.ok(sanitizedGrid)
   assert.equal(sanitizedGrid[10][10].type, TileType.EMPTY)
   assert.equal(sanitizedGrid[30][20].type, TileType.ROAD)
+
+  // Compact grid format preserves player-built tiles across the full 192x192 playable map
+  const compacted = compactGrid(c.get().grid)
+  assert.equal(compacted.__compactGrid, 1)
+  assert.equal(compacted.size, GRID_SIZE)
+  const restoredFromCompact = sanitizeSavedGrid(compacted)
+  assert.ok(restoredFromCompact)
+  assert.equal(restoredFromCompact.length, GRID_SIZE)
+  assert.equal(restoredFromCompact[30][20].type, TileType.ROAD)
 })

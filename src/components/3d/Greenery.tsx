@@ -4,7 +4,7 @@ import { GRID_SIZE, TileType, type Grid } from '../../types/city'
 import { getGradientMap } from './primitives'
 
 const OFFSET = (GRID_SIZE - 1) / 2
-const MAX_TREES = 4800
+const MAX_TREES = 12000
 /** Пышное дерево — 4 гранёных «облака» разного размера. */
 const CLUSTER: Array<[number, number, number, number]> = [[0, 0.4, 0, 0.2], [0.13, 0.46, 0.06, 0.15], [-0.12, 0.44, -0.07, 0.14], [0.02, 0.58, -0.02, 0.13]]
 
@@ -59,7 +59,8 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
     const grid = gridRef.current
     const built = new Uint8Array(GRID_SIZE * GRID_SIZE)
     for (const row of grid) for (const cell of row) if (isUrbanTile(cell.type)) built[cell.y * GRID_SIZE + cell.x] = 1
-    const result: Tree[] = []
+    const urbanTrees: Tree[] = []
+    const groveTrees: Tree[] = []
     for (const row of grid) for (const cell of row) {
       if (cell.type !== TileType.EMPTY) continue
       let nearest = 99
@@ -71,14 +72,15 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
       const wx = cell.x - OFFSET
       const wz = cell.y - OFFSET
       const groveNoise = Math.sin(wx * 0.14) * Math.cos(wz * 0.14) + Math.sin((wx + wz) * 0.08)
-      const isNaturalGrove = nearest > 3 && groveNoise > 0.62 && hash(cell.x, cell.y, 19) < 0.28
+      const isNaturalGrove = nearest > 3 && groveNoise > 0.65 && hash(cell.x, cell.y, 19) < 0.22
       if (nearest > 3 && !isNaturalGrove) continue
       // Вплотную к домам — редкие деревья, дальше — густые рощи.
-      const density = isNaturalGrove ? 0.85 : nearest <= 1 ? 0.3 : nearest === 2 ? 0.55 : 0.7
+      const density = isNaturalGrove ? 0.8 : nearest <= 1 ? 0.35 : nearest === 2 ? 0.6 : 0.75
       if (hash(cell.x, cell.y, 1) > density) continue
-      const count = 1 + Math.floor(hash(cell.x, cell.y, 2) * (nearest >= 2 ? 2.6 : 1.6))
-      for (let i = 0; i < count && result.length < MAX_TREES; i += 1) {
-        result.push({
+      const count = 1 + Math.floor(hash(cell.x, cell.y, 2) * (nearest >= 2 ? 2.4 : 1.6))
+      const bucket = nearest <= 3 ? urbanTrees : groveTrees
+      for (let i = 0; i < count; i += 1) {
+        bucket.push({
           x: cell.x - OFFSET + (hash(cell.x, cell.y, 3 + i) - 0.5) * 0.7,
           z: cell.y - OFFSET + (hash(cell.x, cell.y, 5 + i) - 0.5) * 0.7,
           scale: 0.8 + hash(cell.x, cell.y, 7 + i) * 0.7,
@@ -87,7 +89,7 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
         })
       }
     }
-    return result
+    return [...urbanTrees, ...groveTrees].slice(0, MAX_TREES)
   }, [builtKey, foliage])
 
   useLayoutEffect(() => {

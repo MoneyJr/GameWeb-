@@ -7,7 +7,7 @@ const VALID_TILE_TYPES = new Set<string>(Object.values(TileType))
 const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype'])
 
 /** Безопасный JSON.parse с защитой от prototype pollution и ограничением размера. */
-export function safeJsonParse<T>(raw: string | null | undefined, maxBytes = 2_000_000): T | null {
+export function safeJsonParse<T>(raw: string | null | undefined, maxBytes = 8_000_000): T | null {
   if (!raw || typeof raw !== 'string' || raw.length > maxBytes) return null
   try {
     return JSON.parse(raw, (key, value) => (DANGEROUS_KEYS.has(key) ? undefined : value)) as T
@@ -101,60 +101,105 @@ export function unpackSignedSave<T>(raw: string | null | undefined): T | null {
   return parsed as T
 }
 
-/** Проверяет и нормализует сетку города из сохранения (поддерживает миграцию старых 64×64 карт до 128×128). */
-export function sanitizeSavedGrid(rawGrid: unknown): Grid | null {
-  if (!Array.isArray(rawGrid) || (rawGrid.length !== GRID_SIZE && rawGrid.length !== 64)) return null
-  const srcSize = rawGrid.length
-  const result: Grid = []
-  for (let y = 0; y < GRID_SIZE; y += 1) {
-    const row = y < srcSize ? rawGrid[y] : undefined
-    if (y < srcSize && (!Array.isArray(row) || row.length !== srcSize)) return null
-    const cleanRow: GridCell[] = []
-    for (let x = 0; x < GRID_SIZE; x += 1) {
-      if (y >= srcSize || x >= srcSize) {
-        const naturalWater = isNaturalWaterCell(x, y)
-        cleanRow.push({
-          x,
-          y,
-          type: naturalWater ? TileType.WATER : TileType.EMPTY,
-          naturalWater: naturalWater || undefined,
-          hasWater: false,
-          hasPower: false,
-          level: 1,
-          orientation: 0,
-        })
-        continue
+export interface CompactSavedGrid {
+  __compactGrid: 1
+  size: number
+  cells: GridCell[]
+}
+
+/** Уплотняет сетку перед сохранением в localStorage: хранит только застроенные или изменённые игроком клетки. */
+export function compactGrid(grid: Grid): CompactSavedGrid {
+  const cells: GridCell[] = []
+  for (const row of grid) {
+    for (const cell of row) {
+      const isDefaultNaturalWater = cell.type === TileType.WATER && cell.naturalWater && isNaturalWaterCell(cell.x, cell.y)
+      const isDefaultEmpty = cell.type === TileType.EMPTY && !isNaturalWaterCell(cell.x, cell.y)
+      if (!isDefaultEmpty && !isDefaultNaturalWater) {
+        cells.push(cell)
       }
-      const cell = (row as unknown[])[x] as Partial<GridCell> | null | undefined
-      if (!cell || typeof cell !== 'object') return null
-      const type = typeof cell.type === 'string' && VALID_TILE_TYPES.has(cell.type)
-        ? (cell.type as TileType)
-        : TileType.EMPTY
-      const orientation = cell.orientation === 1 || cell.orientation === 2 || cell.orientation === 3 ? cell.orientation : 0
-      const cleanCell: GridCell = {
+    }
+  }
+  return { __compactGrid: 1, size: grid.length, cells }
+}
+
+function sanitizeCellObject(cell: Partial<GridCell> | null | undefined, x: number, y: number): GridCell | null {
+  if (!cell || typeof cell !== 'object') return null
+  const type = typeof cell.type === 'string' && VALID_TILE_TYPES.has(cell.type)
+    ? (cell.type as TileType)
+    : TileType.EMPTY
+  const orientation = cell.orientation === 1 || cell.orientation === 2 || cell.orientation === 3 ? cell.orientation : 0
+  const cleanCell: GridCell = {
+    x,
+    y,
+    type,
+    hasWater: Boolean(cell.hasWater),
+    hasPower: Boolean(cell.hasPower),
+    level: clampInt(cell.level, 1, 3, 1),
+    orientation,
+  }
+  if (typeof cell.style === 'string' && cell.style.length <= 24) cleanCell.style = sanitizeText(cell.style, 24, '') || undefined
+  if (typeof cell.catalogId === 'string' && /^[a-z0-9_-]{1,40}$/i.test(cell.catalogId)) cleanCell.catalogId = cell.catalogId
+  if (typeof cell.refX === 'number' && Number.isInteger(cell.refX) && cell.refX >= 0 && cell.refX < GRID_SIZE) cleanCell.refX = cell.refX
+  if (typeof cell.refY === 'number' && Number.isInteger(cell.refY) && cell.refY >= 0 && cell.refY < GRID_SIZE) cleanCell.refY = cell.refY
+  if (cell.smog) cleanCell.smog = true
+  if (cell.parked) cleanCell.parked = true
+  if (cell.hasSupplies) cleanCell.hasSupplies = true
+  if (cell.naturalWater) cleanCell.naturalWater = true
+  if (cell.residents !== undefined) cleanCell.residents = clampInt(cell.residents, 0, 5000, 0)
+  if (cell.maxResidents !== undefined) cleanCell.maxResidents = clampInt(cell.maxResidents, 1, 5000, 15)
+  if (cell.residentialFloors !== undefined) cleanCell.residentialFloors = clampInt(cell.residentialFloors, 1, 60, 2)
+  if (cell.fire !== undefined) cleanCell.fire = clampInt(cell.fire, 1, 60, 1)
+  return cleanCell
+}
+
+function createDefaultGrid(): Grid {
+  return Array.from({ length: GRID_SIZE }, (_, y) =>
+    Array.from({ length: GRID_SIZE }, (_, x): GridCell => {
+      const naturalWater = isNaturalWaterCell(x, y)
+      return {
         x,
         y,
-        type,
-        hasWater: Boolean(cell.hasWater),
-        hasPower: Boolean(cell.hasPower),
-        level: clampInt(cell.level, 1, 3, 1),
-        orientation,
+        type: naturalWater ? TileType.WATER : TileType.EMPTY,
+        naturalWater: naturalWater || undefined,
+        hasWater: false,
+        hasPower: false,
+        level: 1,
+        orientation: 0,
       }
-      if (typeof cell.style === 'string' && cell.style.length <= 24) cleanCell.style = sanitizeText(cell.style, 24, '') || undefined
-      if (typeof cell.catalogId === 'string' && /^[a-z0-9_-]{1,40}$/i.test(cell.catalogId)) cleanCell.catalogId = cell.catalogId
-      if (typeof cell.refX === 'number' && Number.isInteger(cell.refX) && cell.refX >= 0 && cell.refX < GRID_SIZE) cleanCell.refX = cell.refX
-      if (typeof cell.refY === 'number' && Number.isInteger(cell.refY) && cell.refY >= 0 && cell.refY < GRID_SIZE) cleanCell.refY = cell.refY
-      if (cell.smog) cleanCell.smog = true
-      if (cell.parked) cleanCell.parked = true
-      if (cell.hasSupplies) cleanCell.hasSupplies = true
-      if (cell.naturalWater) cleanCell.naturalWater = true
-      if (cell.residents !== undefined) cleanCell.residents = clampInt(cell.residents, 0, 5000, 0)
-      if (cell.maxResidents !== undefined) cleanCell.maxResidents = clampInt(cell.maxResidents, 1, 5000, 15)
-      if (cell.residentialFloors !== undefined) cleanCell.residentialFloors = clampInt(cell.residentialFloors, 1, 60, 2)
-      if (cell.fire !== undefined) cleanCell.fire = clampInt(cell.fire, 1, 60, 1)
-      cleanRow.push(cleanCell)
+    }),
+  )
+}
+
+/** Проверяет и нормализует сетку города из сохранения (поддерживает компактный формат и миграцию 64×64 / 128×128 карт). */
+export function sanitizeSavedGrid(rawGrid: unknown): Grid | null {
+  if (rawGrid && typeof rawGrid === 'object' && !Array.isArray(rawGrid) && '__compactGrid' in rawGrid) {
+    const compact = rawGrid as Partial<CompactSavedGrid>
+    if (compact.__compactGrid !== 1 || !Array.isArray(compact.cells)) return null
+    const result = createDefaultGrid()
+    for (const item of compact.cells) {
+      if (!item || typeof item !== 'object') continue
+      const cx = (item as Partial<GridCell>).x
+      const cy = (item as Partial<GridCell>).y
+      if (typeof cx !== 'number' || typeof cy !== 'number' || !Number.isInteger(cx) || !Number.isInteger(cy)) continue
+      if (cx < 0 || cy < 0 || cx >= GRID_SIZE || cy >= GRID_SIZE) continue
+      const clean = sanitizeCellObject(item as Partial<GridCell>, cx, cy)
+      if (clean) result[cy][cx] = clean
     }
-    result.push(cleanRow)
+    return result
+  }
+
+  if (!Array.isArray(rawGrid) || (rawGrid.length !== GRID_SIZE && rawGrid.length !== 128 && rawGrid.length !== 64)) return null
+  const srcSize = rawGrid.length
+  const result = createDefaultGrid()
+  for (let y = 0; y < srcSize; y += 1) {
+    const row = rawGrid[y]
+    if (!Array.isArray(row) || row.length !== srcSize) return null
+    for (let x = 0; x < srcSize; x += 1) {
+      const cell = (row as unknown[])[x] as Partial<GridCell> | null | undefined
+      const cleanCell = sanitizeCellObject(cell, x, y)
+      if (!cleanCell) return null
+      result[y][x] = cleanCell
+    }
   }
   return result
 }

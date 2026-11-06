@@ -27,7 +27,8 @@ import { currentSeason, SEASON_PALETTES, type SeasonPalette } from '../../lib/se
 const CAMERA_POSITION: [number, number, number] = [28, 32, 28]
 /** Полярный угол камеры рассчитывается из заданного изометрического положения. */
 const ISO_POLAR_ANGLE = Math.acos(CAMERA_POSITION[1] / Math.hypot(...CAMERA_POSITION))
-const PAN_LIMIT = GRID_SIZE / 2
+/** Вся видимая часть карты в пределах панорамирования — полностью застраиваемая игровая зона. */
+const PAN_LIMIT = GRID_SIZE / 2 - 22
 const CAMERA_UP = new THREE.Vector3(0, 1, 0)
 
 type Cell = { x: number; y: number }
@@ -271,7 +272,7 @@ export const GroundSlab = memo(function GroundSlab({ minutes, palette, showGrid 
       </mesh>
       <primitive object={gridLines} position={[0, 0.003, 0]} visible={showGrid} />
       <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[480, 480]} />
+        <planeGeometry args={[GRID_SIZE * 3, GRID_SIZE * 3]} />
         <shadowMaterial color="#24366b" transparent opacity={0.3} />
       </mesh>
     </group>

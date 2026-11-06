@@ -4,7 +4,7 @@ import { BUILDING_BY_ID, canonicalCatalogId, DEFAULT_CATALOG_ID_BY_TILE } from '
 import { QUESTS, RANKS, rankForPopulation, unlockRankOf, type QuestContext } from '../lib/progression'
 import { computeCoverage, isCovered, type CoverageMaps } from '../lib/coverage'
 import { activeEvents, eventModifiers, sameEvents, type CityEventId, type CityEventModifiers } from '../lib/cityEvents'
-import { clampInt, packSignedSave, sanitizeSavedGrid, unpackSignedSave } from '../lib/saveSecurity'
+import { clampInt, compactGrid, packSignedSave, sanitizeSavedGrid, unpackSignedSave } from '../lib/saveSecurity'
 import {
   GRID_SIZE,
   TileType,
@@ -1380,7 +1380,7 @@ const SAVE_INTERVAL_MS = 10_000
 function persistState(state: SimState) {
   try {
     const hasCity = state.grid.some((row) => row.some(isPlayerBuiltCell))
-    if (hasCity) localStorage.setItem(SAVE_KEY, packSignedSave({ ...state, undo: undefined, notice: null }))
+    if (hasCity) localStorage.setItem(SAVE_KEY, packSignedSave({ ...state, grid: compactGrid(state.grid), undo: undefined, notice: null }))
     else localStorage.removeItem(SAVE_KEY)
   } catch { /* Storage can be unavailable in private browsing. */ }
 }

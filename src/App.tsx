@@ -4,7 +4,7 @@ import { BottomDock } from './components/ui/BottomDock'
 import { CityHallModal } from './components/ui/CityHallModal'
 import { TopBar } from './components/ui/TopBar'
 import { useCitySimulation } from './hooks/useCitySimulation'
-import { TileType, type Grid } from './types/city'
+import { GRID_SIZE, TileType, type Grid } from './types/city'
 import { TitleScreen } from './components/ui/TitleScreen'
 import type { CityProfile } from './components/ui/TitleScreen'
 import { useI18n } from './i18n/I18nProvider'
@@ -87,11 +87,12 @@ function App() {
   // A shareable visual fixture, enabled with ?preview=cityrt, keeps the simulation's normal empty start intact.
   const displayGrid = useMemo<Grid>(() => {
     if (new URLSearchParams(window.location.search).get('preview') !== 'cityrt') return sim.grid
+    const off = Math.floor(GRID_SIZE / 2) - 32
     const grid: Grid = sim.grid.map((row) => row.map((cell) => ({ ...cell, type: TileType.EMPTY, style: undefined })))
     const put = (x: number, y: number, type: TileType, style?: string) => {
-      grid[y][x] = { ...grid[y][x], type, style, hasWater: true, hasPower: true }
+      grid[y + off][x + off] = { ...grid[y + off][x + off], type, style, hasWater: true, hasPower: true }
     }
-    // A compact CityRT showcase, centered on the expanded 64 x 64 grid.
+    // A compact CityRT showcase, centered on the expanded grid.
     for (let x = 25; x <= 38; x += 1) put(x, 32, TileType.ROAD)
     for (let y = 24; y <= 32; y += 1) put(38, y, TileType.ROAD)
     ;[[26, 31], [27, 31], [28, 31], [29, 31], [30, 31], [31, 31]].forEach(([x, y]) => put(x, y, TileType.RESIDENTIAL, 'EU'))

@@ -1,8 +1,7 @@
 import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
-import type { Grid } from '../../types/city'
-import { TileType } from '../../types/city'
+import { GRID_SIZE, TileType, type Grid } from '../../types/city'
 
 type Emitter = { x: number; y: number; z: number; phase: number; dark: boolean }
 
@@ -13,7 +12,7 @@ const PARTICLE_MATERIAL = new THREE.ShaderMaterial({
   fragmentShader: `varying float vAlpha; varying vec3 vColor; void main(){ vec2 p=gl_PointCoord-vec2(0.5); float d=length(p); if(d>0.5) discard; float edge=1.0-smoothstep(0.28,0.5,d); gl_FragColor=vec4(vColor,vAlpha*edge); }`,
 })
 
-const GRID_OFFSET = 31.5
+const GRID_OFFSET = (GRID_SIZE - 1) / 2
 /** Shared low-cost smoke buffer for factory chimneys and residential fireplaces. */
 export function LivingCityParticles({ grid }: { grid: Grid }) {
   const points = useRef<THREE.Points>(null)
