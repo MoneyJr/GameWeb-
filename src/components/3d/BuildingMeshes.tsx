@@ -25,6 +25,7 @@ import {
   getFacadeMaterial,
   getGradientMap,
   getPaverMaterial,
+  getToonMaterial,
   hash01,
   lampBulbMaterial,
   lampGlowInnerMaterial,
@@ -48,6 +49,7 @@ import {
   GlassPodiumTowerMesh,
   GridOfficeTowerMesh,
   HighriseSlabMesh,
+  RailStopMesh,
   RailTileMesh,
   StalinkaPinkMesh,
   StreamlineCurveMesh,
@@ -362,27 +364,92 @@ export function Residential({ variant = 0, style = 'EU', catalogId }: { variant?
   }
 
   if (catalogId === 'res_apartment') {
-    const base = 0.2
-    const levelHeight = 0.42
+    const base = 0.22
+    const levelHeight = 0.34
     const bodyHeight = levelHeight * 4
     const roofBase = base + bodyHeight
-    return <group>
-      <ResidentialBase />
-      <Box size={[0.95, base, 0.95]} position={[0, base / 2, 0]} color="#89857f" />
-      {Array.from({ length: 4 }, (_, i) => <Box key={`stone-course-${i}`} size={[0.96, 0.018, 0.97]} position={[0, 0.04 + i * 0.05, 0]} color="#bbb4a8" />)}
-      <Box size={[0.86, bodyHeight, 0.84]} position={[0, base + bodyHeight / 2, -0.02]} color="#c27c59" />
-      <Box size={[0.96, 0.035, 0.06]} position={[0, base + 0.1, 0.45]} color="#e4c9aa" />
-      {Array.from({ length: 4 }, (_, floor) => <group key={`apartment-floor-${floor}`} position={[0, base + floor * levelHeight, 0]}>
-        <Box size={[0.97, 0.045, 0.08]} position={[0, levelHeight - 0.025, 0.44]} color="#e0b994" />
-        {[-0.29, 0, 0.29].map((x) => <Window key={x} position={[x, 0.34, 0.43]} width={0.15} height={0.34} glass="#293643" frame="#efe2ce" sill />)}
-      </group>)}
-      <Box size={[1.02, 0.1, 1.02]} position={[0, roofBase + 0.03, 0]} color="#5f6267" />
-      <Box size={[1.02, 0.18, 0.06]} position={[0, roofBase + 0.15, 0.48]} color="#89857f" />
-      <Box size={[0.06, 0.18, 1.02]} position={[-0.48, roofBase + 0.15, 0]} color="#89857f" />
-      <Box size={[0.06, 0.18, 1.02]} position={[0.48, roofBase + 0.15, 0]} color="#89857f" />
-      {[-0.25, 0.25].map((x) => <Box key={x} size={[0.16, 0.12, 0.18]} position={[x, roofBase + 0.17, -0.2]} color="#767b81" />)}
-      <Box size={[0.2, 0.35, 0.035]} position={[0, base + 0.18, 0.43]} color="#4e3328" />
-    </group>
+    const haussmannFacade = getFacadeMaterial({
+      wall: '#ebe4d6',
+      glass: '#3b4e63',
+      frame: [0.24, 0.22],
+      spacing: [0.24, 0.34],
+    })
+    return (
+      <group>
+        <ResidentialBase />
+        {/* Рустованный первый этаж с угловым бордовым козырьком кафе (строго по референсу CityRT) */}
+        <Box size={[0.92, base, 0.92]} position={[0, base / 2, 0]} color="#d6cfc2" />
+        <Box size={[0.24, 0.05, 0.12]} position={[0.32, base - 0.02, 0.45]} rotation={[0.25, 0, 0]} color="#b8382c" />
+        <Box size={[0.18, 0.16, 0.03]} position={[0, base / 2, 0.46]} color="#3a2d27" />
+
+        {/* Светло-кремовый фасад в стиле Османа (Париж / Европа) */}
+        <Box
+          size={[0.88, bodyHeight, 0.88]}
+          position={[0, base + bodyHeight / 2, 0]}
+          color="#ebe4d6"
+          material={haussmannFacade}
+        />
+
+        {/* Угловая круглая эркерная башня с куполом и шпилем */}
+        <Cylinder
+          radius={0.18}
+          height={bodyHeight + base}
+          segments={12}
+          position={[0.34, (bodyHeight + base) / 2, 0.34]}
+          color="#efe9dc"
+        />
+
+        {/* Длинные кованые балконы вдоль этажей и вокруг угловой башни */}
+        {[1, 2, 3].map((fl) => {
+          const fy = base + fl * levelHeight
+          return (
+            <group key={fl} position={[0, fy, 0]}>
+              <Box size={[0.92, 0.028, 0.92]} position={[0, 0, 0]} color="#dfd7c6" />
+              <Box size={[0.78, 0.055, 0.02]} position={[-0.04, 0.035, 0.46]} color="#25282c" />
+              <Box size={[0.02, 0.055, 0.78]} position={[0.46, 0.035, -0.04]} color="#25282c" />
+              <Cylinder radius={0.2} height={0.045} segments={12} position={[0.34, 0.03, 0.34]} color="#25282c" />
+            </group>
+          )
+        })}
+
+        {/* Тёмно-сланцевая мансардная крыша с белыми слуховыми окнами (люкарнами) */}
+        <Box size={[0.92, 0.04, 0.92]} position={[0, roofBase + 0.02, 0]} color="#dfd7c6" />
+        <Cylinder
+          radius={0.64}
+          radiusTop={0.48}
+          height={0.34}
+          segments={4}
+          position={[0, roofBase + 0.21, 0]}
+          rotation={[0, Math.PI / 4, 0]}
+          color="#4c5563"
+        />
+        <Box size={[0.68, 0.03, 0.68]} position={[0, roofBase + 0.38, 0]} color="#5e6775" />
+
+        {/* Белые слуховые окна по периметру мансарды */}
+        {[-0.24, 0, 0.24].map((offset) => (
+          <group key={offset}>
+            <Box size={[0.11, 0.14, 0.1]} position={[offset, roofBase + 0.18, 0.38]} color="#ebe4d6" />
+            <Box size={[0.07, 0.09, 0.02]} position={[offset, roofBase + 0.17, 0.435]} color="#2b3847" />
+            <Box size={[0.1, 0.14, 0.11]} position={[0.38, roofBase + 0.18, offset]} color="#ebe4d6" />
+          </group>
+        ))}
+
+        {/* Ребристый сланцевый купол со шпилем на угловой башне */}
+        <Cylinder radius={0.19} radiusTop={0.14} height={0.16} segments={10} position={[0.34, roofBase + 0.1, 0.34]} color="#4c5563" />
+        <Dome radius={0.16} position={[0.34, roofBase + 0.16, 0.34]} color="#434c59" />
+        <Cone radius={0.035} height={0.18} segments={6} position={[0.34, roofBase + 0.38, 0.34]} color="#363d47" />
+
+        {/* Печные трубы с терракотовыми дымниками на крыше */}
+        {[-0.18, 0.14].map((x, idx) => (
+          <group key={x} position={[x, roofBase + 0.44, idx === 0 ? -0.14 : 0.08]}>
+            <Box size={[0.16, 0.12, 0.08]} position={[0, 0, 0]} color="#e3dccb" />
+            {[-0.04, 0, 0.04].map((cx) => (
+              <Cylinder key={cx} radius={0.015} height={0.05} segments={6} position={[cx, 0.08, 0]} color="#b84b34" />
+            ))}
+          </group>
+        ))}
+      </group>
+    )
   }
 
   // Wall-to-wall European townhouse: one full tile with a deep, warm facade.
@@ -970,30 +1037,142 @@ function CathedralMesh() {
   </group>
 }
 
-function StadiumFloodlight({ position }: { position: Vec3 }) {
-  return <group position={position}>
-    <Box size={[0.045, 1.65, 0.045]} position={[0, 0.825, 0]} color="#6a7071" />
-    <Box size={[0.22, 0.04, 0.04]} position={[0, 1.56, 0]} color="#777d7e" />
-    <Box size={[0.075, 0.08, 0.05]} position={[-0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
-    <Box size={[0.075, 0.08, 0.05]} position={[0.06, 1.58, 0.01]} color="#fff0bf" material={lampBulbMaterial} />
-  </group>
-}
+const trackOuterWallGeo = new THREE.CylinderGeometry(0.76, 0.72, 0.52, 28, 1, true)
+const trackInnerBowlGeo = new THREE.CylinderGeometry(0.49, 0.37, 0.44, 28, 1, true)
+const trackRedRingGeo = new THREE.RingGeometry(0.49, 0.76, 32)
+const trackWhiteInnerLaneGeo = new THREE.RingGeometry(0.485, 0.515, 32)
+const trackWhiteMidLaneGeo = new THREE.RingGeometry(0.615, 0.635, 32)
+const trackWhiteOuterLaneGeo = new THREE.RingGeometry(0.735, 0.765, 32)
 
+const trackWallMat = (() => {
+  const m = getToonMaterial('#5f7080').clone()
+  m.side = THREE.DoubleSide
+  return m
+})()
+const trackBowlMat = (() => {
+  const m = getToonMaterial('#8d99a6').clone()
+  m.side = THREE.DoubleSide
+  return m
+})()
+const trackRedMat = (() => {
+  const m = getToonMaterial('#d9382c').clone()
+  m.side = THREE.DoubleSide
+  return m
+})()
+const trackWhiteLaneMat = (() => {
+  const m = getToonMaterial('#f8fafc').clone()
+  m.side = THREE.DoubleSide
+  return m
+})()
+
+/**
+ * 3×3 Спортивный комплекс CityRT (строго по референсу #3):
+ * овальный легкоатлетический стадион с красной беговой дорожкой на верхнем ярусе, белыми вертикальными рёбрами фасада и открытым зелёным полем внутри,
+ * плюс крытый спорткомплекс с голубыми сводчатыми крышами, башней и стеклянным куполом.
+ */
 function StadiumMesh() {
-  return <group>
-    <Box size={[2.8, 0.06, 2.8]} position={[0, 0.03, 0]} color="#d4c6ad" />
-    <Box size={[2.2, 0.08, 2.2]} position={[0, 0.1, 0]} color="#4e8c37" />
-    <Box size={[0.82, 0.035, 0.82]} position={[0, 0.16, 0]} rotation={[0, Math.PI / 4, 0]} color="#c78852" />
-    <Cylinder radius={0.07} height={0.02} segments={8} position={[0, 0.185, 0]} color="#f4ead6" />
-    {/* L-shaped stepped stands with simple roof canopies. */}
-    {[0, 1, 2].map((step) => <group key={`stand-${step}`}>
-      <Box size={[2.2, 0.14, 0.34]} position={[0, 0.22 + step * 0.13, -0.92 + step * 0.11]} color={step % 2 ? '#a89578' : '#b7a488'} />
-      <Box size={[0.34, 0.14, 2.2]} position={[-0.92 + step * 0.11, 0.22 + step * 0.13, 0]} color={step % 2 ? '#a89578' : '#b7a488'} />
-    </group>)}
-    {[-0.78, 0.78].flatMap((x) => [-0.78, 0.78].map((z) => <Box key={`canopy-${x}-${z}`} size={[0.55, 0.045, 0.42]} position={[x, 0.78, z]} color="#6b5b49" />))}
-    {[[ -1.02, -1.02], [1.02, -1.02], [-1.02, 1.02], [1.02, 1.02]].map(([x, z], i) => <StadiumFloodlight key={`stadium-light-${i}`} position={[x, 0.08, z]} />)}
-    <Box size={[0.72, 0.12, 0.04]} position={[0, 0.22, 1.08]} color="#ece4d5" />
-  </group>
+  const paver = getPaverMaterial()
+  return (
+    <group>
+      {/* Общая благоустроенная площадь спорткомплекса */}
+      <Box size={[2.96, 0.06, 2.96]} position={[0, 0.03, 0]} color="#d8d5cb" material={paver} />
+
+      {/* 1. Овальный легкоатлетический стадион с красной беговой дорожкой (слева) */}
+      <group position={[-0.56, 0, -0.14]} scale={[1.04, 1, 0.88]}>
+        {/* Полая внешняя стена чаши */}
+        <mesh geometry={trackOuterWallGeo} material={trackWallMat} position={[0, 0.32, 0]} castShadow receiveShadow />
+        {/* Белые вертикальные колонны-рёбра по периметру стадиона */}
+        {Array.from({ length: 24 }, (_, i) => {
+          const a = (i / 24) * Math.PI * 2
+          return (
+            <Box
+              key={i}
+              size={[0.04, 0.54, 0.05]}
+              position={[Math.cos(a) * 0.75, 0.33, Math.sin(a) * 0.75]}
+              rotation={[0, -a + Math.PI / 2, 0]}
+              color="#f2f5f8"
+            />
+          )
+        })}
+
+        {/* Внутренний склон трибун */}
+        <mesh geometry={trackInnerBowlGeo} material={trackBowlMat} position={[0, 0.3, 0]} />
+
+        {/* Красная беговая дорожка с белыми линиями разметки на верхнем ярусе */}
+        <mesh
+          geometry={trackRedRingGeo}
+          material={trackRedMat}
+          position={[0, 0.58, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          castShadow
+          receiveShadow
+        />
+        <mesh
+          geometry={trackWhiteInnerLaneGeo}
+          material={trackWhiteLaneMat}
+          position={[0, 0.583, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+        <mesh
+          geometry={trackWhiteMidLaneGeo}
+          material={trackWhiteLaneMat}
+          position={[0, 0.583, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+        <mesh
+          geometry={trackWhiteOuterLaneGeo}
+          material={trackWhiteLaneMat}
+          position={[0, 0.583, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+
+        {/* Открытое зелёное поле на дне чаши со спортивной разметкой и деревьями */}
+        <Cylinder radius={0.39} height={0.04} segments={24} position={[0, 0.08, 0]} color="#53a149" outline={false} />
+        <Box size={[0.38, 0.01, 0.24]} position={[0, 0.105, 0]} color="#f8fafc" outline={false} />
+        <Box size={[0.34, 0.012, 0.2]} position={[0, 0.107, 0]} color="#5cb050" outline={false} />
+        <StreetTree position={[-0.18, 0.1, -0.12]} />
+        <StreetTree position={[0.18, 0.1, 0.12]} />
+      </group>
+
+      {/* 2. Крытые спортивные павильоны с голубыми сводчатыми крышами, башней и стеклянным куполом (справа) */}
+      <group position={[0.64, 0.06, 0.22]}>
+        {/* Стеклянный геодезический купол бассейна/манежа */}
+        <Cylinder radius={0.34} height={0.14} segments={14} position={[-0.28, 0.07, -0.46]} color="#e8edf2" />
+        <Dome radius={0.32} position={[-0.28, 0.14, -0.46]} color="#89c4e6" />
+
+        {/* Высокая песчаниковая башня комплекса */}
+        <Box size={[0.24, 0.78, 0.24]} position={[-0.02, 0.39, -0.34]} color="#d6c0a3" />
+        <Cone radius={0.18} height={0.22} segments={4} position={[-0.02, 0.89, -0.34]} rotation={[0, Math.PI / 4, 0]} color="#54606e" />
+
+        {/* Два корпуса с полукруглыми голубыми сводами крыши */}
+        {[-0.22, 0.26].map((zOff, idx) => (
+          <group key={idx} position={[0.16, 0, zOff]}>
+            <Box size={[0.78, 0.34, 0.42]} position={[0, 0.17, 0]} color="#dfd1be" />
+            <Cylinder
+              radius={0.21}
+              height={0.78}
+              segments={12}
+              position={[0, 0.34, 0]}
+              rotation={[0, 0, Math.PI / 2]}
+              color="#71abd4"
+            />
+          </group>
+        ))}
+      </group>
+
+      {/* Аллея зелёных деревьев вокруг спорткомплекса */}
+      {[
+        [-1.18, 1.08],
+        [-0.78, 1.16],
+        [-0.38, 1.18],
+        [0.08, 1.16],
+        [1.18, -1.08],
+        [0.82, -1.14],
+      ].map(([x, z], i) => (
+        <StreetTree key={i} position={[x, 0.06, z]} />
+      ))}
+    </group>
+  )
 }
 
 function CropField({ plowed = false }: { plowed?: boolean }) {
@@ -1368,12 +1547,16 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       dust = 6
       break
     case TileType.STATION:
-      if (catalogId === 'ind_freight_station') {
+      if (catalogId === 'civ_rail_stop') {
+        model = <RailStopMesh />
+        w = 1; h = 1
+      } else if (catalogId === 'ind_freight_station') {
         model = <FreightStationMesh />
+        w = 3; h = 1
       } else {
         model = <TrainStationMesh />
+        w = 3; h = 1
       }
-      w = 3; h = 1
       dust = 12
       needsWater = true
       needsPower = true

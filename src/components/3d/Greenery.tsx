@@ -4,7 +4,7 @@ import { GRID_SIZE, TileType, type Grid } from '../../types/city'
 import { getGradientMap } from './primitives'
 
 const OFFSET = (GRID_SIZE - 1) / 2
-const MAX_TREES = 3000
+const MAX_TREES = 4800
 /** Пышное дерево — 4 гранёных «облака» разного размера. */
 const CLUSTER: Array<[number, number, number, number]> = [[0, 0.4, 0, 0.2], [0.13, 0.46, 0.06, 0.15], [-0.12, 0.44, -0.07, 0.14], [0.02, 0.58, -0.02, 0.13]]
 
@@ -67,11 +67,16 @@ export function Greenery({ grid, foliage }: { grid: Grid; foliage: string[] }) {
         const nx = cell.x + dx, ny = cell.y + dy
         if (nx >= 0 && ny >= 0 && nx < GRID_SIZE && ny < GRID_SIZE && built[ny * GRID_SIZE + nx]) nearest = Math.min(nearest, Math.max(Math.abs(dx), Math.abs(dy)))
       }
-      if (nearest > 3) continue
+      // На незастроенных просторах карты тоже растут природные рощи (и исчезают, когда клетку застраивают)
+      const wx = cell.x - OFFSET
+      const wz = cell.y - OFFSET
+      const groveNoise = Math.sin(wx * 0.14) * Math.cos(wz * 0.14) + Math.sin((wx + wz) * 0.08)
+      const isNaturalGrove = nearest > 3 && groveNoise > 0.62 && hash(cell.x, cell.y, 19) < 0.28
+      if (nearest > 3 && !isNaturalGrove) continue
       // Вплотную к домам — редкие деревья, дальше — густые рощи.
-      const density = nearest <= 1 ? 0.3 : nearest === 2 ? 0.55 : 0.7
+      const density = isNaturalGrove ? 0.85 : nearest <= 1 ? 0.3 : nearest === 2 ? 0.55 : 0.7
       if (hash(cell.x, cell.y, 1) > density) continue
-      const count = 1 + Math.floor(hash(cell.x, cell.y, 2) * (nearest >= 2 ? 3 : 1.6))
+      const count = 1 + Math.floor(hash(cell.x, cell.y, 2) * (nearest >= 2 ? 2.6 : 1.6))
       for (let i = 0; i < count && result.length < MAX_TREES; i += 1) {
         result.push({
           x: cell.x - OFFSET + (hash(cell.x, cell.y, 3 + i) - 0.5) * 0.7,

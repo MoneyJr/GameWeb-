@@ -1,3 +1,4 @@
+import * as THREE from 'three'
 import {
   Box,
   Cone,
@@ -13,6 +14,7 @@ import {
   getFlagstoneMaterial,
   getGlassMaterial,
   getPaverMaterial,
+  getToonMaterial,
   hash01,
   nightSignMaterial,
   townHallClockMaterial,
@@ -219,9 +221,95 @@ export function BridgeTileMesh({
   )
 }
 
+const CURVE_ARC_STEPS = 7
+const CURVE_SLEEPERS = 6
+
+interface RailCurveArcProps {
+  sx: 1 | -1
+  sz: 1 | -1
+  railGauge: number
+  isBridge: boolean
+}
+
+function RailCurveArc({ sx, sz, railGauge, isBridge }: RailCurveArcProps) {
+  const cx = sx * 0.5
+  const cz = sz * 0.5
+  const rCenter = 0.5
+  const rInner = rCenter - railGauge
+  const rOuter = rCenter + railGauge
+
+  return (
+    <group>
+      {/* Скруглённая гравийная насыпь по дуге 90° */}
+      {!isBridge &&
+        Array.from({ length: CURVE_ARC_STEPS }, (_, i) => {
+          const t = ((i + 0.5) / CURVE_ARC_STEPS) * (Math.PI / 2)
+          const x = cx - sx * rCenter * Math.cos(t)
+          const z = cz - sz * rCenter * Math.sin(t)
+          const yaw = Math.atan2(sx * Math.sin(t), -sz * Math.cos(t))
+          return (
+            <Box
+              key={`bal_${i}`}
+              size={[0.52, 0.035, 0.17]}
+              position={[x, 0.015, z]}
+              rotation={[0, yaw, 0]}
+              color="#8e877d"
+              outline={false}
+            />
+          )
+        })}
+
+      {/* Радиально расположенные деревянные шпалы на повороте */}
+      {Array.from({ length: CURVE_SLEEPERS }, (_, i) => {
+        const t = ((i + 0.5) / CURVE_SLEEPERS) * (Math.PI / 2)
+        const x = cx - sx * rCenter * Math.cos(t)
+        const z = cz - sz * rCenter * Math.sin(t)
+        const yaw = Math.atan2(sx * Math.sin(t), -sz * Math.cos(t))
+        return (
+          <Box
+            key={`slp_${i}`}
+            size={[0.42, 0.024, 0.065]}
+            position={[x, 0.038, z]}
+            rotation={[0, yaw, 0]}
+            color="#5c422c"
+          />
+        )
+      })}
+
+      {/* Внутренний и внешний изогнутые стальные рельсы */}
+      {Array.from({ length: CURVE_ARC_STEPS }, (_, i) => {
+        const t = ((i + 0.5) / CURVE_ARC_STEPS) * (Math.PI / 2)
+        const yaw = Math.atan2(sx * Math.sin(t), -sz * Math.cos(t))
+        const segInner = (rInner * (Math.PI / 2)) / CURVE_ARC_STEPS + 0.022
+        const segOuter = (rOuter * (Math.PI / 2)) / CURVE_ARC_STEPS + 0.022
+        const xi = cx - sx * rInner * Math.cos(t)
+        const zi = cz - sz * rInner * Math.sin(t)
+        const xo = cx - sx * rOuter * Math.cos(t)
+        const zo = cz - sz * rOuter * Math.sin(t)
+        return (
+          <group key={`rail_${i}`}>
+            <Box
+              size={[0.032, 0.032, segInner]}
+              position={[xi, 0.058, zi]}
+              rotation={[0, yaw, 0]}
+              color="#b8c0c7"
+            />
+            <Box
+              size={[0.032, 0.032, segOuter]}
+              position={[xo, 0.058, zo]}
+              rotation={[0, yaw, 0]}
+              color="#b8c0c7"
+            />
+          </group>
+        )
+      })}
+    </group>
+  )
+}
+
 /**
  * Железнодорожный путь (TileType.RAIL) и железнодорожный мост (TileType.RAIL_BRIDGE):
- * гравийная насыпь, деревянные шпалы и стальные рельсы, соединяющиеся с соседними клетками.
+ * гравийная насыпь, деревянные шпалы и стальные рельсы с плавным радиусным скруглением на поворотах и стрелках.
  */
 export function RailTileMesh({
   north = false,
@@ -230,15 +318,26 @@ export function RailTileMesh({
   west = false,
   isBridge = false,
 }: TileNeighborFlags & { isBridge?: boolean }) {
-  const hasNS = north || south || (!east && !west)
-  const hasEW = east || west
   const railGauge = 0.13
   const baseY = isBridge ? 0.16 : 0.02
+
+  const noNeighbors = !north && !south && !east && !west
+  const straightNS = (north && south) || ((north || south) && !east && !west) || noNeighbors
+  const straightEW = (east && west) || ((east || west) && !north && !south)
+
+  // Скруглённые дуги для поворотов 90° и железнодорожных стрелок
+  const curves: Array<{ sx: 1 | -1; sz: 1 | -1 }> = []
+  if (north && east && !(north && south && east && west)) curves.push({ sx: 1, sz: -1 })
+  if (north && west && !(north && south && east && west)) curves.push({ sx: -1, sz: -1 })
+  if (south && east && !(north && south && east && west)) curves.push({ sx: 1, sz: 1 })
+  if (south && west && !(north && south && east && west)) curves.push({ sx: -1, sz: 1 })
+
+  const bridgeAlongX = straightEW && !straightNS
 
   return (
     <group>
       {isBridge && (
-        <group>
+        <group rotation={[0, bridgeAlongX ? Math.PI / 2 : 0, 0]}>
           <Box
             size={[1.005, 0.036, 1.005]}
             position={[0, 0.014, 0]}
@@ -259,8 +358,8 @@ export function RailTileMesh({
         </group>
       )}
 
-      {/* Ветка Север-Юг */}
-      {hasNS && (
+      {/* Прямая ветка Север-Юг */}
+      {straightNS && (
         <group position={[0, baseY, 0]}>
           {!isBridge && (
             <Box size={[0.52, 0.035, 1.01]} position={[0, 0.015, 0]} color="#8e877d" outline={false} />
@@ -274,8 +373,8 @@ export function RailTileMesh({
         </group>
       )}
 
-      {/* Ветка Запад-Восток */}
-      {hasEW && (
+      {/* Прямая ветка Запад-Восток */}
+      {straightEW && (
         <group position={[0, baseY, 0]}>
           {!isBridge && (
             <Box size={[1.01, 0.035, 0.52]} position={[0, 0.015, 0]} color="#8e877d" outline={false} />
@@ -288,6 +387,13 @@ export function RailTileMesh({
           ))}
         </group>
       )}
+
+      {/* Плавные радиусные повороты и стрелочные переводы */}
+      {curves.map(({ sx, sz }) => (
+        <group key={`${sx}_${sz}`} position={[0, baseY, 0]}>
+          <RailCurveArc sx={sx} sz={sz} railGauge={railGauge} isBridge={isBridge} />
+        </group>
+      ))}
     </group>
   )
 }
@@ -1059,33 +1165,84 @@ export function ClockTowerMesh() {
 }
 
 /**
- * 3×3 Гранд-Арена «Кристалл»: овальная чаша стадиона с бело-синим ромбовидным фасадом (референс #5, справа в центре).
+ * 3×3 Гранд-Арена «Кристалл»: открытая овальная чаша стадиона с бело-синим ромбовидным фасадом,
+ * многоярусными синими трибунами, футбольным полем внутри и спиральными пандусами (строго по референсу CityRT).
  */
 const ARENA_LATTICE_SPECS: PartSpec[] = (() => {
   const specs: PartSpec[] = []
-  const count = 24
-  const rx = 1.26
-  const rz = 1.06
-  const y = 0.56
-  for (let i = 0; i < count; i++) {
-    const a = (i / count) * Math.PI * 2
-    const x = Math.cos(a) * rx
-    const z = Math.sin(a) * rz
-    const yaw = -a + Math.PI / 2
-    specs.push({
-      size: [0.04, 0.88, 0.04],
-      position: [x, y, z],
-      rotation: [0, 0, 0.52],
-      yaw,
-    })
-    specs.push({
-      size: [0.04, 0.88, 0.04],
-      position: [x, y, z],
-      rotation: [0, 0, -0.52],
-      yaw,
-    })
+  const count = 32
+  const tiers = [
+    { y: 0.28, h: 0.34, rx: 1.25, rz: 1.04 },
+    { y: 0.56, h: 0.34, rx: 1.31, rz: 1.09 },
+    { y: 0.82, h: 0.3, rx: 1.27, rz: 1.06 },
+  ]
+  for (let tIdx = 0; tIdx < tiers.length; tIdx++) {
+    const { y, h, rx, rz } = tiers[tIdx]
+    const phase = (tIdx % 2) * (Math.PI / count)
+    for (let i = 0; i < count; i++) {
+      const a = (i / count) * Math.PI * 2 + phase
+      const x = Math.cos(a) * rx
+      const z = Math.sin(a) * rz
+      const tx = -Math.sin(a) * rx
+      const tz = Math.cos(a) * rz
+      const yaw = Math.atan2(tx, tz) + Math.PI / 2
+      specs.push({
+        size: [0.036, h, 0.036],
+        position: [x, y, z],
+        rotation: [0, 0, 0.58],
+        yaw,
+      })
+      specs.push({
+        size: [0.036, h, 0.036],
+        position: [x, y, z],
+        rotation: [0, 0, -0.58],
+        yaw,
+      })
+    }
   }
   return specs
+})()
+
+const arenaOuterLowerGeo = new THREE.CylinderGeometry(1.11, 1.02, 0.44, 36, 1, true)
+const arenaOuterUpperGeo = new THREE.CylinderGeometry(1.06, 1.11, 0.44, 36, 1, true)
+const arenaCanopyRimGeo = new THREE.RingGeometry(0.68, 1.07, 36)
+const arenaCanopyTorusGeo = new THREE.TorusGeometry(0.88, 0.16, 12, 36)
+const arenaInnerBowlUpperGeo = new THREE.CylinderGeometry(0.76, 0.64, 0.32, 36, 1, true)
+const arenaInnerBowlMidGeo = new THREE.CylinderGeometry(0.64, 0.52, 0.28, 36, 1, true)
+const arenaInnerBowlLowerGeo = new THREE.CylinderGeometry(0.52, 0.42, 0.24, 36, 1, true)
+const arenaStepRingUpperGeo = new THREE.RingGeometry(0.63, 0.76, 36)
+const arenaStepRingMidGeo = new THREE.RingGeometry(0.51, 0.64, 36)
+const arenaStepRingLowerGeo = new THREE.RingGeometry(0.41, 0.52, 36)
+
+const arenaBlueShellMat = (() => {
+  const mat = getToonMaterial('#2368b8').clone()
+  mat.side = THREE.DoubleSide
+  return mat
+})()
+const arenaNavyBaseMat = (() => {
+  const mat = getToonMaterial('#142847').clone()
+  mat.side = THREE.DoubleSide
+  return mat
+})()
+const arenaCanopyWhiteMat = (() => {
+  const mat = getToonMaterial('#f2f6fa').clone()
+  mat.side = THREE.DoubleSide
+  return mat
+})()
+const arenaTierDarkMat = (() => {
+  const mat = getToonMaterial('#153763').clone()
+  mat.side = THREE.DoubleSide
+  return mat
+})()
+const arenaTierMidMat = (() => {
+  const mat = getToonMaterial('#1e4f8f').clone()
+  mat.side = THREE.DoubleSide
+  return mat
+})()
+const arenaTierLightMat = (() => {
+  const mat = getToonMaterial('#296bc0').clone()
+  mat.side = THREE.DoubleSide
+  return mat
 })()
 
 export function DiamondArenaMesh() {
@@ -1093,32 +1250,145 @@ export function DiamondArenaMesh() {
 
   return (
     <group>
-      {/* Большая площадь вокруг арены */}
+      {/* Большая мощёная площадь вокруг арены */}
       <Box size={[2.96, 0.06, 2.96]} position={[0, 0.03, 0]} color="#d8d5cb" material={paver} />
 
-      {/* Овальная синяя чаша стадиона (масштабированный цилиндр) */}
+      {/* Овальная открытая чаша стадиона (без крышки сверху — виден газон и ярусы трибун внутри) */}
       <group scale={[1.18, 1, 1.0]}>
-        <Cylinder radius={1.06} radiusTop={1.12} height={0.82} segments={28} position={[0, 0.47, 0]} color="#2979cf" />
-        {/* Белый козырёк крыши по периметру трибун */}
-        <Cylinder radius={1.13} radiusTop={1.04} height={0.14} segments={28} position={[0, 0.94, 0]} color="#f0f4f8" />
-        {/* Внутренние синие трибуны и футбольное/спортивное поле */}
-        <Cylinder radius={0.78} radiusTop={0.88} height={0.16} segments={24} position={[0, 0.88, 0]} color="#1c4f8a" />
-        <Cylinder radius={0.64} height={0.05} segments={24} position={[0, 0.82, 0]} color="#4e9e48" />
-        {/* Белая разметка поля */}
-        <Box size={[0.78, 0.02, 0.5]} position={[0, 0.85, 0]} color="#f2f6f9" outline={false} />
-        <Box size={[0.72, 0.025, 0.44]} position={[0, 0.852, 0]} color="#58ab52" outline={false} />
+        {/* Тёмно-синий входной цоколь по периметру */}
+        <Cylinder radius={0.99} radiusTop={1.02} height={0.14} segments={32} position={[0, 0.13, 0]} color="#152b4a" />
+
+        {/* Полая внешняя синяя оболочка (openEnded = true) */}
+        <mesh geometry={arenaOuterLowerGeo} material={arenaBlueShellMat} position={[0, 0.36, 0]} castShadow receiveShadow />
+        <mesh geometry={arenaOuterUpperGeo} material={arenaBlueShellMat} position={[0, 0.78, 0]} castShadow receiveShadow />
+
+        {/* Скруглённый белый козырёк-обод вокруг открытой чаши */}
+        <mesh
+          geometry={arenaCanopyRimGeo}
+          material={arenaCanopyWhiteMat}
+          position={[0, 0.98, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          castShadow
+          receiveShadow
+        />
+        <mesh
+          geometry={arenaCanopyTorusGeo}
+          material={arenaCanopyWhiteMat}
+          position={[0, 0.94, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+          scale={[1, 1, 0.42]}
+          castShadow
+          receiveShadow
+        />
+
+        {/* Внутренние ступенчатые синие трибуны, уходящие вниз к полю */}
+        <mesh geometry={arenaInnerBowlUpperGeo} material={arenaTierLightMat} position={[0, 0.8, 0]} />
+        <mesh
+          geometry={arenaStepRingUpperGeo}
+          material={arenaCanopyWhiteMat}
+          position={[0, 0.65, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+        <mesh geometry={arenaInnerBowlMidGeo} material={arenaTierMidMat} position={[0, 0.51, 0]} />
+        <mesh
+          geometry={arenaStepRingMidGeo}
+          material={arenaNavyBaseMat}
+          position={[0, 0.37, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+        <mesh geometry={arenaInnerBowlLowerGeo} material={arenaTierDarkMat} position={[0, 0.24, 0]} />
+        <mesh
+          geometry={arenaStepRingLowerGeo}
+          material={arenaTierMidMat}
+          position={[0, 0.12, 0]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
+
+        {/* Изумрудное футбольное поле на дне чаши стадиона */}
+        <Cylinder radius={0.44} height={0.04} segments={28} position={[0, 0.08, 0]} color="#458f40" outline={false} />
+        {/* Полосы стриженого газона */}
+        {[-0.24, -0.12, 0, 0.12, 0.24].map((x, idx) => (
+          <Box
+            key={x}
+            size={[0.09, 0.01, 0.42]}
+            position={[x, 0.102, 0]}
+            color={idx % 2 === 0 ? '#52a84b' : '#469440'}
+            outline={false}
+          />
+        ))}
+        {/* Белая разметка футбольного поля и ворота */}
+        <Box size={[0.62, 0.008, 0.42]} position={[0, 0.106, 0]} color="#f4f8fc" outline={false} />
+        <Box size={[0.58, 0.01, 0.38]} position={[0, 0.108, 0]} color="#4da046" outline={false} />
+        {/* Центральная линия и штрафные площади */}
+        <Box size={[0.016, 0.012, 0.38]} position={[0, 0.111, 0]} color="#f4f8fc" outline={false} />
+        <Cylinder radius={0.075} height={0.012} segments={16} position={[0, 0.11, 0]} color="#f4f8fc" outline={false} />
+        <Cylinder radius={0.058} height={0.014} segments={16} position={[0, 0.111, 0]} color="#4da046" outline={false} />
+        {[-0.24, 0.24].map((gx) => (
+          <group key={gx} position={[gx, 0.112, 0]}>
+            <Box size={[0.1, 0.008, 0.18]} position={[0, 0, 0]} color="#f4f8fc" outline={false} />
+            <Box size={[0.07, 0.01, 0.14]} position={[gx > 0 ? 0.012 : -0.012, 0.001, 0]} color="#4da046" outline={false} />
+            <Box size={[0.02, 0.04, 0.08]} position={[gx > 0 ? 0.05 : -0.05, 0.02, 0]} color="#ffffff" outline={false} />
+          </group>
+        ))}
       </group>
 
-      {/* Белая ромбовидная сетка-оболочка поверх синей чаши (как на референсе #5) */}
+      {/* Белая ромбовидная сетка-оболочка поверх синей чаши (как на референсе CityRT) */}
       <MergedParts specs={ARENA_LATTICE_SPECS} color="#f3f7fa" outline />
 
-      {/* Спиральные пандусы и деревья по углам площади */}
-      {[-1.18, 1.18].map((x) => (
-        <Cylinder key={x} radius={0.18} height={0.28} segments={12} position={[x, 0.2, 1.06]} color="#e2e6ea" />
+      {/* Два спиральных пешеходных пандуса по передним углам арены (как на референсе) */}
+      {[-1.12, 1.12].map((x) => (
+        <group key={x} position={[x, 0.06, 1.02]}>
+          <Cylinder radius={0.06} height={0.34} segments={8} position={[0, 0.17, 0]} color="#cfd6de" />
+          <Cylinder radius={0.21} height={0.035} segments={16} position={[0, 0.12, 0]} color="#e6ebf0" />
+          <Cylinder radius={0.19} height={0.035} segments={16} position={[0, 0.24, 0]} color="#eef2f6" />
+          <Box
+            size={[0.18, 0.03, 0.1]}
+            position={[x < 0 ? 0.14 : -0.14, 0.25, -0.12]}
+            rotation={[0, x < 0 ? 0.55 : -0.55, 0]}
+            color="#e6ebf0"
+          />
+        </group>
       ))}
-      {[-1.24, 1.24].map((x) => (
-        <BlobTree key={`t_${x}`} position={[x, 0.06, -1.2]} scale={0.65} color="#68a34e" />
+
+      {/* Деревья по углам площади */}
+      {[-1.26, 1.26].map((x) => (
+        <BlobTree key={`t_${x}`} position={[x, 0.06, -1.22]} scale={0.62} color="#68a34e" />
       ))}
+    </group>
+  )
+}
+
+/**
+ * 1×1 Пассажирская ж/д платформа-остановка с навесом, табло, скамейками и жёлтой линией безопасности (civ_rail_stop).
+ */
+export function RailStopMesh() {
+  return (
+    <group>
+      <Box size={[0.96, 0.06, 0.96]} position={[0, 0.03, 0]} color="#cfc9bc" />
+      {/* Высокий перрон с жёлтой полосой безопасности */}
+      <Box size={[0.92, 0.12, 0.62]} position={[0, 0.12, -0.06]} color="#dfd9cc" />
+      <Box size={[0.9, 0.012, 0.04]} position={[0, 0.182, 0.21]} color="#eab308" outline={false} />
+      <Box size={[0.9, 0.012, 0.04]} position={[0, 0.182, -0.33]} color="#eab308" outline={false} />
+
+      {/* Опорные стойки и стеклянно-стальной навес */}
+      {[-0.32, 0, 0.32].map((x) => (
+        <Cylinder key={x} radius={0.022} height={0.38} segments={6} position={[x, 0.37, -0.08]} color="#3a4652" />
+      ))}
+      <Box size={[0.86, 0.05, 0.48]} position={[0, 0.56, -0.06]} color="#3b5266" />
+      <Box size={[0.78, 0.02, 0.4]} position={[0, 0.59, -0.06]} color="#7ec0de" />
+
+      {/* Деревянные скамейки и информационное табло расписания */}
+      {[-0.18, 0.18].map((x) => (
+        <Box key={x} size={[0.18, 0.06, 0.08]} position={[x, 0.21, -0.1]} color="#8c5838" />
+      ))}
+      <Box size={[0.16, 0.1, 0.04]} position={[0, 0.46, 0.12]} color="#1e293b" />
+      <Box
+        size={[0.13, 0.06, 0.045]}
+        position={[0, 0.46, 0.12]}
+        color="#fde047"
+        material={townHallClockMaterial}
+        outline={false}
+      />
     </group>
   )
 }

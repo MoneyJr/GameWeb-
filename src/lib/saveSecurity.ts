@@ -1,4 +1,5 @@
 import { GRID_SIZE, TileType, type Grid, type GridCell } from '../types/city'
+import { isNaturalWaterCell } from './cityConfig'
 
 const SAVE_PEPPER = 'inkville-integrity-v2-9f4b2c7e'
 
@@ -100,16 +101,31 @@ export function unpackSignedSave<T>(raw: string | null | undefined): T | null {
   return parsed as T
 }
 
-/** Проверяет и нормализует сетку города из сохранения. */
+/** Проверяет и нормализует сетку города из сохранения (поддерживает миграцию старых 64×64 карт до 128×128). */
 export function sanitizeSavedGrid(rawGrid: unknown): Grid | null {
-  if (!Array.isArray(rawGrid) || rawGrid.length !== GRID_SIZE) return null
+  if (!Array.isArray(rawGrid) || (rawGrid.length !== GRID_SIZE && rawGrid.length !== 64)) return null
+  const srcSize = rawGrid.length
   const result: Grid = []
   for (let y = 0; y < GRID_SIZE; y += 1) {
-    const row = rawGrid[y]
-    if (!Array.isArray(row) || row.length !== GRID_SIZE) return null
+    const row = y < srcSize ? rawGrid[y] : undefined
+    if (y < srcSize && (!Array.isArray(row) || row.length !== srcSize)) return null
     const cleanRow: GridCell[] = []
     for (let x = 0; x < GRID_SIZE; x += 1) {
-      const cell = row[x] as Partial<GridCell> | null | undefined
+      if (y >= srcSize || x >= srcSize) {
+        const naturalWater = isNaturalWaterCell(x, y)
+        cleanRow.push({
+          x,
+          y,
+          type: naturalWater ? TileType.WATER : TileType.EMPTY,
+          naturalWater: naturalWater || undefined,
+          hasWater: false,
+          hasPower: false,
+          level: 1,
+          orientation: 0,
+        })
+        continue
+      }
+      const cell = (row as unknown[])[x] as Partial<GridCell> | null | undefined
       if (!cell || typeof cell !== 'object') return null
       const type = typeof cell.type === 'string' && VALID_TILE_TYPES.has(cell.type)
         ? (cell.type as TileType)
@@ -124,7 +140,7 @@ export function sanitizeSavedGrid(rawGrid: unknown): Grid | null {
         level: clampInt(cell.level, 1, 3, 1),
         orientation,
       }
-      if (typeof cell.style === 'string' && cell.style.length <= 24) cleanCell.style = sanitizeText(cell.style, '', 24) || undefined
+      if (typeof cell.style === 'string' && cell.style.length <= 24) cleanCell.style = sanitizeText(cell.style, 24, '') || undefined
       if (typeof cell.catalogId === 'string' && /^[a-z0-9_-]{1,40}$/i.test(cell.catalogId)) cleanCell.catalogId = cell.catalogId
       if (typeof cell.refX === 'number' && Number.isInteger(cell.refX) && cell.refX >= 0 && cell.refX < GRID_SIZE) cleanCell.refX = cell.refX
       if (typeof cell.refY === 'number' && Number.isInteger(cell.refY) && cell.refY >= 0 && cell.refY < GRID_SIZE) cleanCell.refY = cell.refY

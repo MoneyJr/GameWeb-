@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { Box, Cone, Cylinder, getFacadeMaterial, getFlagstoneMaterial, getToonMaterial, type Vec3 } from './primitives'
@@ -29,20 +29,108 @@ function Lamp({ position }: { position: Vec3 }) {
   </group>
 }
 
-/** Парковка 2×1: асфальт, белая разметка мест и припаркованные машины. */
+/** Парковка 2×1 в стиле CityRT: асфальт, белая разметка рядов, разноцветные припаркованные авто и выезжающая машина. */
 export function ParkingLotMesh() {
-  const cars = useMemo(() => [0, 1, 2, 3, 4, 5, 6, 7].map((slot) => ({ slot, show: Math.sin(slot * 91.7) > -0.35, model: createParkedVehicle(slot * 5 + 2) })), [])
-  return <group>
-    <Box size={[1.98, 0.05, 0.98]} position={[0, 0.025, 0]} color="#47423e" />
-    <Box size={[1.98, 0.055, 0.08]} position={[0, 0.0275, -0.45]} color="#d8d5cb" />
-    {Array.from({ length: 9 }, (_, i) => <Box key={i} size={[0.018, 0.006, 0.36]} position={[-0.88 + i * 0.22, 0.054, -0.2]} color="#f4f1ea" outline={false} castShadow={false} />)}
-    <Box size={[1.76, 0.006, 0.018]} position={[0, 0.054, 0.0]} color="#f4f1ea" outline={false} castShadow={false} />
-    {cars.filter((car) => car.show).map(({ slot, model }) => <group key={slot} position={[-0.77 + slot * 0.22, 0.05, -0.2]} rotation={[0, slot % 2 ? 0 : Math.PI, 0]} scale={0.42}>
-      <primitive object={model} />
-    </group>)}
-    {[-0.9, 0.9].map((x) => <StreetTree key={x} position={[x, 0.05, -0.43]} />)}
-    <Lamp position={[0, 0.05, 0.38]} />
-  </group>
+  const parkedCars = useMemo(
+    () =>
+      [0, 1, 2, 3, 4, 5, 6].map((slot) => ({
+        slot,
+        show: slot !== 3 && Math.sin(slot * 43.7 + 1.2) > -0.45,
+        // Шаг 3 взаимно прост с 10, поэтому используются все 10 цветов автомобилей
+        model: createParkedVehicle(slot * 3 + 1),
+      })),
+    [],
+  )
+  const movingCarModel = useMemo(() => createParkedVehicle(11), [])
+  const movingCarRef = useRef<THREE.Group>(null)
+
+  useFrame(({ clock }) => {
+    const g = movingCarRef.current
+    if (!g) return
+    // Цикл 9 секунд: машина стоит в слоте 3, затем сдаёт назад в проезд, поворачивает и выезжает на дорогу, после чего возвращается
+    const cycle = clock.elapsedTime % 9
+    const slotX = -0.66 + 3 * 0.22
+    if (cycle < 1.6) {
+      // Стоит на парковочном месте
+      g.position.set(slotX, 0.05, -0.22)
+      g.rotation.y = 0
+    } else if (cycle < 3.2) {
+      // Плавно выезжает задним ходом с парковочного места в проезд
+      const u = (cycle - 1.6) / 1.6
+      const s = u * u * (3 - 2 * u)
+      g.position.set(slotX + s * 0.08, 0.05, -0.22 + s * 0.42)
+      g.rotation.y = s * (Math.PI / 2)
+    } else if (cycle < 5.6) {
+      // Движется по проезду к выезду на улицу
+      const u = (cycle - 3.2) / 2.4
+      g.position.set(slotX + 0.08 + u * 0.82, 0.05, 0.2 + Math.sin(u * Math.PI * 0.5) * 0.22)
+      g.rotation.y = Math.PI / 2 - u * 0.35
+    } else if (cycle < 7.6) {
+      // Заезжает с улицы обратно на парковку
+      const u = (cycle - 5.6) / 2.0
+      g.position.set(-0.88 + u * (slotX + 0.88), 0.05, 0.2)
+      g.rotation.y = Math.PI / 2
+    } else {
+      // Заруливает обратно в парковочный карман
+      const u = (cycle - 7.6) / 1.4
+      const s = u * u * (3 - 2 * u)
+      g.position.set(slotX, 0.05, 0.2 - s * 0.42)
+      g.rotation.y = (1 - s) * (Math.PI / 2)
+    }
+  })
+
+  return (
+    <group>
+      {/* Асфальтовое покрытие и аккуратные бордюры по краям */}
+      <Box size={[1.98, 0.05, 0.98]} position={[0, 0.025, 0]} color="#3f3d3b" />
+      <Box size={[1.98, 0.058, 0.07]} position={[0, 0.029, -0.455]} color="#d8d5cb" />
+      <Box size={[0.24, 0.058, 0.07]} position={[-0.86, 0.029, 0.455]} color="#d8d5cb" />
+      <Box size={[0.24, 0.058, 0.07]} position={[0.86, 0.029, 0.455]} color="#d8d5cb" />
+
+      {/* Белая разметка парковочных карманов как на референсе CityRT */}
+      <Box size={[1.64, 0.006, 0.018]} position={[0, 0.054, -0.38]} color="#f4f1ea" outline={false} castShadow={false} />
+      {Array.from({ length: 8 }, (_, i) => (
+        <Box
+          key={i}
+          size={[0.018, 0.006, 0.34]}
+          position={[-0.77 + i * 0.22, 0.054, -0.21]}
+          color="#f4f1ea"
+          outline={false}
+          castShadow={false}
+        />
+      ))}
+      {/* Пунктирная осевая линия проезда и стрелка выезда */}
+      {[-0.55, -0.18, 0.18, 0.55].map((x) => (
+        <Box key={x} size={[0.16, 0.006, 0.016]} position={[x, 0.054, 0.18]} color="#f4f1ea" outline={false} castShadow={false} />
+      ))}
+
+      {/* Разноцветные припаркованные машины */}
+      {parkedCars
+        .filter((car) => car.show)
+        .map(({ slot, model }) => (
+          <group
+            key={slot}
+            position={[-0.66 + slot * 0.22, 0.05, -0.22]}
+            rotation={[0, slot % 2 ? 0 : Math.PI, 0]}
+            scale={0.42}
+          >
+            <primitive object={model} />
+          </group>
+        ))}
+
+      {/* Анимированный автомобиль, выезжающий с парковки на дорогу и заезжающий обратно */}
+      <group ref={movingCarRef} position={[0, 0.05, -0.22]} scale={0.42}>
+        <primitive object={movingCarModel} />
+      </group>
+
+      {/* Зелёные островки с деревьями и освещением */}
+      {[-0.88, 0.88].map((x) => (
+        <StreetTree key={x} position={[x, 0.05, -0.42]} />
+      ))}
+      <Lamp position={[-0.86, 0.05, 0.42]} />
+      <Lamp position={[0.86, 0.05, 0.42]} />
+    </group>
+  )
 }
 
 /** Площадь 1×1 с брусчаткой, скамейками и деревьями в кадках. */

@@ -94,10 +94,10 @@ function StableMapControls({
     controls.zoomSpeed = 1
     // MapControls ignores distance limits for an orthographic camera, so keep
     // equivalent zoom bounds as well as the perspective-camera bounds.
-    controls.minDistance = 18
-    controls.maxDistance = 110
-    controls.minZoom = 26
-    controls.maxZoom = 160
+    controls.minDistance = 16
+    controls.maxDistance = 150
+    controls.minZoom = 18
+    controls.maxZoom = 180
     controls.minPolarAngle = ISO_POLAR_ANGLE
     controls.maxPolarAngle = Math.PI / 2.25
     controls.target.set(...target)
@@ -340,18 +340,20 @@ export const NaturalHorizon = memo(function NaturalHorizon({ palette }: { palett
       }
       treeCount += 1
     }
+    const outerLimit = halfBoard + 80
+    const ringEdge = halfBoard + 14
     for (let candidate = 0; candidate < 52000 && treeCount < treeCapacity; candidate += 1) {
-      const px = (random() * 2 - 1) * 145
-      const pz = (random() * 2 - 1) * 145
+      const px = (random() * 2 - 1) * outerLimit
+      const pz = (random() * 2 - 1) * outerLimit
       if (Math.abs(px) < halfBoard && Math.abs(pz) < halfBoard) continue
       const distance = Math.max(Math.abs(px), Math.abs(pz))
       const noise = Math.sin(px * 0.075) * Math.cos(pz * 0.075) + Math.sin((px + pz) * 0.038)
       if (noise < 0.2) continue
-      const density = distance < 46
-        ? THREE.MathUtils.lerp(0.18, 0.5, (distance - halfBoard) / (46 - halfBoard))
+      const density = distance < ringEdge
+        ? THREE.MathUtils.lerp(0.18, 0.5, (distance - halfBoard) / (ringEdge - halfBoard))
         : 0.72 + random() * 0.16
       if (random() >= density) continue
-      if (distance < 48) {
+      if (distance < ringEdge + 2) {
         const groupSize = 2 + Math.floor(random() * 3)
         for (let member = 0; member < groupSize; member += 1) {
           const offsetX = member === 0 ? 0 : (random() + random() - 1) * 1.8
@@ -1151,7 +1153,7 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
     const controls = controlsRef.current
     if (!controls || !(controls.object instanceof THREE.OrthographicCamera)) return
     const camera = controls.object
-    camera.zoom = THREE.MathUtils.clamp(camera.zoom * (direction === 'in' ? 1.25 : 1 / 1.25), 26, 160)
+    camera.zoom = THREE.MathUtils.clamp(camera.zoom * (direction === 'in' ? 1.25 : 1 / 1.25), 18, 180)
     camera.updateProjectionMatrix()
     controls.update()
   }
@@ -1198,29 +1200,29 @@ export function CityScene({ grid, activeTool, onPlace, onRemove, onSelectCell, m
       <Suspense fallback={null}>
       <SceneCompiler onReady={markSceneReady} />
       <color attach="background" args={[palette.sky]} />
-      <fogExp2 attach="fog" args={[palette.sky, 0.002]} />
+      <fogExp2 attach="fog" args={[palette.sky, 0.00035]} />
       <NightManager minutes={minutes} ambientRef={ambientRef} sunRef={sunRef} />
 
       <OrthographicCamera makeDefault position={cameraPosition} zoom={isReferencePreview ? 90 : 56} near={-500} far={2000} />
 
       <StableMapControls target={cameraTarget} controlsRef={controlsRef} isTouchDevice={isTouchDevice} />
 
-      <ambientLight ref={ambientRef} intensity={0.6} color="#ede0d4" />
+      <ambientLight ref={ambientRef} intensity={0.62} color="#efe4d8" />
       <directionalLight
         ref={sunRef}
         position={[30, 57, 12]}
-        intensity={1.8}
-        color="#fff0dd"
+        intensity={1.85}
+        color="#fff2e0"
         castShadow
         shadow-mapSize={shadowMapSize}
-        shadow-camera-left={-22}
-        shadow-camera-right={22}
-        shadow-camera-top={22}
-        shadow-camera-bottom={-22}
+        shadow-camera-left={-30}
+        shadow-camera-right={30}
+        shadow-camera-top={30}
+        shadow-camera-bottom={-30}
         shadow-camera-near={0.5}
-        shadow-camera-far={90}
-        shadow-bias={-0.0004}
-        shadow-normalBias={0.015}
+        shadow-camera-far={110}
+        shadow-bias={-0.00025}
+        shadow-normalBias={0.012}
       />
 
       <SunFollow sunRef={sunRef} />

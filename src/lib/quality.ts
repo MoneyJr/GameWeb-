@@ -12,9 +12,9 @@ export interface QualityProfile {
 
 const STORAGE_KEY = 'inkville-quality'
 const PROFILES: Record<Exclude<QualityLevel, 'auto'>, QualityProfile> = {
-  low: { level: 'low', shadows: false, shadowMapSize: 512, maxDpr: 1, antialias: false, snowCount: 700 },
-  medium: { level: 'medium', shadows: true, shadowMapSize: 1024, maxDpr: 1.5, antialias: true, snowCount: 1400 },
-  high: { level: 'high', shadows: true, shadowMapSize: 2048, maxDpr: 2, antialias: true, snowCount: 2200 },
+  low: { level: 'low', shadows: false, shadowMapSize: 1024, maxDpr: 1.25, antialias: true, snowCount: 700 },
+  medium: { level: 'medium', shadows: true, shadowMapSize: 2048, maxDpr: 2, antialias: true, snowCount: 1400 },
+  high: { level: 'high', shadows: true, shadowMapSize: 4096, maxDpr: 2.5, antialias: true, snowCount: 2200 },
 }
 
 export function readQualityLevel(): QualityLevel {

@@ -20,10 +20,10 @@ interface CarState {
   currentSpeed: number
 }
 
-const CAR_COUNT = 18
-const CAR_SPEED = 1.15
-const SAFE_DISTANCE = 1.2
-const STOP_DISTANCE = 0.8
+const CAR_COUNT = 34
+const CAR_SPEED = 1.2
+const SAFE_DISTANCE = 1.15
+const STOP_DISTANCE = 0.78
 const CAR_COLORS = VEHICLE_COLORS
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
@@ -106,42 +106,108 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
   const width = grid[0]?.length ?? 0
   const isRoad = (x: number, y: number) => y >= 0 && y < height && x >= 0 && x < width && isRoadLike(grid[y][x].type)
   const homes: RoadCell[] = []
+  const parkingPorts: RoadCell[] = []
   const destinations: { x: number; y: number; kind: 'passenger' | 'delivery' }[] = []
   const factories: RoadCell[] = []
 
+  const addUnique = (arr: RoadCell[], port: RoadCell) => {
+    if (!arr.some((item) => item.x === port.x && item.y === port.y)) arr.push(port)
+  }
+  const addDestination = (port: RoadCell, kind: 'passenger' | 'delivery' = 'passenger') => {
+    if (!destinations.some((item) => item.x === port.x && item.y === port.y && item.kind === kind)) {
+      destinations.push({ ...port, kind })
+    }
+  }
+
   for (const row of grid) {
     for (const cell of row) {
-      if (cell.type !== TileType.RESIDENTIAL && cell.type !== TileType.COMMERCIAL && cell.type !== TileType.INDUSTRIAL) continue
+      const root =
+        cell.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined
+          ? grid[cell.refY]?.[cell.refX]
+          : cell
+      if (!root) continue
+      const rType = root.type
+      const isParking = rType === TileType.PARK && root.catalogId === 'lnd_parking'
+      const isCivicOrStation =
+        rType === TileType.STATION ||
+        rType === TileType.FIRE_STATION ||
+        rType === TileType.CITY_HALL ||
+        rType === TileType.POLICE ||
+        rType === TileType.PARK ||
+        rType === TileType.WATER_PUMP ||
+        rType === TileType.WIND ||
+        rType === TileType.SOLAR_PANEL ||
+        rType === TileType.COAL
+
+      if (
+        rType !== TileType.RESIDENTIAL &&
+        rType !== TileType.COMMERCIAL &&
+        rType !== TileType.INDUSTRIAL &&
+        !isCivicOrStation
+      ) {
+        continue
+      }
+
       for (const [dx, dy] of NEIGHBORS) {
         const x = cell.x + dx
         const y = cell.y + dy
         if (!isRoad(x, y)) continue
         const port = { x, y }
-        if (cell.type === TileType.RESIDENTIAL) {
-          if (!homes.some((item) => item.x === x && item.y === y)) homes.push(port)
-        } else if (cell.type === TileType.INDUSTRIAL) {
-          if (!factories.some((item) => item.x === x && item.y === y)) factories.push(port)
-        } else if (!destinations.some((item) => item.x === x && item.y === y && item.kind === 'passenger')) destinations.push({ ...port, kind: 'passenger' })
+        if (isParking) {
+          addUnique(parkingPorts, port)
+          addUnique(homes, port)
+          addDestination(port, 'passenger')
+        } else if (rType === TileType.RESIDENTIAL) {
+          addUnique(homes, port)
+        } else if (rType === TileType.INDUSTRIAL) {
+          addUnique(factories, port)
+          addDestination(port, 'delivery')
+        } else {
+          addDestination(port, 'passenger')
+        }
       }
     }
   }
-  if ((homes.length === 0 && factories.length === 0) || destinations.length === 0) return []
 
   const routes: CarRoute[] = []
   const routeKeys = new Set<string>()
-  for (const { source, kind } of [...homes.map(source => ({ source, kind: 'passenger' as const })), ...factories.map(source => ({ source, kind: 'delivery' as const }))]) {
-    const targets = destinations.filter((destination) => destination.kind === 'passenger' || kind === 'delivery')
-    if (!targets.length) continue
-    const home = source
-    const startKey = `${home.x},${home.y}`
-    const queue: RoadCell[] = [home]
+  const addRouteIfValid = (path: RoadCell[], kind: 'passenger' | 'delivery') => {
+    if (path.length < 2) return
+    const forwardKey = path.map((p) => `${p.x},${p.y}`).join('|')
+    const reverseKey = [...path].reverse().map((p) => `${p.x},${p.y}`).join('|')
+    const canonicalKey = forwardKey < reverseKey ? forwardKey : reverseKey
+    if (routeKeys.has(canonicalKey)) return
+    routeKeys.add(canonicalKey)
+    routes.push({ path, kind })
+  }
+
+  // Строим маршруты от парковок, жилых домов и заводов к точкам назначения (или к самой дальней точке дорожной сети)
+  const sources = [
+    ...parkingPorts.map((source) => ({ source, kind: 'passenger' as const })),
+    ...homes.map((source) => ({ source, kind: 'passenger' as const })),
+    ...factories.map((source) => ({ source, kind: 'delivery' as const })),
+  ]
+
+  for (const { source, kind } of sources) {
+    const targets = destinations.filter(
+      (destination) =>
+        (destination.kind === 'passenger' || kind === 'delivery') &&
+        (destination.x !== source.x || destination.y !== source.y),
+    )
+    const startKey = `${source.x},${source.y}`
+    const queue: RoadCell[] = [source]
     const previous = new Map<string, string | null>([[startKey, null]])
     let found: RoadCell | undefined
-    for (let head = 0; head < queue.length && !found; head += 1) {
+    let farthest: RoadCell = source
+
+    for (let head = 0; head < queue.length; head += 1) {
       const current = queue[head]
-      if (targets.some((d) => d.x === current.x && d.y === current.y)) {
+      farthest = current
+      if (
+        !found &&
+        targets.some((d) => d.x === current.x && d.y === current.y && Math.abs(d.x - source.x) + Math.abs(d.y - source.y) >= 2)
+      ) {
         found = current
-        break
       }
       for (const [dx, dy] of NEIGHBORS) {
         const x = current.x + dx
@@ -152,24 +218,21 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
         queue.push({ x, y })
       }
     }
-    if (!found) continue
+
+    const endCell = found ?? (farthest.x !== source.x || farthest.y !== source.y ? farthest : undefined)
+    if (!endCell) continue
 
     const path: RoadCell[] = []
-    let key: string | null = `${found.x},${found.y}`
+    let key: string | null = `${endCell.x},${endCell.y}`
     while (key !== null) {
       const [x, y] = key.split(',').map(Number)
       path.push({ x, y })
       key = previous.get(key) ?? null
     }
     path.reverse()
-    if (path.length < 2) continue
-    const forwardKey = path.map((p) => `${p.x},${p.y}`).join('|')
-    const reverseKey = [...path].reverse().map((p) => `${p.x},${p.y}`).join('|')
-    const canonicalKey = forwardKey < reverseKey ? forwardKey : reverseKey
-    if (routeKeys.has(canonicalKey)) continue
-    routeKeys.add(canonicalKey)
-    routes.push({ path, kind })
+    addRouteIfValid(path, kind)
   }
+
   return routes
 }
 
@@ -228,7 +291,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         continue
       }
       if (!car.active) {
-        if (Math.random() > 0.025) continue
+        if (Math.random() > 0.085) continue
         car.routeIndex = Math.floor(Math.random() * routes.length)
         car.delivery = routes[car.routeIndex].kind === 'delivery'
         car.reverse = Math.random() < 0.5

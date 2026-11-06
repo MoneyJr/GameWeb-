@@ -115,6 +115,7 @@ export const BUILDING_CATALOG: readonly BuildingCatalogEntry[] = [
   { id: 'utl_solar', name: 'Солнечная панель', category: 'utilities', tool: ToolId.SOLAR_PANEL, tile: TileType.SOLAR_PANEL, cost: 200, tickNet: -1, maintenance: 1, givesEnergy: 16, model: 'solar-station' },
 
   // Железная дорога и вокзалы
+  { id: 'civ_rail_stop', name: 'Ж/Д Платформа (Остановка)', category: 'rail', tool: station, tile: TileType.STATION, cost: 220, tickNet: 6, income: 10, maintenance: 4, happiness: 8, energy: 1, water: 1, model: 'rail-stop' },
   { id: 'civ_train_station', name: 'Пассажирский вокзал', category: 'rail', tool: station, tile: TileType.STATION, cost: 550, tickNet: 14, income: 22, maintenance: 8, happiness: 14, energy: 4, water: 2, footprint: [3, 1], model: 'train-station' },
   { id: 'ind_freight_station', name: 'Грузовой ж/д терминал', category: 'rail', tool: station, tile: TileType.STATION, cost: 650, tickNet: 20, income: 30, maintenance: 10, pollution: 1, energy: 4, water: 2, footprint: [3, 1], model: 'freight-station' },
 

@@ -26,10 +26,10 @@ export const OUTLINE_COLOR = '#161412'
 
 let gradientMap: THREE.DataTexture | null = null
 
-/** 3-ступенчатая градиентная карта для "мультяшного" ступенчатого освещения. */
+/** 5-ступенчатая градиентная карта для чёткого рисованного освещения в стиле CityRT. */
 export function getGradientMap(): THREE.DataTexture {
   if (gradientMap === null) {
-    const texture = new THREE.DataTexture(new Uint8Array([92, 152, 208, 255]), 4, 1, THREE.RedFormat)
+    const texture = new THREE.DataTexture(new Uint8Array([88, 138, 182, 224, 255]), 5, 1, THREE.RedFormat)
     texture.minFilter = THREE.NearestFilter
     texture.magFilter = THREE.NearestFilter
     texture.generateMipmaps = false
@@ -168,16 +168,23 @@ ${SNOW_VERTEX_HEAD}varying vec3 vFacadePos;\nvarying vec3 vFacadeNormal;\n`)
     float along = abs(facadeN.x) > 0.5 ? vFacadePos.z : vFacadePos.x;
     vec2 cell = vec2(along / uSpacing.x, vFacadePos.y / uSpacing.y);
     vec2 f = fract(cell);
-    facadeWindow = step(uFrame.x, f.x) * step(f.x, 1.0 - uFrame.x) * step(uFrame.y, f.y) * step(f.y, 1.0 - uFrame.y);
+    vec2 aa = clamp(fwidth(cell) * 1.15, vec2(0.003), vec2(0.08));
+    facadeWindow = smoothstep(uFrame.x - aa.x, uFrame.x + aa.x, f.x)
+      * (1.0 - smoothstep(1.0 - uFrame.x - aa.x, 1.0 - uFrame.x + aa.x, f.x))
+      * smoothstep(uFrame.y - aa.y, uFrame.y + aa.y, f.y)
+      * (1.0 - smoothstep(1.0 - uFrame.y - aa.y, 1.0 - uFrame.y + aa.y, f.y));
     float seed = fract(sin(dot(floor(cell) + facadeN.xz * 31.0, vec2(12.9898, 78.233))) * 43758.5453);
     facadeLit = uNight * step(0.42, seed) * facadeWindow;
     // Лёгкий диагональный блик на стекле — «нарисованное» отражение неба.
     float streak = smoothstep(0.55, 0.6, fract((along + vFacadePos.y) * 0.9)) * 0.18;
     vec3 glassTone = mix(uGlass, vec3(1.0), streak + seed * 0.08);
     diffuseColor.rgb = mix(diffuseColor.rgb, glassTone, facadeWindow);
-    // Тёмная рамка вокруг окна и светлый подоконник, как в рисунке тушью.
-    float border = 0.05;
-    float outer = step(uFrame.x - border, f.x) * step(f.x, 1.0 - uFrame.x + border) * step(uFrame.y - border, f.y) * step(f.y, 1.0 - uFrame.y + border);
+    // Чёткая сглаженная рамка вокруг окна и светлый подоконник, как в иллюстрации тушью.
+    float border = 0.048;
+    float outer = smoothstep(uFrame.x - border - aa.x, uFrame.x - border + aa.x, f.x)
+      * (1.0 - smoothstep(1.0 - uFrame.x + border - aa.x, 1.0 - uFrame.x + border + aa.x, f.x))
+      * smoothstep(uFrame.y - border - aa.y, uFrame.y - border + aa.y, f.y)
+      * (1.0 - smoothstep(1.0 - uFrame.y + border - aa.y, 1.0 - uFrame.y + border + aa.y, f.y));
     diffuseColor.rgb = mix(diffuseColor.rgb, uInk, (outer - facadeWindow) * 0.75);
     float sill = step(uFrame.y - border - 0.06, f.y) * step(f.y, uFrame.y - border) * step(uFrame.x - border, f.x) * step(f.x, 1.0 - uFrame.x + border);
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.93, 0.92, 0.88), sill * 0.8);

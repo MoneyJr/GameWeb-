@@ -12,6 +12,8 @@ interface RailCell {
 interface RailRoute {
   path: RailCell[]
   kind: 'passenger' | 'freight'
+  stationStops: number[]
+  isLoop: boolean
 }
 
 interface TrainState {
@@ -19,6 +21,7 @@ interface TrainState {
   distance: number
   direction: 1 | -1
   pauseTimer: number
+  lastStopIndex: number
 }
 
 const MAX_TRAINS = 4
@@ -192,9 +195,36 @@ function buildRailRoutes(grid: Grid): RailRoute[] {
       path.reverse()
 
       if (path.length >= 4) {
+        const first = path[0]
+        const last = path[path.length - 1]
+        const isLoop = Math.abs(first.x - last.x) + Math.abs(first.y - last.y) === 1
+        if (isLoop) {
+          path.push({ x: first.x, y: first.y })
+        }
+
+        // Определяем индексы клеток рядом со станциями и ж/д платформами (по одной точке остановки на перрон)
+        const rawStops: number[] = []
+        for (let idx = 0; idx < path.length; idx++) {
+          const st = hasNeighborStation(grid, path[idx].x, path[idx].y)
+          if (st.has) rawStops.push(idx)
+        }
+        const stationStops: number[] = []
+        let groupStart = -1
+        for (let i = 0; i < rawStops.length; i++) {
+          if (groupStart === -1) groupStart = i
+          const isEndOfRun = i === rawStops.length - 1 || rawStops[i + 1] > rawStops[i] + 1
+          if (isEndOfRun) {
+            const mid = Math.floor((groupStart + i) / 2)
+            stationStops.push(rawStops[mid])
+            groupStart = -1
+          }
+        }
+
         routes.push({
           path,
           kind: touchesFreight ? 'freight' : routes.length % 2 === 1 ? 'freight' : 'passenger',
+          stationStops,
+          isLoop,
         })
       }
     }
@@ -208,15 +238,64 @@ function cellToWorld(x: number, y: number): [number, number, number] {
   return [x - half, 0, y - half]
 }
 
+/**
+ * Вычисляет координаты и поворот вагона вдоль маршрута с плавным радиусным скруглением на 90° поворотах.
+ */
 function samplePathPosition(
   grid: Grid,
   path: RailCell[],
   distance: number,
+  isLoop: boolean,
 ): { x: number; y: number; z: number; yaw: number } {
-  const maxDist = Math.max(0, path.length - 1)
-  const clamped = Math.max(0, Math.min(maxDist - 0.0001, distance))
-  const seg = Math.min(path.length - 2, Math.floor(clamped))
-  const t = clamped - seg
+  const n = path.length
+  const maxDist = Math.max(0, n - 1)
+  const d = isLoop
+    ? ((distance % maxDist) + maxDist) % maxDist
+    : Math.max(0, Math.min(maxDist - 0.0001, distance))
+
+  // Каждая клетка i отвечает за интервал [i - 0.5, i + 0.5], где на повороте строим квадратичную кривую Безье
+  const cellIdx = Math.min(n - 1, Math.max(0, Math.round(d)))
+  const localU = d - (cellIdx - 0.5) // в диапазоне [0, 1] внутри клетки cellIdx
+
+  if (cellIdx > 0 && cellIdx < n - 1) {
+    const prev = path[cellIdx - 1]
+    const curr = path[cellIdx]
+    const next = path[cellIdx + 1]
+    const pPrev = cellToWorld(prev.x, prev.y)
+    const pCurr = cellToWorld(curr.x, curr.y)
+    const pNext = cellToWorld(next.x, next.y)
+
+    const yPrev = grid[prev.y]?.[prev.x]?.type === TileType.RAIL_BRIDGE ? 0.22 : 0.075
+    const yCurr = grid[curr.y]?.[curr.x]?.type === TileType.RAIL_BRIDGE ? 0.22 : 0.075
+    const yNext = grid[next.y]?.[next.x]?.type === TileType.RAIL_BRIDGE ? 0.22 : 0.075
+
+    // Середины граней входа и выхода из клетки curr
+    const m0x = (pPrev[0] + pCurr[0]) * 0.5
+    const m0z = (pPrev[2] + pCurr[2]) * 0.5
+    const m0y = (yPrev + yCurr) * 0.5
+
+    const m1x = (pCurr[0] + pNext[0]) * 0.5
+    const m1z = (pCurr[2] + pNext[2]) * 0.5
+    const m1y = (yCurr + yNext) * 0.5
+
+    const u = Math.max(0, Math.min(1, localU))
+    const inv = 1 - u
+    const x = inv * inv * m0x + 2 * inv * u * pCurr[0] + u * u * m1x
+    const z = inv * inv * m0z + 2 * inv * u * pCurr[2] + u * u * m1z
+    const y = inv * inv * m0y + 2 * inv * u * yCurr + u * u * m1y
+
+    const tx = 2 * inv * (pCurr[0] - m0x) + 2 * u * (m1x - pCurr[0])
+    const tz = 2 * inv * (pCurr[2] - m0z) + 2 * u * (m1z - pCurr[2])
+    return {
+      x,
+      y,
+      z,
+      yaw: Math.atan2(tx, tz),
+    }
+  }
+
+  const seg = Math.min(n - 2, Math.floor(d))
+  const t = d - seg
   const a = path[seg]
   const b = path[seg + 1]
   const wa = cellToWorld(a.x, a.y)
@@ -245,6 +324,7 @@ export function TrainSystem({ grid, minutes }: { grid: Grid; minutes: number }) 
       distance: 0,
       direction: 1,
       pauseTimer: 0,
+      lastStopIndex: -1,
     })),
   )
 
@@ -290,16 +370,41 @@ export function TrainSystem({ grid, minutes }: { grid: Grid; minutes: number }) 
       if (state.pauseTimer > 0) {
         state.pauseTimer = Math.max(0, state.pauseTimer - dt)
       } else {
+        const prevDist = state.distance
         state.distance += dt * TRAIN_SPEED * state.direction
         const minHead = (CARS_PER_TRAIN - 1) * CAR_SPACING
-        if (state.direction === 1 && state.distance >= maxTravel) {
+
+        // Проверяем остановку на промежуточных ж/д станциях и платформах
+        for (const stopIdx of route.stationStops) {
+          if (state.lastStopIndex === stopIdx) continue
+          const crossedForward = state.direction === 1 && prevDist < stopIdx && state.distance >= stopIdx
+          const crossedBackward = state.direction === -1 && prevDist > stopIdx && state.distance <= stopIdx
+          if (crossedForward || crossedBackward) {
+            state.distance = stopIdx
+            state.lastStopIndex = stopIdx
+            state.pauseTimer = 2.6
+            break
+          }
+        }
+
+        if (route.isLoop) {
+          if (state.distance >= maxTravel) {
+            state.distance -= maxTravel
+            state.lastStopIndex = -1
+          } else if (state.distance < 0) {
+            state.distance += maxTravel
+            state.lastStopIndex = -1
+          }
+        } else if (state.direction === 1 && state.distance >= maxTravel) {
           state.distance = maxTravel
           state.direction = -1
-          state.pauseTimer = 1.2
+          state.lastStopIndex = -1
+          state.pauseTimer = 1.8
         } else if (state.direction === -1 && state.distance <= minHead) {
           state.distance = minHead
           state.direction = 1
-          state.pauseTimer = 1.2
+          state.lastStopIndex = -1
+          state.pauseTimer = 1.8
         }
       }
 
@@ -310,7 +415,7 @@ export function TrainSystem({ grid, minutes }: { grid: Grid; minutes: number }) 
           state.direction === 1
             ? state.distance - cIdx * CAR_SPACING
             : state.distance - (CARS_PER_TRAIN - 1 - cIdx) * CAR_SPACING
-        const sample = samplePathPosition(grid, route.path, carDist)
+        const sample = samplePathPosition(grid, route.path, carDist, route.isLoop)
         carObj.position.set(sample.x, sample.y, sample.z)
         carObj.rotation.y = state.direction === 1 ? sample.yaw : sample.yaw + Math.PI
 

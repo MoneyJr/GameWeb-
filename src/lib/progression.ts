@@ -30,6 +30,7 @@ const UNLOCK_RANK: Record<string, number> = {
   utl_solar: 1, utl_water_intake: 1,
   [ToolId.WATER]: 1,
   [ToolId.RAIL]: 1,
+  civ_rail_stop: 1,
   [ToolId.FIRE_STATION]: 1,
 
   // Ранг 2 — Посёлок (200+)
