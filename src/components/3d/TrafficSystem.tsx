@@ -6,8 +6,16 @@ import type { Grid } from '../../types/city'
 import { getGradientMap, getToonMaterial, vehicleHeadlightBeamMaterial, ROAD_LANE_OFFSET } from './primitives'
 import { createVehicleMesh, VEHICLE_COLORS, VEHICLE_KINDS } from './Vehicles'
 
-interface RoadCell { x: number; y: number }
-interface CarRoute { path: RoadCell[]; kind: 'passenger' | 'delivery' }
+interface RoadCell {
+  x: number
+  y: number
+  /** True, когда точка находится внутри парковки (парковочный карман, проезд или выезд на улицу). */
+  inParking?: boolean
+}
+interface CarRoute {
+  path: RoadCell[]
+  kind: 'passenger' | 'delivery'
+}
 interface CarState {
   routeIndex: number
   segment: number
@@ -18,12 +26,13 @@ interface CarState {
   delivery: boolean
   vehicleType: 'car' | 'truck' | 'bus'
   currentSpeed: number
+  pauseTimer: number
 }
 
-const CAR_COUNT = 34
-const CAR_SPEED = 1.2
-const SAFE_DISTANCE = 1.15
-const STOP_DISTANCE = 0.78
+const CAR_COUNT = 36
+const CAR_SPEED = 1.25
+const SAFE_DISTANCE = 1.1
+const STOP_DISTANCE = 0.75
 const CAR_COLORS = VEHICLE_COLORS
 const NEIGHBORS: ReadonlyArray<readonly [number, number]> = [[0, -1], [1, 0], [0, 1], [-1, 0]]
 
@@ -101,14 +110,36 @@ function isRoadLike(type: TileType | undefined): boolean {
   return type === TileType.ROAD || type === TileType.BRIDGE
 }
 
+interface ParkingBayExit {
+  /** Путь от парковочного места внутри парковки до первой клетки дороги (включительно) */
+  exitChain: RoadCell[]
+  roadPort: RoadCell
+}
+
 function buildRoadRoutes(grid: Grid): CarRoute[] {
   const height = grid.length
   const width = grid[0]?.length ?? 0
-  const isRoad = (x: number, y: number) => y >= 0 && y < height && x >= 0 && x < width && isRoadLike(grid[y][x].type)
+  const isRoad = (x: number, y: number) =>
+    y >= 0 && y < height && x >= 0 && x < width && isRoadLike(grid[y]?.[x]?.type)
+
+  const resolveRoot = (x: number, y: number) => {
+    const cell = grid[y]?.[x]
+    if (!cell) return undefined
+    return cell.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined
+      ? grid[cell.refY]?.[cell.refX]
+      : cell
+  }
+
+  const isParkingTile = (x: number, y: number) => {
+    if (y < 0 || y >= height || x < 0 || x >= width) return false
+    const root = resolveRoot(x, y)
+    return root?.type === TileType.PARK && root.catalogId === 'lnd_parking'
+  }
+
   const homes: RoadCell[] = []
-  const parkingPorts: RoadCell[] = []
   const destinations: { x: number; y: number; kind: 'passenger' | 'delivery' }[] = []
   const factories: RoadCell[] = []
+  const parkingBays: ParkingBayExit[] = []
 
   const addUnique = (arr: RoadCell[], port: RoadCell) => {
     if (!arr.some((item) => item.x === port.x && item.y === port.y)) arr.push(port)
@@ -119,12 +150,91 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
     }
   }
 
+  // Находит кратчайший выезд через территорию парковки (или блока смежных парковок) на ближайшую клетку дороги
+  const findParkingExitToRoad = (startCellX: number, startCellY: number): { parkingCells: { x: number; y: number }[]; roadPort: RoadCell } | null => {
+    const startKey = `${startCellX},${startCellY}`
+    const queue: { x: number; y: number }[] = [{ x: startCellX, y: startCellY }]
+    const prev = new Map<string, string | null>([[startKey, null]])
+
+    for (let head = 0; head < queue.length; head += 1) {
+      const cur = queue[head]
+      for (const [dx, dy] of NEIGHBORS) {
+        const nx = cur.x + dx
+        const ny = cur.y + dy
+        if (isRoad(nx, ny)) {
+          const parkingCells: { x: number; y: number }[] = []
+          let k: string | null = `${cur.x},${cur.y}`
+          while (k !== null) {
+            const [px, py] = k.split(',').map(Number)
+            parkingCells.push({ x: px, y: py })
+            k = prev.get(k) ?? null
+          }
+          parkingCells.reverse()
+          return { parkingCells, roadPort: { x: nx, y: ny, inParking: false } }
+        }
+      }
+      for (const [dx, dy] of NEIGHBORS) {
+        const nx = cur.x + dx
+        const ny = cur.y + dy
+        const k = `${nx},${ny}`
+        if (!prev.has(k) && isParkingTile(nx, ny)) {
+          prev.set(k, `${cur.x},${cur.y}`)
+          queue.push({ x: nx, y: ny })
+        }
+      }
+    }
+    return null
+  }
+
   for (const row of grid) {
     for (const cell of row) {
-      const root =
-        cell.type === TileType.FOOTPRINT && cell.refX !== undefined && cell.refY !== undefined
-          ? grid[cell.refY]?.[cell.refX]
-          : cell
+      // Если это корневая клетка парковки 2×1 — создаём точки выезда из свободных парковочных слотов (слоты 2 и 5)
+      if (cell.type === TileType.PARK && cell.catalogId === 'lnd_parking') {
+        const orient = cell.orientation ?? 0
+        const w = orient % 2 ? 1 : 2
+        const d = orient % 2 ? 2 : 1
+        const cx = cell.x + (w - 1) * 0.5
+        const cy = cell.y + (d - 1) * 0.5
+        const theta = orient * (Math.PI / 2)
+        const cos = Math.cos(theta)
+        const sin = Math.sin(theta)
+        const toGrid = (lx: number, lz: number): RoadCell => ({
+          x: cx + lx * cos + lz * sin,
+          y: cy - lx * sin + lz * cos,
+          inParking: true,
+        })
+
+        // Два свободных парковочных кармана в ParkingLotMesh: слот 2 (lx = -0.22) и слот 5 (lx = +0.44)
+        for (const slotLx of [-0.22, 0.44]) {
+          const stall = toGrid(slotLx, -0.22)
+          const aisle = toGrid(slotLx, 0.2)
+          const nearX = Math.max(cell.x, Math.min(cell.x + w - 1, Math.round(aisle.x)))
+          const nearY = Math.max(cell.y, Math.min(cell.y + d - 1, Math.round(aisle.y)))
+          const exitInfo = findParkingExitToRoad(nearX, nearY)
+          if (!exitInfo) continue
+
+          const { parkingCells, roadPort } = exitInfo
+          const lastP = parkingCells[parkingCells.length - 1]
+          const exitChain: RoadCell[] = [stall, aisle]
+
+          // Если парковка внутри большого парковочного квартала — ведём машину по проездам до выезда на улицу
+          for (let pIdx = 1; pIdx < parkingCells.length; pIdx += 1) {
+            const pc = parkingCells[pIdx]
+            exitChain.push({ x: pc.x, y: pc.y + 0.16 * cos, inParking: true })
+          }
+
+          // Точка пересечения бордюра (выезд с парковки на проезжую часть)
+          exitChain.push({
+            x: lastP.x * 0.38 + roadPort.x * 0.62,
+            y: lastP.y * 0.38 + roadPort.y * 0.62,
+            inParking: true,
+          })
+          exitChain.push(roadPort)
+          parkingBays.push({ exitChain, roadPort })
+        }
+      }
+
+      const root = resolveRoot(cell.x, cell.y)
       if (!root) continue
       const rType = root.type
       const isParking = rType === TileType.PARK && root.catalogId === 'lnd_parking'
@@ -152,13 +262,12 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
         const x = cell.x + dx
         const y = cell.y + dy
         if (!isRoad(x, y)) continue
-        const port = { x, y }
+        const port: RoadCell = { x, y, inParking: false }
         if (isParking) {
-          addUnique(parkingPorts, port)
-          addUnique(homes, port)
           addDestination(port, 'passenger')
         } else if (rType === TileType.RESIDENTIAL) {
           addUnique(homes, port)
+          addDestination(port, 'passenger')
         } else if (rType === TileType.INDUSTRIAL) {
           addUnique(factories, port)
           addDestination(port, 'delivery')
@@ -172,66 +281,108 @@ function buildRoadRoutes(grid: Grid): CarRoute[] {
   const routes: CarRoute[] = []
   const routeKeys = new Set<string>()
   const addRouteIfValid = (path: RoadCell[], kind: 'passenger' | 'delivery') => {
-    if (path.length < 2) return
-    const forwardKey = path.map((p) => `${p.x},${p.y}`).join('|')
-    const reverseKey = [...path].reverse().map((p) => `${p.x},${p.y}`).join('|')
+    if (path.length < 3) return
+    const forwardKey = path.map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join('|')
+    const reverseKey = [...path].reverse().map((p) => `${p.x.toFixed(2)},${p.y.toFixed(2)}`).join('|')
     const canonicalKey = forwardKey < reverseKey ? forwardKey : reverseKey
     if (routeKeys.has(canonicalKey)) return
     routeKeys.add(canonicalKey)
     routes.push({ path, kind })
   }
 
-  // Строим маршруты от парковок, жилых домов и заводов к точкам назначения (или к самой дальней точке дорожной сети)
-  const sources = [
-    ...parkingPorts.map((source) => ({ source, kind: 'passenger' as const })),
-    ...homes.map((source) => ({ source, kind: 'passenger' as const })),
-    ...factories.map((source) => ({ source, kind: 'delivery' as const })),
-  ]
-
-  for (const { source, kind } of sources) {
-    const targets = destinations.filter(
-      (destination) =>
-        (destination.kind === 'passenger' || kind === 'delivery') &&
-        (destination.x !== source.x || destination.y !== source.y),
-    )
-    const startKey = `${source.x},${source.y}`
-    const queue: RoadCell[] = [source]
+  // Полный обход дорожной сети от выбранной клетки дороги
+  const bfsRoadNetwork = (startRoad: RoadCell) => {
+    const startKey = `${startRoad.x},${startRoad.y}`
+    const queue: RoadCell[] = [startRoad]
     const previous = new Map<string, string | null>([[startKey, null]])
-    let found: RoadCell | undefined
-    let farthest: RoadCell = source
-
+    const dist = new Map<string, number>([[startKey, 0]])
     for (let head = 0; head < queue.length; head += 1) {
       const current = queue[head]
-      farthest = current
-      if (
-        !found &&
-        targets.some((d) => d.x === current.x && d.y === current.y && Math.abs(d.x - source.x) + Math.abs(d.y - source.y) >= 2)
-      ) {
-        found = current
-      }
+      const curKey = `${current.x},${current.y}`
+      const curDist = dist.get(curKey) ?? 0
       for (const [dx, dy] of NEIGHBORS) {
         const x = current.x + dx
         const y = current.y + dy
         const key = `${x},${y}`
         if (!isRoad(x, y) || previous.has(key)) continue
-        previous.set(key, `${current.x},${current.y}`)
-        queue.push({ x, y })
+        previous.set(key, curKey)
+        dist.set(key, curDist + 1)
+        queue.push({ x, y, inParking: false })
       }
     }
-
-    const endCell = found ?? (farthest.x !== source.x || farthest.y !== source.y ? farthest : undefined)
-    if (!endCell) continue
-
-    const path: RoadCell[] = []
-    let key: string | null = `${endCell.x},${endCell.y}`
-    while (key !== null) {
-      const [x, y] = key.split(',').map(Number)
-      path.push({ x, y })
-      key = previous.get(key) ?? null
+    const reconstructRoadPath = (endCell: { x: number; y: number }): RoadCell[] => {
+      const roadPath: RoadCell[] = []
+      let key: string | null = `${endCell.x},${endCell.y}`
+      while (key !== null) {
+        const [x, y] = key.split(',').map(Number)
+        roadPath.push({ x, y, inParking: false })
+        key = previous.get(key) ?? null
+      }
+      roadPath.reverse()
+      return roadPath
     }
-    path.reverse()
-    addRouteIfValid(path, kind)
+    return { queue, dist, reconstructRoadPath }
   }
+
+  // 1. Главные маршруты: выезд прямо с парковочных мест (parkingBays) на улицу и поездка в город / на другую парковку
+  parkingBays.forEach((bay, bayIdx) => {
+    const { queue, dist, reconstructRoadPath } = bfsRoadNetwork(bay.roadPort)
+    if (queue.length < 2) return
+
+    // Достижимые городские точки назначения, отсортированные по дальности поездки (предпочитаем дальние маршруты по городу)
+    const reachableTargets = destinations
+      .map((d) => ({ d, distance: dist.get(`${d.x},${d.y}`) ?? -1 }))
+      .filter((item) => item.distance >= 4)
+      .sort((a, b) => b.distance - a.distance)
+
+    if (reachableTargets.length > 0) {
+      const pickIdx = (bayIdx * 3) % Math.max(1, Math.min(reachableTargets.length, 8))
+      const chosen = reachableTargets[pickIdx].d
+      const roadPath = reconstructRoadPath(chosen)
+      // Соединяем выезд из парковочного слота с городским маршрутом
+      addRouteIfValid([...bay.exitChain.slice(0, -1), ...roadPath], 'passenger')
+    }
+
+    // Маршрут из этой парковки в другую удалённую парковку (машина выезжает из слота А, едет по городу и паркуется в слот Б)
+    const otherBays = parkingBays
+      .map((other) => ({ other, distance: dist.get(`${other.roadPort.x},${other.roadPort.y}`) ?? -1 }))
+      .filter((item) => item.distance >= 5)
+      .sort((a, b) => b.distance - a.distance)
+
+    if (otherBays.length > 0) {
+      const targetBay = otherBays[bayIdx % otherBays.length].other
+      const roadPath = reconstructRoadPath(targetBay.roadPort)
+      const arrivalChain = [...targetBay.exitChain.slice(0, -1)].reverse()
+      addRouteIfValid([...bay.exitChain.slice(0, -1), ...roadPath, ...arrivalChain], 'passenger')
+    } else {
+      // Если других парковок или дальних зданий нет — машина выезжает с парковки и объезжает самую дальнюю часть дорожной сети
+      const farthestRoad = queue[queue.length - 1]
+      if (farthestRoad.x !== bay.roadPort.x || farthestRoad.y !== bay.roadPort.y) {
+        const roadPath = reconstructRoadPath(farthestRoad)
+        addRouteIfValid([...bay.exitChain.slice(0, -1), ...roadPath], 'passenger')
+      }
+    }
+  })
+
+  // 2. Маршруты от жилых домов и заводов по городу
+  const buildingSources = [
+    ...homes.map((source) => ({ source, kind: 'passenger' as const })),
+    ...factories.map((source) => ({ source, kind: 'delivery' as const })),
+  ]
+
+  buildingSources.forEach(({ source, kind }, srcIdx) => {
+    const { queue, dist, reconstructRoadPath } = bfsRoadNetwork(source)
+    if (queue.length < 2) return
+    const reachable = destinations
+      .filter((d) => d.kind === 'passenger' || kind === 'delivery')
+      .map((d) => ({ d, distance: dist.get(`${d.x},${d.y}`) ?? -1 }))
+      .filter((item) => item.distance >= 4)
+      .sort((a, b) => b.distance - a.distance)
+
+    const target = reachable.length > 0 ? reachable[srcIdx % Math.min(reachable.length, 6)].d : queue[queue.length - 1]
+    if (target.x === source.x && target.y === source.y) return
+    addRouteIfValid(reconstructRoadPath(target), kind)
+  })
 
   return routes
 }
@@ -241,7 +392,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
   const routes = useMemo(() => buildRoadRoutes(grid), [grid])
   const carsRef = useRef<CarState[]>(Array.from({ length: CAR_COUNT }, (_, index) => ({
     routeIndex: 0, segment: 0, reverse: false, progress: 0, colorIndex: 0, active: false, delivery: false,
-    vehicleType: index < 2 ? 'truck' as const : 'car' as const, currentSpeed: 0,
+    vehicleType: index < 2 ? 'truck' as const : 'car' as const, currentSpeed: 0, pauseTimer: 0,
   })))
   const vehicleModels = useMemo(() => carsRef.current.map((_, index) => {
     // Грузовики с прицепом — на базе фургона, остальные — разные легковые модели.
@@ -262,7 +413,7 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
     }
     sedan.add(trailer)
     // Машины меньше, чтобы помещаться в полосы между тротуарами.
-    sedan.scale.setScalar(0.72)
+    sedan.scale.setScalar(0.7)
     return sedan
   }), [])
   const groupRef = useRef<THREE.Group>(null)
@@ -291,35 +442,48 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         continue
       }
       if (!car.active) {
-        if (Math.random() > 0.085) continue
-        car.routeIndex = Math.floor(Math.random() * routes.length)
-        car.delivery = routes[car.routeIndex].kind === 'delivery'
-        car.reverse = Math.random() < 0.5
-        car.segment = car.reverse ? routes[car.routeIndex].path.length - 1 : 0
+        if (Math.random() > 0.14) continue
+        car.routeIndex = (i + Math.floor(Math.random() * routes.length)) % routes.length
+        const chosenRoute = routes[car.routeIndex]
+        car.delivery = chosenRoute.kind === 'delivery'
+        const startsInParking = Boolean(chosenRoute.path[0]?.inParking)
+        // Если маршрут начинается на парковке — спавним машину прямо на парковочном месте, чтобы она красиво выезжала в город
+        car.reverse = startsInParking ? false : Math.random() < 0.5
+        car.segment = car.reverse ? chosenRoute.path.length - 1 : 0
         car.progress = 0
-        car.colorIndex = Math.floor(Math.random() * CAR_COLORS.length)
-        const spawnPath = routes[car.routeIndex].path
+        car.pauseTimer = startsInParking ? 0.35 + (i % 5) * 0.35 : 0
+        car.colorIndex = (i * 3 + Math.floor(Math.random() * CAR_COLORS.length)) % CAR_COLORS.length
+        const spawnPath = chosenRoute.path
         const spawnFrom = car.reverse ? spawnPath[spawnPath.length - 1] : spawnPath[0]
         const spawnTo = car.reverse ? spawnPath[spawnPath.length - 2] : spawnPath[1]
         const spawnA = cellToWorld(spawnFrom.x, spawnFrom.y)
         const spawnB = cellToWorld(spawnTo.x, spawnTo.y)
         const spawnDx = spawnB[0] - spawnA[0]
         const spawnDz = spawnB[2] - spawnA[2]
+        const spawnLen = Math.hypot(spawnDx, spawnDz) || 1
+        const spawnLane = spawnFrom.inParking ? 0 : ROAD_LANE_OFFSET
         const spawnPosition = new THREE.Vector3(
-          spawnA[0] - spawnDz * ROAD_LANE_OFFSET,
+          spawnA[0] - (spawnDz / spawnLen) * spawnLane,
           0.055,
-          spawnA[2] + spawnDx * ROAD_LANE_OFFSET,
+          spawnA[2] + (spawnDx / spawnLen) * spawnLane,
         )
+        const minClearance = spawnFrom.inParking ? 0.35 : SAFE_DISTANCE
         if (group.children.some((other, otherIndex) => otherIndex !== i && other.visible &&
-          Math.hypot(other.position.x - spawnPosition.x, other.position.z - spawnPosition.z) < SAFE_DISTANCE)) continue
+          Math.hypot(other.position.x - spawnPosition.x, other.position.z - spawnPosition.z) < minClearance)) continue
         const trailer = mesh.getObjectByName('vehicle-trailer')
-        if (trailer) trailer.visible = car.vehicleType === 'truck'
+        if (trailer) trailer.visible = car.vehicleType === 'truck' && !startsInParking
         const paint = getToonMaterial(CAR_COLORS[car.colorIndex % CAR_COLORS.length])
         mesh.traverse((part) => { if (part.name === 'vehicle-body' && part instanceof THREE.Mesh) part.material = paint })
         car.active = true
         mesh.visible = true
         mesh.position.copy(spawnPosition)
         mesh.rotation.y = Math.atan2(spawnDx, spawnDz)
+      }
+
+      if (car.pauseTimer > 0) {
+        car.pauseTimer = Math.max(0, car.pauseTimer - dt)
+        car.currentSpeed = 0
+        continue
       }
 
       const oldSegment = car.segment
@@ -336,47 +500,72 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const currentTo = cellToWorld(currentToCell.x, currentToCell.y)
       const currentDx = currentTo[0] - currentFrom[0]
       const currentDz = currentTo[2] - currentFrom[2]
-      const directionLength = Math.hypot(currentDx, currentDz) || 1
-      const directionX = currentDx / directionLength
-      const directionZ = currentDz / directionLength
+      const segLength = Math.max(0.25, Math.hypot(currentDx, currentDz))
+      const directionX = currentDx / segLength
+      const directionZ = currentDz / segLength
+      const inParkingManeuver = Boolean(currentFromCell.inParking || currentToCell.inParking)
+
       let carAhead: { state: CarState; gap: number } | null = null
-      for (let otherIndex = 0; otherIndex < CAR_COUNT; otherIndex += 1) {
-        if (otherIndex === i) continue
-        const otherMesh = group.children[otherIndex]
-        const otherState = carsRef.current[otherIndex]
-        if (!otherMesh?.visible || !otherState.active) continue
-        const otherDirectionX = Math.sin(otherMesh.rotation.y)
-        const otherDirectionZ = Math.cos(otherMesh.rotation.y)
-        if (directionX * otherDirectionX + directionZ * otherDirectionZ < 0.85) continue
-        const relativeX = otherMesh.position.x - mesh.position.x
-        const relativeZ = otherMesh.position.z - mesh.position.z
-        const gap = relativeX * directionX + relativeZ * directionZ
-        const lateral = Math.abs(relativeX * directionZ - relativeZ * directionX)
-        if (gap <= 0 || lateral > 0.38 || gap >= SAFE_DISTANCE) continue
-        if (!carAhead || gap < carAhead.gap) carAhead = { state: otherState, gap }
+      if (!inParkingManeuver) {
+        for (let otherIndex = 0; otherIndex < CAR_COUNT; otherIndex += 1) {
+          if (otherIndex === i) continue
+          const otherMesh = group.children[otherIndex]
+          const otherState = carsRef.current[otherIndex]
+          if (!otherMesh?.visible || !otherState.active) continue
+          const otherDirectionX = Math.sin(otherMesh.rotation.y)
+          const otherDirectionZ = Math.cos(otherMesh.rotation.y)
+          if (directionX * otherDirectionX + directionZ * otherDirectionZ < 0.85) continue
+          const relativeX = otherMesh.position.x - mesh.position.x
+          const relativeZ = otherMesh.position.z - mesh.position.z
+          const gap = relativeX * directionX + relativeZ * directionZ
+          const lateral = Math.abs(relativeX * directionZ - relativeZ * directionX)
+          if (gap <= 0 || lateral > 0.38 || gap >= SAFE_DISTANCE) continue
+          if (!carAhead || gap < carAhead.gap) carAhead = { state: otherState, gap }
+        }
       }
+
       const nextRoad = path[car.reverse ? Math.max(car.segment - 1, 0) : Math.min(car.segment + 1, path.length - 1)]
-      const nextDegree = nextRoad ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (isRoadLike(grid[nextRoad.y + dy]?.[nextRoad.x + dx]?.type) ? 1 : 0), 0) : 0
-      const braking = nextDegree >= 3 && car.progress > 0.45 ? 0.34 : 1
+      const nextGridX = Math.round(nextRoad?.x ?? 0)
+      const nextGridY = Math.round(nextRoad?.y ?? 0)
+      const nextDegree = nextRoad && !nextRoad.inParking
+        ? NEIGHBORS.reduce((sum, [dx, dy]) => sum + (isRoadLike(grid[nextGridY + dy]?.[nextGridX + dx]?.type) ? 1 : 0), 0)
+        : 0
+      const braking = inParkingManeuver ? 0.65 : nextDegree >= 3 && car.progress > 0.45 ? 0.42 : 1
       let speed = CAR_SPEED * braking
       if (carAhead) {
         speed = Math.min(speed, carAhead.state.currentSpeed)
         if (carAhead.gap < STOP_DISTANCE) speed = 0
       }
       car.currentSpeed = speed
-      car.progress += dt * speed
+      car.progress += (dt * speed) / segLength
       while (car.progress >= 1) {
         car.progress -= 1
         if (!car.reverse) {
-          if (car.segment >= path.length - 2) { car.reverse = true; car.segment = path.length - 1 }
-          else car.segment += 1
+          if (car.segment >= path.length - 2) {
+            car.reverse = true
+            car.segment = path.length - 1
+            if (path[path.length - 1]?.inParking) {
+              car.progress = 0
+              car.pauseTimer = 1.8
+              break
+            }
+          } else {
+            car.segment += 1
+          }
         } else if (car.segment <= 1) {
           car.reverse = false
           car.segment = 0
-        } else car.segment -= 1
+          if (path[0]?.inParking) {
+            car.progress = 0
+            car.pauseTimer = 1.8
+            break
+          }
+        } else {
+          car.segment -= 1
+        }
       }
 
-      const fromIndex = car.reverse ? car.segment : car.segment
+      const fromIndex = car.segment
       const toIndex = car.reverse ? car.segment - 1 : car.segment + 1
       const fromCell = path[fromIndex]
       const toCell = path[toIndex]
@@ -385,22 +574,30 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
       const to = cellToWorld(toCell.x, toCell.y)
       const dx = to[0] - from[0]
       const dz = to[2] - from[2]
-      // Right-hand traffic: +X shifts toward +Z; +Z shifts toward -X.
-      const laneX = -dz * ROAD_LANE_OFFSET
-      const laneZ = dx * ROAD_LANE_OFFSET
-      const fromElevation = grid[fromCell.y]?.[fromCell.x]?.type === TileType.BRIDGE ? 0.21 : 0.055
-      const toElevation = grid[toCell.y]?.[toCell.x]?.type === TileType.BRIDGE ? 0.21 : 0.055
+      const len = Math.hypot(dx, dz) || 1
+      const ux = dx / len
+      const uz = dz / len
+
+      // Плавный переход смещения полосы: внутри парковки = 0 (по центру проезда/слота), на улице = ROAD_LANE_OFFSET
+      const fromLane = fromCell.inParking ? 0 : ROAD_LANE_OFFSET
+      const toLane = toCell.inParking ? 0 : ROAD_LANE_OFFSET
+      const laneOffset = fromLane + (toLane - fromLane) * car.progress
+      const laneX = -uz * laneOffset
+      const laneZ = ux * laneOffset
+
+      const fromElevation = !fromCell.inParking && grid[Math.round(fromCell.y)]?.[Math.round(fromCell.x)]?.type === TileType.BRIDGE ? 0.21 : 0.055
+      const toElevation = !toCell.inParking && grid[Math.round(toCell.y)]?.[Math.round(toCell.x)]?.type === TileType.BRIDGE ? 0.21 : 0.055
       const carY = fromElevation + (toElevation - fromElevation) * car.progress
       const nextPosition = new THREE.Vector3(from[0] + dx * car.progress + laneX, carY, from[2] + dz * car.progress + laneZ)
-      const isBlocked = group.children.some((other, otherIndex) => {
+
+      const isBlocked = !fromCell.inParking && !toCell.inParking && group.children.some((other, otherIndex) => {
         if (otherIndex === i || !other.visible) return false
         const otherDirectionX = Math.sin(other.rotation.y)
         const otherDirectionZ = Math.cos(other.rotation.y)
-        // Adjacent lanes and opposite traffic must not block this car.
-        if (directionX * otherDirectionX + directionZ * otherDirectionZ < 0.85) return false
+        if (ux * otherDirectionX + uz * otherDirectionZ < 0.85) return false
         const relativeX = other.position.x - nextPosition.x
         const relativeZ = other.position.z - nextPosition.z
-        const lateral = Math.abs(relativeX * directionZ - relativeZ * directionX)
+        const lateral = Math.abs(relativeX * uz - relativeZ * ux)
         return lateral < 0.38 && Math.hypot(relativeX, relativeZ) < 0.48
       })
       if (isBlocked) {
@@ -411,8 +608,19 @@ export function TrafficSystem({ grid, minutes }: { grid: Grid; minutes: number }
         mesh.position.copy(oldPosition)
         continue
       }
+
+      // Плавный масштаб: в парковочном слоте = 0.50 (как у стоящих рядом авто), на дороге = 0.70
+      const fromScale = fromCell.inParking ? 0.5 : 0.7
+      const toScale = toCell.inParking ? 0.5 : 0.7
+      vehicleModels[i].scale.setScalar(fromScale + (toScale - fromScale) * car.progress)
+
       mesh.position.copy(nextPosition)
-      mesh.rotation.y = Math.atan2(dx, dz)
+      const targetYaw = Math.atan2(dx, dz)
+      let diffYaw = targetYaw - mesh.rotation.y
+      while (diffYaw > Math.PI) diffYaw -= Math.PI * 2
+      while (diffYaw < -Math.PI) diffYaw += Math.PI * 2
+      mesh.rotation.y += diffYaw * Math.min(1, dt * 14)
+
       const headlights = mesh.getObjectByName('vehicle-headlight-beams')
       if (headlights) headlights.visible = isDark
       mesh.traverse((part) => {

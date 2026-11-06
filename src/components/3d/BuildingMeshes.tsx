@@ -1699,7 +1699,7 @@ function TileModelBase({ type, variant = 0, catalogId, hasWater = true, hasPower
       else if (catalogId === 'park_winter_tree') model = <ChristmasTreeMesh />
       else if (catalogId === 'park_plaza') model = <PlazaMesh />
       else if (catalogId === 'park_town_square') { model = <TownSquareMesh />; w = 2; h = 2 }
-      else if (catalogId === 'lnd_parking') { model = <ParkingLotMesh />; w = 2; h = 1 }
+      else if (catalogId === 'lnd_parking') { model = <ParkingLotMesh variant={variant} />; w = 2; h = 1 }
       else if (style === 'PARK') { model = <ParkMesh />; w = 2; h = 2; }
       else if (style === 'LARGE_PARK') { model = <LargeParkMesh />; w = 3; h = 3; }
       else model = <SquareMesh />

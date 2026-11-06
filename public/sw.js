@@ -1,5 +1,5 @@
 /* Inkville service worker: игра открывается быстро и работает без сети после первого запуска. */
-const CACHE = 'inkville-v6'
+const CACHE = 'inkville-v7'
 const PRECACHE = ['/', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png']
 
 self.addEventListener('install', (event) => {
